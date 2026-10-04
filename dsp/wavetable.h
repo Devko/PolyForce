@@ -1,0 +1,51 @@
+#pragma once
+// Band-limited wavetables. A table is a stack of single-cycle frames (the "position" axis);
+// every frame is stored as kMipLevels pre-filtered copies, level k keeping harmonics
+// 1..(1024 >> k). An oscillator picks the level whose top harmonic stays clear of
+// aliasing for the pitch it plays, so the inner loop is a plain lookup with no filtering.
+#include <string>
+#include <vector>
+
+namespace pf {
+
+constexpr int kTableBits  = 11;
+constexpr int kTableSize  = 1 << kTableBits;   // samples per frame (2048)
+constexpr int kMaxHarmonic = kTableSize / 2;    // 1024
+constexpr int kMipLevels  = 11;                 // 1024, 512, ... 1 harmonics
+constexpr int kFrameStride = kTableSize + 1;    // +1 guard sample (= sample 0) so idx+1 never wraps
+
+struct Wavetable {
+    std::string name;
+    int frames = 0;
+    std::vector<float> data;   // [frame][mip][kFrameStride]
+
+    const float* get(int frame, int mip) const {
+        return data.data() + (static_cast<size_t>(frame) * kMipLevels + static_cast<size_t>(mip)) * kFrameStride;
+    }
+};
+
+// Every built-in table (order = surface.py WAVES), built once per process on first use and
+// read-only afterwards, so all plugin instances share one copy.
+const std::vector<Wavetable>& builtinTables();
+
+// Loads a wavetable WAV in the Serum layout: frames of N samples back to back (N from the
+// 'clm ' chunk "<!>2048 ...", else 2048), mono or first channel, float32 or 16/24/32-bit
+// PCM, at most kMaxFrames frames. The whole table is normalised to peak 1 with ONE gain, so
+// level changes the author put across the frames (one-shot tables fade out) survive.
+// Load time, not real time: false + a reason in *err for anything it can't use.
+constexpr int kMaxFrames = 256;
+bool loadWavetable(const std::string& path, Wavetable& out, std::string* err = nullptr);
+
+// Highest harmonic h allowed at phase increment `inc` (cycles/sample): we let partials go
+// above Nyquist as long as their alias folds back above ~18 kHz (h * inc <= 0.59 at 44.1 kHz),
+// which keeps the top octave bright instead of dulling every note to the safe limit.
+constexpr float kAliasLimit = 0.59f;
+
+inline int mipFor(float inc) {
+    const float allowed = kAliasLimit / inc;
+    int k = 0;
+    while (k < kMipLevels - 1 && static_cast<float>(kMaxHarmonic >> k) > allowed) ++k;
+    return k;
+}
+
+} // namespace pf

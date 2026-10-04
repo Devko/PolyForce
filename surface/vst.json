@@ -1,0 +1,9 @@
+{
+ "name": "PolyForce",
+ "vendor": "Devko",
+ "uid": "PlFc",
+ "version": 1000,
+ "so": "polyforce.so",
+ "params": "params.json",
+ "layout": "layout.conf"
+}

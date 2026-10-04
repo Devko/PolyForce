@@ -1,0 +1,378 @@
+{
+ "name": "PolyForce",
+ "params": [
+  {
+   "key": "status",
+   "name": "Status",
+   "min": 0,
+   "max": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "volume",
+   "name": "Volume",
+   "min": 0,
+   "max": 1,
+   "default": 0.818182,
+   "display": "string"
+  },
+  {
+   "key": "voices",
+   "name": "Voices",
+   "min": 0,
+   "max": 1,
+   "default": 1.0,
+   "display": "string"
+  },
+  {
+   "key": "routing",
+   "name": "Routing",
+   "options": [
+    "Serial",
+    "Parallel"
+   ],
+   "default": "Serial"
+  },
+  {
+   "key": "o1_wave",
+   "name": "Osc 1 wave",
+   "options": [
+    "Classic",
+    "PWM",
+    "Sync",
+    "Formant"
+   ],
+   "default": "Classic"
+  },
+  {
+   "key": "o1_pos",
+   "name": "Osc 1 position",
+   "min": 0,
+   "max": 1,
+   "default": 0.66,
+   "display": "string"
+  },
+  {
+   "key": "o1_oct",
+   "name": "Osc 1 octave",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_semi",
+   "name": "Osc 1 semitone",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_fine",
+   "name": "Osc 1 fine",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_uni",
+   "name": "Osc 1 unison",
+   "min": 0,
+   "max": 1,
+   "default": 0.0,
+   "display": "string"
+  },
+  {
+   "key": "o1_detune",
+   "name": "Osc 1 detune",
+   "min": 0,
+   "max": 1,
+   "default": 0.3,
+   "display": "string"
+  },
+  {
+   "key": "o1_width",
+   "name": "Osc 1 width",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_level",
+   "name": "Osc 1 level",
+   "min": 0,
+   "max": 1,
+   "default": 0.8,
+   "display": "string"
+  },
+  {
+   "key": "o2_wave",
+   "name": "Osc 2 wave",
+   "options": [
+    "Classic",
+    "PWM",
+    "Sync",
+    "Formant"
+   ],
+   "default": "Classic"
+  },
+  {
+   "key": "o2_pos",
+   "name": "Osc 2 position",
+   "min": 0,
+   "max": 1,
+   "default": 0.66,
+   "display": "string"
+  },
+  {
+   "key": "o2_oct",
+   "name": "Osc 2 octave",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_semi",
+   "name": "Osc 2 semitone",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_fine",
+   "name": "Osc 2 fine",
+   "min": 0,
+   "max": 1,
+   "default": 0.535,
+   "display": "string"
+  },
+  {
+   "key": "o2_uni",
+   "name": "Osc 2 unison",
+   "min": 0,
+   "max": 1,
+   "default": 0.0,
+   "display": "string"
+  },
+  {
+   "key": "o2_detune",
+   "name": "Osc 2 detune",
+   "min": 0,
+   "max": 1,
+   "default": 0.3,
+   "display": "string"
+  },
+  {
+   "key": "o2_width",
+   "name": "Osc 2 width",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_level",
+   "name": "Osc 2 level",
+   "min": 0,
+   "max": 1,
+   "default": 0.6,
+   "display": "string"
+  },
+  {
+   "key": "f1_type",
+   "name": "Filter 1 type",
+   "options": [
+    "Off",
+    "LP12",
+    "LP24",
+    "BP",
+    "HP12",
+    "HP24",
+    "Notch",
+    "Peak"
+   ],
+   "default": "LP24"
+  },
+  {
+   "key": "f1_cut",
+   "name": "Filter 1 cutoff",
+   "min": 0,
+   "max": 1,
+   "default": 0.592717,
+   "display": "string"
+  },
+  {
+   "key": "f1_res",
+   "name": "Filter 1 resonance",
+   "min": 0,
+   "max": 1,
+   "default": 0.25,
+   "display": "string"
+  },
+  {
+   "key": "f1_env",
+   "name": "Filter 1 env 2",
+   "min": 0,
+   "max": 1,
+   "default": 0.625,
+   "display": "string"
+  },
+  {
+   "key": "f1_key",
+   "name": "Filter 1 keytrack",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "f1_drive",
+   "name": "Filter 1 drive",
+   "min": 0,
+   "max": 1,
+   "default": 0.0,
+   "display": "string"
+  },
+  {
+   "key": "f2_type",
+   "name": "Filter 2 type",
+   "options": [
+    "Off",
+    "LP12",
+    "LP24",
+    "BP",
+    "HP12",
+    "HP24",
+    "Notch",
+    "Peak"
+   ],
+   "default": "Off"
+  },
+  {
+   "key": "f2_cut",
+   "name": "Filter 2 cutoff",
+   "min": 0,
+   "max": 1,
+   "default": 0.867353,
+   "display": "string"
+  },
+  {
+   "key": "f2_res",
+   "name": "Filter 2 resonance",
+   "min": 0,
+   "max": 1,
+   "default": 0.25,
+   "display": "string"
+  },
+  {
+   "key": "f2_env",
+   "name": "Filter 2 env 2",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "f2_key",
+   "name": "Filter 2 keytrack",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "f2_drive",
+   "name": "Filter 2 drive",
+   "min": 0,
+   "max": 1,
+   "default": 0.0,
+   "display": "string"
+  },
+  {
+   "key": "e1_a",
+   "name": "Env 1 attack",
+   "min": 0,
+   "max": 1,
+   "default": 0.110932,
+   "display": "string"
+  },
+  {
+   "key": "e1_d",
+   "name": "Env 1 decay",
+   "min": 0,
+   "max": 1,
+   "default": 0.604985,
+   "display": "string"
+  },
+  {
+   "key": "e1_s",
+   "name": "Env 1 sustain",
+   "min": 0,
+   "max": 1,
+   "default": 0.8,
+   "display": "string"
+  },
+  {
+   "key": "e1_r",
+   "name": "Env 1 release",
+   "min": 0,
+   "max": 1,
+   "default": 0.575937,
+   "display": "string"
+  },
+  {
+   "key": "e1_vel",
+   "name": "Env 1 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "e2_a",
+   "name": "Env 2 attack",
+   "min": 0,
+   "max": 1,
+   "default": 0.0,
+   "display": "string"
+  },
+  {
+   "key": "e2_d",
+   "name": "Env 2 decay",
+   "min": 0,
+   "max": 1,
+   "default": 0.645927,
+   "display": "string"
+  },
+  {
+   "key": "e2_s",
+   "name": "Env 2 sustain",
+   "min": 0,
+   "max": 1,
+   "default": 0.2,
+   "display": "string"
+  },
+  {
+   "key": "e2_r",
+   "name": "Env 2 release",
+   "min": 0,
+   "max": 1,
+   "default": 0.627517,
+   "display": "string"
+  },
+  {
+   "key": "e2_pos",
+   "name": "Env 2 > wave pos",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  }
+ ]
+}
