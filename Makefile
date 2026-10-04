@@ -113,12 +113,42 @@ $(BUILD)/pfbench: tools/bench.cpp dsp/wavetable.cpp $(HDR) $(GEN) | $(BUILD)
 # --- device -----------------------------------------------------------------------------------
 # The .so MPC loads: only VSTPluginMain exported; --no-undefined because an unresolved symbol
 # otherwise only shows up as MPC crashing on load.
-ARM_SO_CMD = $(ARM_CXX) -std=c++17 $(ARM_OPT) -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -Wall -Wextra -Wno-psabi \
-	-pthread $(INC) -shared -Wl,--no-undefined -Wl,-soname,polyforce.so
+ARM_SO_FLAGS = -std=c++17 $(ARM_OPT) -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -Wall -Wextra -Wno-psabi -pthread $(INC)
+ARM_SO_LINK  = -shared -Wl,--no-undefined -Wl,-soname,polyforce.so
+ARM_SO_CMD   = $(ARM_CXX) $(ARM_SO_FLAGS) $(ARM_SO_LINK)
+
+# Profile-guided: on by default when qemu-arm is installed (as test-arm needs); PGO=0 builds
+# without. A copy of the plugin compiled with counters is linked into tools/pgo_train.cpp,
+# which plays a spread of patches under qemu-arm (about 10 s); then the .so is compiled from
+# the same sources with the same flags plus that profile, which only tells the compiler which
+# paths are hot (-fprofile-partial-training: what the trainer never reached is optimised as
+# usual). ARM instruction counts: 8 voices -7.7%, 1 voice -8.5%, 8 voices x 8 unison with the
+# busy matrix -2.3%. The objects keep one path in both rounds: GCC names the profile files after it.
+PGO      ?= auto
+QEMU_ARM := $(shell command -v qemu-arm 2>/dev/null)
+PGO_ON   := $(if $(filter auto,$(PGO)),$(if $(QEMU_ARM),1,0),$(PGO))
+PGO_DIR  := $(BUILD)/arm/pgo
+PGO_PROF := $(abspath $(PGO_DIR)/profile)
+PGO_OBJ  := $(PGO_DIR)/obj
+
 arm-plugin: $(ARM_SO)
-$(ARM_SO): $(SRC) $(HDR) $(GEN)
+$(ARM_SO): $(SRC) $(HDR) $(GEN) tools/pgo_train.cpp
 	mkdir -p $(BUILD)/arm
+ifeq ($(PGO_ON),1)
+	rm -rf $(PGO_DIR) && mkdir -p $(PGO_OBJ) $(PGO_PROF)
+	for f in $(SRC); do $(ARM_CXX) $(ARM_SO_FLAGS) -fprofile-generate=$(PGO_PROF) -fprofile-update=prefer-atomic \
+		-c $$f -o $(PGO_OBJ)/$$(basename $$f .cpp).o || exit 1; done
+	$(ARM_CXX) $(ARM_SO_FLAGS) -fprofile-generate -static tools/pgo_train.cpp $(PGO_OBJ)/*.o -o $(PGO_DIR)/train
+	PF_DATA_DIR=$(PGO_DIR) PF_TABLE_ROOTS=$(PGO_DIR) PF_PRESET_ROOTS=$(PGO_DIR) PF_TUNING_ROOTS=$(PGO_DIR) PF_CPU_GUARD=0 \
+		qemu-arm $(PGO_DIR)/train
+	for f in $(SRC); do $(ARM_CXX) $(ARM_SO_FLAGS) -fprofile-use=$(PGO_PROF) -fprofile-partial-training -Wno-missing-profile \
+		-c $$f -o $(PGO_OBJ)/$$(basename $$f .cpp).o || exit 1; done
+	$(ARM_CXX) $(ARM_SO_FLAGS) $(ARM_SO_LINK) $(PGO_OBJ)/*.o -o $@
+	@echo "profile-guided build"
+else
 	$(ARM_SO_CMD) $(SRC) -o $@
+	@echo "plain build (PGO=$(PGO): qemu-arm $(if $(QEMU_ARM),found,not found))"
+endif
 	arm-linux-gnueabihf-strip --strip-unneeded $@
 	@arm-linux-gnueabihf-readelf -V $@ | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1 | sed 's/^/needs /'
 	@arm-linux-gnueabihf-nm -D --defined-only $@ | grep -c ' T ' | sed 's/^/exported functions: /'
