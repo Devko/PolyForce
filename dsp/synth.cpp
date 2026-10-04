@@ -14,6 +14,9 @@ inline float clampf(float x, float lo, float hi) { return x < lo ? lo : (x > hi 
 inline float noteHz(float note) { return 440.0f * std::exp2((note - 69.0f) / 12.0f); }
 inline float hzNote(float hz) { return 69.0f + 12.0f * std::log2(std::max(hz, 1.0f) / 440.0f); }
 
+// 2^x for |x| <= ~0.1 (detune ratios), error < 1e-6.
+inline float exp2Small(float x) { return 1.0f + x * (0.69314718f + x * (0.24022651f + x * 0.05550411f)); }
+
 // tanh-like saturator, exactly +-1 from |x| = 3 on.
 inline float softclip(float x) {
     x = clampf(x, -3.0f, 3.0f);
@@ -23,7 +26,7 @@ inline float softclip(float x) {
 // Per-sample one-pole step for a time constant of `tau` seconds.
 inline float onePole(float tau, float sr) { return 1.0f - std::exp(-1.0f / (std::max(tau, 1e-5f) * sr)); }
 
-inline float tick(Env& e, const EnvCoef& c) {
+inline float tick(Env& e, const EnvCoef& c, bool loop = false) {
     switch (e.stage) {
         case Attack:
             e.v += (1.2f - e.v) * c.att;
@@ -34,6 +37,7 @@ inline float tick(Env& e, const EnvCoef& c) {
             break;
         case Decay:   // decay and sustain are one segment: it settles on the sustain level
             e.v += (c.sus - e.v) * c.dec;
+            if (loop && e.v - c.sus < 0.01f) e.stage = Attack;   // looping: attack again
             break;
         case Release:
             e.v -= e.v * c.rel;
@@ -132,6 +136,42 @@ void Synth::setPatch(const Patch& p) {
     patch_.voices = std::clamp(p.voices, 1, kMaxVoices);
     for (int o = 0; o < 2; ++o) updateOsc(o, patch_.osc[o]);
     for (int e = 0; e < 2; ++e) envc_[e] = envCoef(patch_.env[e], sr_);
+
+    // The matrix: which slots do something, and their amounts in target units.
+    nSlots_ = 0;
+    envTargeted_ = false;
+    for (int s = 0; s < kModSlots; ++s) {
+        const ModSlot& ms = patch_.mod[s];
+        bool live = false;
+        for (int k = 0; k < 2; ++k) {
+            const float a = clampf(ms.amt[k], -1.0f, 1.0f);
+            float scale = a;
+            switch (targetUnit(ms.tgt[k])) {
+                case Unit::Semis: scale = a * std::fabs(a) * kPitchRange; break;
+                case Unit::Cutoff: scale = a * kCutoffRange; break;
+                case Unit::EnvTime: scale = a * kEnvOctavesMod; break;
+                case Unit::LfoRate: scale = a * kLfoOctavesMod; break;
+                case Unit::Color: scale = 2.0f * a; break;
+                case Unit::None: scale = 0.0f; break;
+                default: break;
+            }
+            slotScale_[s][k] = scale;
+            live = live || (scale != 0.0f && ms.src != MS_NONE);
+            const Unit u = targetUnit(ms.tgt[k]);
+            if (scale != 0.0f && (u == Unit::EnvTime || u == Unit::EnvLevel)) envTargeted_ = true;
+        }
+        const float m = std::fabs(clampf(ms.modAmt, -1.0f, 1.0f));
+        slotSlewK_[s] = onePole(0.001f * std::exp2(m * 11.0f), sr_ / static_cast<float>(kChunk));
+        slotPeriod_[s] = sr_ / (0.5f * std::exp2(m * 7.0f));
+        if (live) slots_[nSlots_++] = s;
+    }
+    for (int l = 0; l < 2; ++l) {
+        lfoUsed_[l] = false;
+        for (int k = 0; k < nSlots_; ++k) {
+            const ModSlot& ms = patch_.mod[slots_[k]];
+            lfoUsed_[l] = lfoUsed_[l] || ms.src == MS_LFO1 + l || ms.via == MS_LFO1 + l;
+        }
+    }
     volTarget_ = patch_.volumeDb <= -59.5f ? 0.0f : std::pow(10.0f, patch_.volumeDb / 20.0f) * kHeadroom;
 
     // Polyphony lowered while playing: let the voices above the new limit ring out.
@@ -158,20 +198,17 @@ void Synth::updateOsc(int o, const OscPatch& p) {
     }
 
     const int n = std::clamp(p.unison, 1, kMaxUnison);
-    if (n == s.keyUnison && p.detune == s.keyDetune && p.width == s.keyWidth && p.level == s.keyLevel &&
-        p.pan == s.keyPan)
-        return;
+    if (n == s.keyUnison && p.detune == s.keyDetune && p.width == s.keyWidth && p.pan == s.keyPan) return;
     s.keyUnison = n;
     s.keyDetune = p.detune;
     s.keyWidth = p.width;
-    s.keyLevel = p.level;
     s.keyPan = p.pan;
 
     // Unison voice u sits at d in [-1, 1]: detuned by d * spread and panned by d * width,
     // lowest voice left, highest right, the whole stack shifted by the pan. 1/sqrt(n) keeps
     // the loudness roughly constant.
     const float cents = 100.0f * p.detune * p.detune;
-    const float gain = p.level / std::sqrt(static_cast<float>(n));
+    const float gain = 1.0f / std::sqrt(static_cast<float>(n));   // the level is applied per voice (modulated)
     for (int u = 0; u < n; ++u) {
         const float d = n > 1 ? 2.0f * static_cast<float>(u) / static_cast<float>(n - 1) - 1.0f : 0.0f;
         s.spread[u] = d;
@@ -182,6 +219,7 @@ void Synth::updateOsc(int o, const OscPatch& p) {
         s.gr[u] = std::sin(angle) * 1.41421356f * gain;
     }
     s.n = n;
+    s.cents = cents;
     s.maxRatio = n > 1 ? std::exp2(cents / 1200.0f) : 1.0f;
 }
 
@@ -350,6 +388,27 @@ void Synth::start(Voice& v, int note, int velocity, bool retrigger) {
     v.age = ++clock_;
     v.vel = shapeVelocity(velocity);
     v.velGain = 1.0f - patch_.velSens + patch_.velSens * v.vel * v.vel;
+    // Per-note modulation state: the Random and Alternate sources, retriggered LFOs, the
+    // matrix modifiers' memories, LFO delay/fade timing.
+    v.rnd = randomBipolar();
+    v.alt = alt_;
+    alt_ = -alt_;
+    v.sinceOn = 0;
+    v.pressure = 0.0f;
+    for (int l = 0; l < 2; ++l) {
+        LfoState& st = v.lfo[l];
+        if (patch_.lfo[l].trig == LT_RETRIG) st.phase = clampf(patch_.lfo[l].phase, 0.0f, 0.9999f);
+        if (patch_.lfo[l].trig != LT_FREE || !wasActive) {
+            st.held = randomBipolar();
+            st.from = randomBipolar();
+            st.to = randomBipolar();
+        }
+    }
+    for (int s = 0; s < kModSlots; ++s) {
+        v.slotTimer[s] = 0.0f;   // S&H samples at once
+        v.slotSlew[s] = 0.0f;
+    }
+    v.ownEnv = false;
     if (retrigger)
         for (auto& e : v.env) e.stage = Attack;   // a retriggered voice attacks from where it is
 
@@ -464,6 +523,199 @@ void Synth::reset() {
     pedal_ = false;
 }
 
+void Synth::controller(int cc, int value) {
+    const float v = static_cast<float>(std::clamp(value, 0, 127)) / 127.0f;
+    if (cc == 1) cc_[0] = v;
+    else if (cc == 2) cc_[1] = v;
+    else if (cc == 11) cc_[2] = v;
+}
+
+void Synth::aftertouch(float amount) { pressure_ = clampf(amount, 0.0f, 1.0f); }
+
+void Synth::polyAftertouch(int note, float amount) {
+    for (auto& v : voices_)
+        if (v.active && v.note == note) v.pressure = clampf(amount, 0.0f, 1.0f);
+}
+
+void Synth::setTransport(double bpm, double beats, bool playing, bool beatsValid) {
+    bpm_ = bpm > 1.0 ? bpm : 120.0;
+    if (playing && beatsValid) beats_ = beats;   // stopped: keep counting on our own
+    playing_ = playing;
+}
+
+void Synth::setSequencerSources(float seq, const float* shape4) {
+    seqSrc_ = seq;
+    for (int i = 0; i < 4; ++i) shapeSrc_[i] = shape4 ? shape4[i] : 0.0f;
+}
+
+float Synth::randomBipolar() { return static_cast<float>(static_cast<int32_t>(random())) * (1.0f / 2147483648.0f); }
+
+// One LFO over one chunk: returns its value at the chunk's start (-1..1) and advances.
+// `locked`: a synced Global LFO, its phase read from the song position (bars line up).
+float Synth::lfoStep(LfoState& st, const LfoPatch& p, float rateMul, int n, bool locked) {
+    const float divBeats = kSyncBeats[std::clamp(p.div, 0, kNumSyncDivs - 1)];
+    auto newCycle = [&] {
+        st.held = randomBipolar();
+        st.from = st.to;
+        st.to = randomBipolar();
+    };
+    if (locked) {
+        double ph = beats_ / divBeats + clampf(p.phase, 0.0f, 1.0f);
+        ph -= std::floor(ph);
+        if (static_cast<float>(ph) < st.phase) newCycle();
+        st.phase = static_cast<float>(ph);
+    }
+    const float ph = st.phase;
+    float w;
+    switch (p.wave) {
+        case LW_TRIANGLE: w = ph < 0.25f ? 4.0f * ph : (ph < 0.75f ? 2.0f - 4.0f * ph : 4.0f * ph - 4.0f); break;
+        case LW_SAW_UP: w = 2.0f * ph - 1.0f; break;
+        case LW_SAW_DOWN: w = 1.0f - 2.0f * ph; break;
+        case LW_SQUARE: w = ph < 0.5f ? 1.0f : -1.0f; break;
+        case LW_SAMPLE_HOLD: w = st.held; break;
+        case LW_SMOOTH: w = st.from + (st.to - st.from) * (0.5f - 0.5f * std::cos(kPi * ph)); break;
+        default: w = std::sin(2.0f * kPi * ph); break;
+    }
+    if (!locked) {
+        const double hz = (p.sync ? bpm_ / 60.0 / divBeats : static_cast<double>(p.rateHz)) * rateMul;
+        float next = ph + static_cast<float>(hz * n / sr_);
+        if (next >= 1.0f) {
+            next -= std::floor(next);
+            newCycle();
+        }
+        st.phase = next;
+    }
+    st.out = w;
+    return w;
+}
+
+// The voice's LFOs and the matrix for one chunk: fills `m` with every modulated value.
+void Synth::modulate(Voice& v, float env2, int n, Mods& m) {
+    for (int o = 0; o < 2; ++o) {
+        m.level[o] = patch_.osc[o].level;
+        m.subLevel[o] = patch_.osc[o].subLevel;
+    }
+    m.noiseLevel = patch_.noise.level;
+    m.noiseColor = patch_.noise.color;
+
+    float lfo[2] = {};
+    const float t = static_cast<float>(v.sinceOn) / sr_;
+    for (int l = 0; l < 2; ++l) {
+        if (!lfoUsed_[l]) continue;   // nothing listens: don't spend the cycles
+        const LfoPatch& p = patch_.lfo[l];
+        const float w = p.trig == LT_GLOBAL ? glfo_[l].out : lfoStep(v.lfo[l], p, v.lfoRateMul[l], n, false);
+        float fade = 1.0f;   // delay, then fade in (per voice, Global LFOs too)
+        if (t < p.delay) fade = 0.0f;
+        else if (p.fade > 0.0f) fade = std::min(1.0f, (t - p.delay) / p.fade);
+        const float depth = clampf(p.depth + v.lfoDepthAdd[l], 0.0f, 1.0f);
+        lfo[l] = (p.unipolar ? 0.5f * (w + 1.0f) : w) * depth * fade;
+    }
+    v.sinceOn += static_cast<uint32_t>(n);
+    if (nSlots_ == 0) {
+        v.lfoRateMul[0] = v.lfoRateMul[1] = 1.0f;
+        v.lfoDepthAdd[0] = v.lfoDepthAdd[1] = 0.0f;
+        v.ownEnv = false;
+        return;
+    }
+
+    float src[MS_COUNT];
+    src[MS_NONE] = 0.0f;
+    src[MS_ENV1] = v.env[0].v;
+    src[MS_ENV2] = env2;
+    src[MS_LFO1] = lfo[0];
+    src[MS_LFO2] = lfo[1];
+    src[MS_VELOCITY] = v.vel;
+    src[MS_NOTE] = (static_cast<float>(v.note) - 60.0f) / 60.0f;
+    src[MS_MODWHEEL] = cc_[0];
+    src[MS_AFTERTOUCH] = std::max(pressure_, v.pressure);
+    src[MS_BEND] = bend_;
+    src[MS_RANDOM] = v.rnd;
+    src[MS_ALTERNATE] = v.alt;
+    src[MS_GATE] = v.gate || v.sustained ? 1.0f : 0.0f;
+    src[MS_SEQ] = seqSrc_;
+    for (int i = 0; i < 4; ++i) src[MS_SHAPE1 + i] = shapeSrc_[i];
+    for (int i = 0; i < kXyAxes; ++i) src[MS_X1 + i] = clampf(patch_.xy[i], 0.0f, 1.0f);
+    src[MS_BREATH] = cc_[1];
+    src[MS_EXPRESSION] = cc_[2];
+    src[MS_CONSTANT] = 1.0f;
+
+    float acc[MT_COUNT] = {};
+    for (int k = 0; k < nSlots_; ++k) {
+        const int s = slots_[k];
+        const ModSlot& ms = patch_.mod[s];
+        float x = src[std::clamp(ms.src, 0, MS_COUNT - 1)];
+        if (ms.via != MS_NONE) x *= src[std::clamp(ms.via, 0, MS_COUNT - 1)];
+        const float a = clampf(ms.modAmt, -1.0f, 1.0f);
+        switch (ms.mod) {
+            case MM_CURVE:   // + toward exponential, - toward logarithmic
+                if (a > 0.0f) x += a * (x * std::fabs(x) - x);
+                else if (a < 0.0f) x += -a * ((x < 0.0f ? -1.0f : 1.0f) * std::sqrt(std::fabs(x)) - x);
+                break;
+            case MM_RECTIFY: x = std::fabs(x); break;
+            case MM_QUANTIZE: {
+                const float steps = 2.0f + std::round(std::fabs(a) * 14.0f);
+                x = std::round(x * steps) / steps;
+                break;
+            }
+            case MM_SAMPLE_HOLD:
+                v.slotTimer[s] -= static_cast<float>(n);
+                if (v.slotTimer[s] <= 0.0f) {
+                    v.slotHold[s] = x;
+                    v.slotTimer[s] += slotPeriod_[s];
+                    if (v.slotTimer[s] <= 0.0f) v.slotTimer[s] = slotPeriod_[s];
+                }
+                x = v.slotHold[s];
+                break;
+            case MM_SLEW:
+                v.slotSlew[s] += (x - v.slotSlew[s]) * slotSlewK_[s];
+                x = v.slotSlew[s];
+                break;
+            default: break;
+        }
+        for (int j = 0; j < 2; ++j)
+            if (ms.tgt[j] > MT_OFF && ms.tgt[j] < MT_COUNT) acc[ms.tgt[j]] += slotScale_[s][j] * x;
+    }
+
+    for (int o = 0; o < 2; ++o) {
+        m.pitch[o] += acc[MT_PITCH] + acc[MT_O1_PITCH + o];
+        m.pos[o] += acc[MT_O1_POS + o];
+        m.level[o] = clampf(m.level[o] + acc[MT_O1_LEVEL + o], 0.0f, 1.0f);
+        m.pan[o] = acc[MT_O1_PAN + o];
+        m.detune[o] = acc[MT_O1_DETUNE + o];
+        m.subLevel[o] = clampf(m.subLevel[o] + acc[MT_SUB1_LEVEL + o], 0.0f, 1.0f);
+    }
+    m.noiseLevel = clampf(m.noiseLevel + acc[MT_NOISE_LEVEL], 0.0f, 1.0f);
+    m.noiseColor = clampf(m.noiseColor + acc[MT_NOISE_COLOR], -1.0f, 1.0f);
+    for (int f = 0; f < 2; ++f) {
+        m.cutoff[f] += acc[MT_F1_CUT + f] + acc[MT_CUT];
+        m.res[f] = acc[MT_F1_RES + f];
+        m.drive[f] = acc[MT_F1_DRIVE + f];
+    }
+    m.amp = clampf(1.0f + acc[MT_VOLUME], 0.0f, 2.0f);
+    m.voicePan = acc[MT_PAN];
+    for (int l = 0; l < 2; ++l) {
+        v.lfoRateMul[l] = std::exp2(clampf(acc[MT_L1_RATE + l], -8.0f, 8.0f));
+        v.lfoDepthAdd[l] = acc[MT_L1_DEPTH + l];
+    }
+    v.ownEnv = envTargeted_;
+    if (envTargeted_) {   // envelope stages: recompute this voice's coefficients when they moved
+        for (int e = 0; e < 2; ++e) {
+            const int base = e ? MT_E2_A : MT_E1_A;
+            const float key[4] = {acc[base], acc[base + 1], acc[base + 2], acc[base + 3]};
+            bool same = true;
+            for (int i = 0; i < 4; ++i) same = same && std::fabs(key[i] - v.envKey[e][i]) < 2e-3f;
+            if (same && v.envc[e].dec > 0.0f) continue;
+            for (int i = 0; i < 4; ++i) v.envKey[e][i] = key[i];
+            EnvPatch ep = patch_.env[e];
+            ep.a *= std::exp2(key[0]);
+            ep.d *= std::exp2(key[1]);
+            ep.s = clampf(ep.s + key[2], 0.0f, 1.0f);
+            ep.r *= std::exp2(key[3]);
+            v.envc[e] = envCoef(ep, sr_);
+        }
+    }
+}
+
 Synth::VoiceInfo Synth::voiceInfo(int i) const {
     const Voice& v = voices_[std::clamp(i, 0, kMaxVoices - 1)];
     return {v.active, v.gate || v.pendingNote >= 0, v.pendingNote >= 0 ? v.pendingNote : v.note, v.pitch, v.env[0].v};
@@ -497,6 +749,10 @@ void Synth::render(float* outL, float* outR, int n) {
 
         // Knob moves arrive in 1/128 steps: glide cutoff (~2 ms) and volume (~6 ms) between them.
         for (int f = 0; f < 2; ++f) cutSemi_[f] += (cutTarget[f] - cutSemi_[f]) * 0.2f;
+        // The shared (Global) LFOs, then the song position moves on.
+        for (int l = 0; l < 2; ++l)
+            if (lfoUsed_[l] && patch_.lfo[l].trig == LT_GLOBAL) lfoStep(glfo_[l], patch_.lfo[l], 1.0f, len, patch_.lfo[l].sync);
+        beats_ += bpm_ / 60.0 * static_cast<double>(len) / static_cast<double>(sr_);
 
         for (auto& v : voices_)
             if (v.active) renderVoice(v, L, R, len);
@@ -514,9 +770,14 @@ void Synth::render(float* outL, float* outR, int n) {
 }
 
 void Synth::renderVoice(Voice& v, float* outL, float* outR, int n) {
-    // Control rate: the mod envelope's value at the start of the chunk drives this chunk.
-    const float mod = v.env[1].v;
-    for (int i = 0; i < n; ++i) tick(v.env[1], envc_[1]);
+    // Control rate: the mod envelope's value at the start of the chunk drives this chunk,
+    // scaled by velocity as much as its VEL knob says; then the LFOs and the matrix.
+    const float e2vel = clampf(patch_.env[1].vel, 0.0f, 1.0f);
+    const float mod = v.env[1].v * (1.0f - e2vel + e2vel * v.vel);
+    Mods m;
+    modulate(v, mod, n, m);
+    const EnvCoef& c1 = v.ownEnv ? v.envc[1] : envc_[1];
+    for (int i = 0; i < n; ++i) tick(v.env[1], c1, patch_.env[1].loop && v.gate);
     if (v.glideStep > 0.0f) {   // glide toward the note
         const float target = static_cast<float>(v.note), step = v.glideStep * static_cast<float>(n);
         if (std::fabs(target - v.pitch) <= step) {
@@ -534,8 +795,7 @@ void Synth::renderVoice(Voice& v, float* outL, float* outR, int n) {
         pitch += v.drift * 0.01f;
     }
 
-    Mods m;
-    for (int o = 0; o < 2; ++o) m.pos[o] = mod * patch_.env2Pos;
+    for (int o = 0; o < 2; ++o) m.pos[o] += mod * patch_.env2Pos;
 
     // Three buses: into filter 1, into filter 2, and past both.
     float b1[2][kChunk] = {}, b2[2][kChunk] = {}, bd[2][kChunk] = {};
@@ -557,18 +817,18 @@ void Synth::renderVoice(Voice& v, float* outL, float* outR, int n) {
     };
     for (int o = 0; o < 2; ++o) {
         const OscPatch& p = patch_.osc[o];
-        const bool osc = p.level > 0.0f, sub = p.subLevel > 0.0f;
+        const bool osc = m.level[o] > 0.0f, sub = m.subLevel[o] > 0.0f;
         if (!osc && !sub) continue;
         std::fill(tl, tl + n, 0.0f);
         std::fill(tr, tr + n, 0.0f);
         if (osc) renderOsc(v, o, pitch, m, tl, tr, n);
-        if (sub) renderSub(v, o, pitch, tl, tr, n);
+        if (sub) renderSub(v, o, pitch + m.pitch[o], m.subLevel[o], tl, tr, n);
         send(p.route, tl, tr);
     }
-    if (patch_.noise.level > 0.0f) {
+    if (m.noiseLevel > 0.0f) {
         std::fill(tl, tl + n, 0.0f);
         std::fill(tr, tr + n, 0.0f);
-        renderNoise(v.noiseRng, v.noiseLp, patch_.noise.color, 0.5f * patch_.noise.level, tl, tr, n);
+        renderNoise(v.noiseRng, v.noiseLp, m.noiseColor, 0.5f * m.noiseLevel, tl, tr, n);
         send(patch_.noise.route, tl, tr);
     }
 
@@ -579,16 +839,24 @@ void Synth::renderVoice(Voice& v, float* outL, float* outR, int n) {
             b2[1][i] += b1[1][i];
         }
     filter(v, 1, pitch, m, mod, b2[0], b2[1], n);
+    // Voice pan (a matrix target): an equal-power balance on the voice's stereo output.
+    float bl = 1.0f, br = 1.0f;
+    if (m.voicePan != 0.0f) {
+        const float angle = (clampf(m.voicePan, -1.0f, 1.0f) + 1.0f) * kPi * 0.25f;
+        bl = std::cos(angle) * 1.41421356f;
+        br = std::sin(angle) * 1.41421356f;
+    }
     for (int i = 0; i < n; ++i) {
-        tl[i] = b2[0][i] + bd[0][i] + (patch_.parallel ? b1[0][i] : 0.0f);
-        tr[i] = b2[1][i] + bd[1][i] + (patch_.parallel ? b1[1][i] : 0.0f);
+        tl[i] = (b2[0][i] + bd[0][i] + (patch_.parallel ? b1[0][i] : 0.0f)) * bl;
+        tr[i] = (b2[1][i] + bd[1][i] + (patch_.parallel ? b1[1][i] : 0.0f)) * br;
     }
 
-    const float vg = v.velGain;
+    const float vg = v.velGain * m.amp;
+    const EnvCoef& c0 = v.ownEnv ? v.envc[0] : envc_[0];
     if (v.fade > 0) {   // being stolen: fade out, then start the waiting note
         constexpr float kInv = 1.0f / static_cast<float>(kFadeSamples);
         for (int i = 0; i < n; ++i) {
-            const float a = tick(v.env[0], envc_[0]) * vg * static_cast<float>(std::max(v.fade - i, 0)) * kInv;
+            const float a = tick(v.env[0], c0) * vg * static_cast<float>(std::max(v.fade - i, 0)) * kInv;
             outL[i] += tl[i] * a;
             outR[i] += tr[i] * a;
         }
@@ -601,7 +869,7 @@ void Synth::renderVoice(Voice& v, float* outL, float* outR, int n) {
         return;
     }
     for (int i = 0; i < n; ++i) {
-        const float a = tick(v.env[0], envc_[0]) * vg;
+        const float a = tick(v.env[0], c0) * vg;
         outL[i] += tl[i] * a;
         outR[i] += tr[i] * a;
     }
@@ -615,7 +883,7 @@ void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, flo
     const OscState& s = osc_[o];
     const OscPatch& p = patch_.osc[o];
     if (!s.table) {   // Noise: the position knob is its colour, unison doesn't apply
-        const float level = p.level * m.level[o];
+        const float level = m.level[o];
         renderNoise(v.noiseRng, v.oscNoiseLp[o], 2.0f * clampf(p.pos + m.pos[o], 0.0f, 1.0f) - 1.0f, 0.5f * level, L, R, n);
         return;
     }
@@ -627,11 +895,27 @@ void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, flo
     const int fb = std::min(fa + 1, t.frames - 1);
     const float morph = fpos - static_cast<float>(fa);
 
+    // Detune modulated: this voice's unison ratios, from the stack's spread.
+    float ratio[kMaxUnison];
+    float maxRatio = s.maxRatio;
+    if (m.detune[o] != 0.0f && s.n > 1) {
+        const float det = clampf(p.detune + m.detune[o], 0.0f, 1.0f);
+        const float oct = 100.0f * det * det / 1200.0f;
+        for (int u = 0; u < s.n; ++u) ratio[u] = exp2Small(s.spread[u] * oct);
+        maxRatio = exp2Small(oct);
+    } else {
+        for (int u = 0; u < s.n; ++u) ratio[u] = s.ratio[u];
+    }
     const float inc = std::min(noteHz(pitch + p.pitch + m.pitch[o]) / sr_, 0.45f);   // cycles per sample
-    const int mip = mipFor(inc * s.maxRatio);                                       // the stack's highest voice decides
+    const int mip = mipFor(inc * maxRatio);                                          // the stack's highest voice decides
     const float* A = t.get(fa, mip);
     const float* B = t.get(fb, mip);
-    const float lv = m.level[o];
+    float lvl = m.level[o], lvr = m.level[o];
+    if (m.pan[o] != 0.0f) {   // pan modulated: a balance on top of the stack's own placement
+        const float angle = (clampf(m.pan[o], -1.0f, 1.0f) + 1.0f) * kPi * 0.25f;
+        lvl *= std::cos(angle) * 1.41421356f;
+        lvr *= std::sin(angle) * 1.41421356f;
+    }
 
     // This level's own length: the top `bits` of the phase index it, the rest interpolate.
     const int shift = 32 - kMipBits[mip];
@@ -639,8 +923,8 @@ void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, flo
     const float kFrac = 1.0f / static_cast<float>(1u << shift);
     for (int u = 0; u < s.n; ++u) {
         uint32_t ph = v.phase[o][u];
-        const uint32_t dph = static_cast<uint32_t>(inc * s.ratio[u] * 4294967296.0f);
-        const float gl = s.gl[u] * lv, gr = s.gr[u] * lv;
+        const uint32_t dph = static_cast<uint32_t>(inc * ratio[u] * 4294967296.0f);
+        const float gl = s.gl[u] * lvl, gr = s.gr[u] * lvr;
         for (int i = 0; i < n; ++i) {
             const uint32_t idx = ph >> shift;
             const float fr = static_cast<float>(ph & mask) * kFrac;
@@ -656,7 +940,7 @@ void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, flo
 }
 
 // The sub oscillator: one classic-shape voice under the oscillator, panned with it.
-void Synth::renderSub(Voice& v, int o, float pitch, float* L, float* R, int n) const {
+void Synth::renderSub(Voice& v, int o, float pitch, float level, float* L, float* R, int n) const {
     const OscPatch& p = patch_.osc[o];
     const Wavetable& t = classicTable(std::clamp(p.subWave, 0, static_cast<int>(CW_SQUARE)));
     const float inc = std::min(noteHz(pitch + p.pitch + p.subTune) / sr_, 0.45f);
@@ -666,7 +950,7 @@ void Synth::renderSub(Voice& v, int o, float pitch, float* L, float* R, int n) c
     const uint32_t mask = (1u << shift) - 1;
     const float kFrac = 1.0f / static_cast<float>(1u << shift);
     const float angle = (clampf(p.pan, -1.0f, 1.0f) + 1.0f) * kPi * 0.25f;
-    const float gl = std::cos(angle) * 1.41421356f * p.subLevel, gr = std::sin(angle) * 1.41421356f * p.subLevel;
+    const float gl = std::cos(angle) * 1.41421356f * level, gr = std::sin(angle) * 1.41421356f * level;
     uint32_t ph = v.subPhase[o];
     const uint32_t dph = static_cast<uint32_t>(inc * 4294967296.0f);
     for (int i = 0; i < n; ++i) {
@@ -728,8 +1012,8 @@ void Synth::filter(Voice& v, int f, float pitch, const Mods& m, float mod, float
     // Coefficients once per chunk: cutoff (smoothed) + env 2 + keytrack + modulation, in semitones.
     const float semi = cutSemi_[f] + p.env * mod * kEnvOctaves * 12.0f + p.key * (pitch - 60.0f) + m.cutoff[f];
     const float hz = clampf(noteHz(semi), 16.0f, 0.45f * sr_);
-    const float res = clampf(p.res, 0.0f, 1.0f);
-    const float drive = clampf(p.drive, 0.0f, 1.0f);
+    const float res = clampf(p.res + m.res[f], 0.0f, 1.0f);
+    const float drive = clampf(p.drive + m.drive[f], 0.0f, 1.0f);
     const float pre = 1.0f + 15.0f * drive * drive;
     const float post = 1.0f / softclip(pre);   // small signals keep ~unity gain
     const bool dirty = patch_.engine == EN_DIRTY;

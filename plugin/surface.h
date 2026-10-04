@@ -67,6 +67,8 @@ private:
     void browserAction(int i);
     std::vector<Category> categories() const;   // FAVORITES, RECENT, then the library's
     std::string frameText(int osc, float n) const;
+    std::string amountText(int i) const;
+    void autoAssignXy();
     std::string tableText(int osc) const;       // with mtx_ held
 
     Loader& loader_;

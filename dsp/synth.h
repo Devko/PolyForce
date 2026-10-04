@@ -5,6 +5,7 @@
 //
 // Real-time rules: no allocation, no locks, no exceptions after construction. Everything
 // here runs on MPC's audio worker; the plugin layer feeds it a Patch once per block.
+#include "mod.h"
 #include "wavetable.h"
 
 #include <cstdint>
@@ -72,6 +73,29 @@ struct FilterPatch {
 
 struct EnvPatch {
     float a = 0.003f, d = 0.4f, s = 0.8f, r = 0.3f;   // seconds, sustain 0..1
+    float vel = 0.0f;      // env 2: how much velocity scales its output (env 1: Patch::velSens)
+    bool  loop = false;    // env 2: attack/decay repeat while the key is held
+};
+
+struct LfoPatch {
+    int   wave = LW_SINE;
+    bool  sync = false;    // false: rateHz; true: one cycle per kSyncBeats[div] beats of MPC's tempo
+    float rateHz = 2.0f;
+    int   div = 6;         // 1/4
+    float phase = 0.0f;    // 0..1, where a retriggered (or synced) LFO starts
+    float delay = 0.0f;    // seconds after the note before it starts
+    float fade = 0.0f;     // seconds to fade in after the delay
+    int   trig = LT_RETRIG;
+    bool  unipolar = false;
+    float depth = 1.0f;    // 0..1 output scale (a matrix target too)
+};
+
+// One matrix slot: source (times via, if set), shaped by the modifier, to two targets.
+struct ModSlot {
+    int   src = MS_NONE, via = MS_NONE, mod = MM_NONE;
+    float modAmt = 0.0f;
+    int   tgt[2] = {MT_OFF, MT_OFF};
+    float amt[2] = {0.0f, 0.0f};   // -1..1
 };
 
 struct Patch {
@@ -93,6 +117,9 @@ struct Patch {
     EnvPatch env[2];
     float velSens = 0.5f;        // env 1 velocity sensitivity 0..1
     float env2Pos = 0.0f;        // env 2 -> wavetable position, -1..1
+    LfoPatch lfo[2];
+    ModSlot  mod[kModSlots];
+    float    xy[kXyAxes] = {};   // the XY pads, 0..1
 };
 
 // Envelope: analog-style one-pole segments (attack aims at 1.2 and stops at 1.0).
@@ -115,6 +142,13 @@ public:
     void sustain(bool down);
     void allNotesOff();                      // release every voice (CC 123)
     void reset();                            // silence now: CC 120, suspend, transport stop
+    void controller(int cc, int value);      // 1 mod wheel, 2 breath, 11 expression (0..127)
+    void aftertouch(float amount);           // channel pressure, 0..1
+    void polyAftertouch(int note, float amount);
+    // MPC's tempo and bar position (quarter notes), once per block before render().
+    void setTransport(double bpm, double beats, bool playing, bool beatsValid);
+    // The step and shape sequencers' current values (Milestone 6), once per block.
+    void setSequencerSources(float seq, const float* shape4);
 
     void render(float* outL, float* outR, int n);   // overwrites n samples
     int  activeVoices() const;
@@ -132,6 +166,12 @@ public:
     static constexpr int kFadeSamples = 132;   // ~3 ms: a stolen voice fades before it restarts
 
 private:
+    struct LfoState {
+        float    phase = 0.0f;    // 0..1
+        float    held = 0.0f;     // S&H value
+        float    from = 0.0f, to = 0.0f;   // Smooth random: the segment it crosses
+        float    out = 0.0f;      // the last value (-1..1, before depth)
+    };
     struct Voice {
         bool     active = false;
         bool     gate = false;        // key held
@@ -155,6 +195,20 @@ private:
         float*   comb = nullptr;      // [filter][channel][kCombLen] delay lines (Synth-owned)
         int      combPos = 0;
         float    drift = 0.0f;        // cents, a slow random walk (Normal / Dirty)
+        // modulation
+        LfoState lfo[2];
+        uint32_t sinceOn = 0;         // samples since the note started (LFO delay / fade)
+        float    rnd = 0.0f;          // Random source: one value per note, -1..1
+        float    alt = 1.0f;          // Alternate source: +1 / -1 on successive notes
+        float    pressure = 0.0f;     // poly aftertouch 0..1
+        float    lfoRateMul[2] = {1.0f, 1.0f};   // from the matrix, applied the next chunk
+        float    lfoDepthAdd[2] = {};
+        float    slotHold[kModSlots] = {};       // S&H modifier: held value
+        float    slotTimer[kModSlots] = {};      // S&H modifier: samples to the next sample
+        float    slotSlew[kModSlots] = {};       // Slew modifier: current value
+        EnvCoef  envc[2];             // envelope coefficients with the matrix's stage modulation
+        float    envKey[2][4] = {};   // the modulation they were computed for
+        bool     ownEnv = false;
     };
     static constexpr int kCombLen = 4096;   // comb delay: down to 44100 / 4096 = 10.8 Hz
     struct Held { int note; int vel; };
@@ -165,17 +219,25 @@ private:
         int   n = 1;
         float ratio[kMaxUnison] = {};   // detune frequency ratio per unison voice
         float spread[kMaxUnison] = {};  // -1..1 position of each unison voice in the stack
-        float gl[kMaxUnison] = {}, gr[kMaxUnison] = {};   // pan * level * 1/sqrt(n)
+        float gl[kMaxUnison] = {}, gr[kMaxUnison] = {};   // pan * 1/sqrt(n) (level applied per voice)
         float maxRatio = 1.0f;
+        float cents = 0.0f;             // detune spread of the outermost voices
         int   keyUnison = -1;
-        float keyDetune = -1, keyWidth = -1, keyLevel = -1, keyPan = -2;
+        float keyDetune = -1, keyWidth = -1, keyPan = -2;
     };
     // Per-voice modulation for one chunk, in the units the render code uses.
     struct Mods {
         float pitch[2] = {};      // semitones per oscillator
         float pos[2] = {};        // added to the position
-        float level[2] = {1, 1};  // oscillator level factor
+        float level[2] = {};      // oscillator level 0..1 (the patch's, modulated)
+        float pan[2] = {};        // added to the oscillator's pan
+        float detune[2] = {};     // added to the oscillator's detune
+        float subLevel[2] = {};
+        float noiseLevel = 0.0f, noiseColor = 0.0f;
         float cutoff[2] = {};     // semitones per filter
+        float res[2] = {}, drive[2] = {};
+        float amp = 1.0f;         // voice level factor
+        float voicePan = 0.0f;
     };
 
     void updateOsc(int o, const OscPatch& p);
@@ -193,11 +255,14 @@ private:
     int  voiceLimit() const;
     void renderVoice(Voice& v, float* outL, float* outR, int n);
     void renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, float* R, int n) const;
-    void renderSub(Voice& v, int o, float pitch, float* L, float* R, int n) const;
+    void renderSub(Voice& v, int o, float pitch, float level, float* L, float* R, int n) const;
     void renderNoise(uint32_t& rng, float* lp, float color, float gain, float* L, float* R, int n) const;
     void filter(Voice& v, int f, float pitch, const Mods& m, float mod, float* L, float* R, int n) const;
     void resetPhases(Voice& v);
     uint32_t random();
+    float lfoStep(LfoState& st, const LfoPatch& p, float rateMul, int n, bool locked);
+    void modulate(Voice& v, float env2, int n, Mods& m);
+    float randomBipolar();
 
     float    sr_;
     Patch    patch_;
@@ -216,6 +281,23 @@ private:
     float    volTarget_ = 0.0f;
     bool     fresh_ = true;          // first setPatch: snap smoothers instead of gliding
     std::vector<float> combMem_;     // every voice's comb delay lines, allocated once
+
+    // modulation
+    LfoState glfo_[2];               // Global-trigger LFOs, shared by every voice
+    double   beats_ = 0.0;           // song position in quarter notes (MPC's, or our own count)
+    double   bpm_ = 120.0;
+    bool     playing_ = false;
+    float    cc_[3] = {};            // mod wheel, breath, expression, 0..1
+    float    pressure_ = 0.0f;       // channel aftertouch
+    float    alt_ = 1.0f;
+    float    seqSrc_ = 0.0f, shapeSrc_[4] = {};
+    int      slots_[kModSlots] = {};   // the slots that do something, in order
+    int      nSlots_ = 0;
+    float    slotScale_[kModSlots][2] = {};   // amount -> target units
+    float    slotSlewK_[kModSlots] = {};      // Slew: one-pole step per chunk
+    float    slotPeriod_[kModSlots] = {};     // S&H: samples between samples
+    bool     envTargeted_ = false;
+    bool     lfoUsed_[2] = {};       // some slot reads it (else it isn't computed per voice)
 };
 
 } // namespace pf

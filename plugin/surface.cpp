@@ -144,6 +144,7 @@ void Surface::apply(int i, float n) {
                 if (i == kTablePrev[o]) stepTable(o, -1);
                 if (i == kTableNext[o]) stepTable(o, +1);
             }
+            if (i == P_XY_AUTO) autoAssignXy();
             browserAction(i);
             break;
         case Kind::Tile:
@@ -299,6 +300,7 @@ std::string Surface::display(int i) const {
         case Kind::Ui: {
             const Fmt f = PARAM_SPECS[i].fmt;
             if (f == Fmt::Frame1 || f == Fmt::Frame2) return frameText(f == Fmt::Frame1 ? 0 : 1, want_[i].load());
+            if (f == Fmt::ModAmt) return amountText(i);
             return paramDisplay(i, want_[i].load());
         }
         case Kind::Stepper:
@@ -312,6 +314,65 @@ std::string Surface::display(int i) const {
         case Kind::Popup: return {};
     }
     return {};
+}
+
+// A matrix amount in its target's units: "+0.5 st", "+12 st", "x2.0", "+40%".
+std::string Surface::amountText(int i) const {
+    const int tgtParam = i - 1;   // m<k>_t<j> sits right before m<k>_a<j> (surface.py)
+    const float a = paramValue(i, want_[i].load());
+    const int t = static_cast<int>(paramValue(tgtParam, want_[tgtParam].load()));
+    char b[32];
+    switch (targetUnit(t)) {
+        case Unit::Semis: std::snprintf(b, sizeof b, "%+.2f st", a * std::fabs(a) * kPitchRange); break;
+        case Unit::Cutoff: std::snprintf(b, sizeof b, "%+.1f st", a * kCutoffRange); break;
+        case Unit::EnvTime: std::snprintf(b, sizeof b, "x%.2f", std::exp2(std::fabs(a) * kEnvOctavesMod)); break;
+        case Unit::LfoRate: std::snprintf(b, sizeof b, "x%.2f", std::exp2(std::fabs(a) * kLfoOctavesMod)); break;
+        default: return paramDisplay(i, want_[i].load());
+    }
+    if ((targetUnit(t) == Unit::EnvTime || targetUnit(t) == Unit::LfoRate) && a < 0.0f) b[0] = '/';
+    return b;
+}
+
+// XY auto-assign: every pad axis that no slot uses yet gets a free slot and the first target
+// on its list that nothing modulates yet.
+void Surface::autoAssignXy() {
+    struct Pick { int target; float amount; };
+    static const Pick prefs[kXyAxes][3] = {
+        {{MT_F1_CUT, 0.5f}, {MT_CUT, 0.5f}, {MT_F2_CUT, 0.5f}},
+        {{MT_F1_RES, 0.6f}, {MT_F2_RES, 0.6f}, {MT_NOISE_LEVEL, 0.5f}},
+        {{MT_O1_POS, 1.0f}, {MT_O2_POS, 1.0f}, {MT_O1_DETUNE, 0.5f}},
+        {{MT_O2_POS, 1.0f}, {MT_O1_POS, 1.0f}, {MT_O2_DETUNE, 0.5f}},
+        {{MT_L1_RATE, 0.4f}, {MT_L2_RATE, 0.4f}, {MT_E2_D, 0.5f}},
+        {{MT_L1_DEPTH, 1.0f}, {MT_L2_DEPTH, 1.0f}, {MT_SUB1_LEVEL, 0.5f}},
+        {{MT_O1_DETUNE, 0.5f}, {MT_O2_DETUNE, 0.5f}, {MT_E1_A, 0.5f}},
+        {{MT_NOISE_LEVEL, 0.5f}, {MT_SUB1_LEVEL, 0.5f}, {MT_VOLUME, -0.5f}},
+    };
+    const int stride = P_M2_SRC - P_M1_SRC;
+    auto val = [this](int id) { return static_cast<int>(paramValue(id, want_[id].load())); };
+    bool srcUsed[MS_COUNT] = {}, tgtUsed[MT_COUNT] = {};
+    for (int k = 0; k < kModSlots; ++k) {
+        const int d = k * stride;
+        srcUsed[std::clamp(val(P_M1_SRC + d), 0, MS_COUNT - 1)] = true;
+        srcUsed[std::clamp(val(P_M1_VIA + d), 0, MS_COUNT - 1)] = true;
+        tgtUsed[std::clamp(val(P_M1_T1 + d), 0, MT_COUNT - 1)] = true;
+        tgtUsed[std::clamp(val(P_M1_T2 + d), 0, MT_COUNT - 1)] = true;
+    }
+    int slot = 0;
+    for (int axis = 0; axis < kXyAxes; ++axis) {
+        if (srcUsed[MS_X1 + axis]) continue;
+        while (slot < kModSlots && val(P_M1_SRC + slot * stride) != MS_NONE) ++slot;
+        if (slot == kModSlots) return;   // the matrix is full
+        for (const Pick& pk : prefs[axis]) {
+            if (tgtUsed[pk.target]) continue;
+            const int d = slot * stride;
+            setValue(P_M1_SRC + d, paramNorm(P_M1_SRC + d, static_cast<float>(MS_X1 + axis)));
+            setValue(P_M1_T1 + d, paramNorm(P_M1_T1 + d, static_cast<float>(pk.target)));
+            setValue(P_M1_A1 + d, paramNorm(P_M1_A1 + d, pk.amount));
+            tgtUsed[pk.target] = true;
+            ++slot;
+            break;
+        }
+    }
 }
 
 std::string Surface::frameText(int osc, float n) const {

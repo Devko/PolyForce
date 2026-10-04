@@ -13,6 +13,14 @@ static_assert(P_O2_SUB_LEVEL - P_O2_WAVE == P_O1_SUB_LEVEL - P_O1_WAVE, "oscilla
 static_assert(P_O2_TABLE - P_O1_TABLE == P_O2_WAVE - P_O1_WAVE, "oscillator params out of order");
 static_assert(P_F2_DRIVE - P_F2_TYPE == P_F1_DRIVE - P_F1_TYPE, "filter params out of order");
 static_assert(kNumFilterTypes == kNumFilterModes, "surface.py FILTER_TYPES must match dsp FilterType");
+static_assert(kNumLfoWaves == LW_COUNT && kNumSyncDivisions == kNumSyncDivs, "surface.py LFO lists must match dsp/mod.h");
+static_assert(kNumModSources == MS_COUNT && kNumModTargets == MT_COUNT && kNumModModifiers == MM_COUNT &&
+                  kNumModSlots == kModSlots, "surface.py matrix lists must match dsp/mod.h");
+static_assert(P_L2_DEPTH - P_L2_WAVE == P_L1_DEPTH - P_L1_WAVE, "LFO params out of order");
+static_assert(P_M12_A2 - P_M12_SRC == P_M1_A2 - P_M1_SRC && P_M12_SRC - P_M1_SRC == 11 * (P_M2_SRC - P_M1_SRC),
+              "matrix params out of order");
+static_assert(P_XY4_Y - P_XY1_X == 7, "XY params out of order");
+static_assert(P_M1_A1 == P_M1_T1 + 1 && P_M1_A2 == P_M1_T2 + 1, "a matrix amount must follow its target (surface.cpp)");
 static_assert(P_E2_R - P_E2_A == P_E1_R - P_E1_A, "envelope params out of order");
 
 float paramValue(int id, float n) {
@@ -80,6 +88,8 @@ std::string paramDisplay(int id, float n) {
             std::snprintf(b, sizeof b, "%c%.0f", v < 0.0f ? 'L' : 'R', std::fabs(v) * 100.0f);
             break;
         case Fmt::Degrees: std::snprintf(b, sizeof b, "%.0f deg", v * 360.0f); break;
+        case Fmt::LfoHz: std::snprintf(b, sizeof b, v < 1.0f ? "%.2f Hz" : (v < 10.0f ? "%.1f Hz" : "%.0f Hz"), v); break;
+        case Fmt::ModAmt: std::snprintf(b, sizeof b, std::fabs(v) < 0.005f ? "0%%" : "%+.0f%%", v * 100.0f); break;
         default: return {};
     }
     return b;
@@ -141,6 +151,38 @@ Patch patchFromParams(const float* norm) {
     p.engine = static_cast<int>(V(P_ENGINE));
     p.velSens = V(P_E1_VEL);
     p.env2Pos = V(P_E2_POS);
+    p.env[1].vel = V(P_E2_VEL);
+    p.env[1].loop = V(P_E2_LOOP) > 0.5f;
+    for (int l = 0; l < 2; ++l) {
+        const int d = l * (P_L2_WAVE - P_L1_WAVE);
+        LfoPatch& x = p.lfo[l];
+        x.wave = static_cast<int>(V(P_L1_WAVE + d));
+        x.sync = V(P_L1_SYNC + d) > 0.5f;
+        x.rateHz = V(P_L1_RATE + d);
+        x.div = static_cast<int>(V(P_L1_DIV + d));
+        x.phase = V(P_L1_PHASE + d);
+        x.delay = V(P_L1_DELAY + d);
+        x.fade = V(P_L1_FADE + d);
+        x.trig = static_cast<int>(V(P_L1_TRIG + d));
+        x.unipolar = V(P_L1_POLAR + d) > 0.5f;
+        x.depth = V(P_L1_DEPTH + d);
+    }
+    for (int k = 0; k < kModSlots; ++k) {
+        const int d = k * (P_M2_SRC - P_M1_SRC);
+        ModSlot& s = p.mod[k];
+        s.src = static_cast<int>(V(P_M1_SRC + d));
+        s.via = static_cast<int>(V(P_M1_VIA + d));
+        s.mod = static_cast<int>(V(P_M1_MOD + d));
+        s.modAmt = V(P_M1_MODAMT + d);
+        s.tgt[0] = static_cast<int>(V(P_M1_T1 + d));
+        s.amt[0] = V(P_M1_A1 + d);
+        s.tgt[1] = static_cast<int>(V(P_M1_T2 + d));
+        s.amt[1] = V(P_M1_A2 + d);
+    }
+    for (int x = 0; x < 4; ++x) {
+        p.xy[2 * x] = V(P_XY1_X + 2 * x);
+        p.xy[2 * x + 1] = V(P_XY1_Y + 2 * x);
+    }
     return p;
 }
 

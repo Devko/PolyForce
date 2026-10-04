@@ -210,7 +210,10 @@ void handleMidi(pf::Synth& s, const RawMidi& m) {
             if (m.d1 == 64) s.sustain(m.d2 >= 64);
             else if (m.d1 == 120) s.reset();
             else if (m.d1 == 123) s.allNotesOff();
+            else s.controller(m.d1, m.d2);   // mod wheel, breath, expression (matrix sources)
             break;
+        case 0xD0: s.aftertouch(static_cast<float>(m.d1) / 127.0f); break;
+        case 0xA0: s.polyAftertouch(m.d1, static_cast<float>(m.d2) / 127.0f); break;
         case 0xE0:   // -1..1; the patch's bend-up/down ranges turn it into semitones
             s.pitchBend(static_cast<float>((m.d2 << 7 | m.d1) - 8192) / 8192.0f);
             break;
@@ -225,6 +228,16 @@ void runBlock(Plugin* p, float* L, float* R, int n) {
         patch.osc[o].table = static_cast<const Wavetable*>(p->loader.live(o));
     p->synth.setPatch(patch);
     if (p->panic.exchange(false)) p->synth.reset();
+    // MPC's tempo and bar position: synced LFOs (and the sequencers) follow them.
+    if (p->master) {
+        const intptr_t r = p->master(&p->fx, vst::audioMasterGetTime, 0,
+                                     vst::kVstTempoValid | vst::kVstPpqPosValid, nullptr, 0.0f);
+        const VstTimeInfo* t = reinterpret_cast<const VstTimeInfo*>(r);
+        if (t) {
+            const bool tempo = (t->flags & vst::kVstTempoValid) != 0, ppq = (t->flags & vst::kVstPpqPosValid) != 0;
+            p->synth.setTransport(tempo ? t->tempo : 120.0, t->ppqPos, (t->flags & vst::kVstTransportPlaying) != 0, ppq);
+        }
+    }
 
     // Events in time order (insertion sort: no allocation; MPC already sends them sorted),
     // each one applied at its own sample.

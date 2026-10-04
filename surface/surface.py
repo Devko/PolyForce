@@ -159,6 +159,59 @@ for e, (a, d, s, r) in ((1, (0.003, 0.4, 0.8, 0.3)), (2, (0.001, 0.6, 0.2, 0.5))
         num("e1_vel", "Env 1 velocity", "lin", 0, 1, 0.5, "pct")
     else:
         num("e2_pos", "Env 2 > wave pos", "lin", -1, 1, 0.0, "bipct")
+        num("e2_vel", "Env 2 velocity", "lin", 0, 1, 0.0, "pct")
+        enum("e2_loop", "Env 2 loop", ["Off", "Loop"], "Off")
+
+# --- modulation (Milestone 5): two LFOs, the 12 x 2 matrix, four XY pads ---
+LFO_WAVES = ["Sine", "Triangle", "Saw Up", "Saw Down", "Square", "S&H", "Smooth"]   # dsp/mod.h LfoWave
+SYNC_DIVS = ["8 bars", "4 bars", "2 bars", "1 bar", "1/2", "1/2T", "1/4", "1/4T", "1/4.", "1/8", "1/8T", "1/8.",
+             "1/16", "1/16T", "1/16.", "1/32", "1/32T"]   # dsp/mod.h kSyncBeats
+MOD_SOURCES = ["None", "Env 1", "Env 2", "LFO 1", "LFO 2", "Velocity", "Note", "Mod Wheel", "Aftertouch", "Bend",
+               "Random", "Alternate", "Gate", "Seq", "Shape 1", "Shape 2", "Shape 3", "Shape 4",
+               "X1", "Y1", "X2", "Y2", "X3", "Y3", "X4", "Y4", "Breath", "Expression", "Constant"]   # ModSource
+MOD_TARGETS = ["Off", "Pitch", "Osc1 Pitch", "Osc2 Pitch", "Osc1 Pos", "Osc2 Pos", "Osc1 Level", "Osc2 Level",
+               "Osc1 Pan", "Osc2 Pan", "Osc1 Detune", "Osc2 Detune", "Sub1 Level", "Sub2 Level", "Noise Level",
+               "Noise Colour", "F1 Cutoff", "F2 Cutoff", "Cutoffs", "F1 Reso", "F2 Reso", "F1 Drive", "F2 Drive",
+               "Env1 Attack", "Env1 Decay", "Env1 Sustain", "Env1 Release", "Env2 Attack", "Env2 Decay",
+               "Env2 Sustain", "Env2 Release", "LFO1 Rate", "LFO2 Rate", "LFO1 Depth", "LFO2 Depth", "Volume",
+               "Pan"]   # ModTarget
+MODIFIERS = ["None", "Curve", "Rectify", "Quantize", "S&H", "Slew"]   # ModModifier
+MOD_SLOTS = 12
+
+for l in (1, 2):
+    p = "l%d_" % l
+    enum(p + "wave", "LFO %d wave" % l, LFO_WAVES, "Sine")
+    popup_flag(p + "wave")
+    enum(p + "sync", "LFO %d sync" % l, ["Free", "Sync"], "Free")
+    num(p + "rate", "LFO %d rate" % l, "log", 0.02, 40, 2.0 if l == 1 else 0.5, "lfohz")
+    enum(p + "div", "LFO %d sync rate" % l, SYNC_DIVS, "1/4")
+    popup_flag(p + "div")
+    num(p + "phase", "LFO %d phase" % l, "lin", 0, 1, 0, "deg")
+    num(p + "delay", "LFO %d delay" % l, "pow", 0, 10, 0, "time")
+    num(p + "fade", "LFO %d fade in" % l, "pow", 0, 10, 0, "time")
+    enum(p + "trig", "LFO %d trigger" % l, ["Retrig", "Free", "Global"], "Retrig")
+    enum(p + "polar", "LFO %d polarity" % l, ["Bipolar", "Unipolar"], "Bipolar")
+    num(p + "depth", "LFO %d depth" % l, "lin", 0, 1, 1, "pct")
+
+for k in range(1, MOD_SLOTS + 1):
+    p = "m%d_" % k
+    enum(p + "src", "Mod %d source" % k, MOD_SOURCES, "None")
+    enum(p + "via", "Mod %d via" % k, MOD_SOURCES, "None")
+    enum(p + "mod", "Mod %d modifier" % k, MODIFIERS, "None")
+    num(p + "modamt", "Mod %d modifier amount" % k, "lin", -1, 1, 0, "bipct")
+    enum(p + "t1", "Mod %d target 1" % k, MOD_TARGETS, "Off")   # each amount right after its target
+    num(p + "a1", "Mod %d amount 1" % k, "lin", -1, 1, 0, "modamt")
+    enum(p + "t2", "Mod %d target 2" % k, MOD_TARGETS, "Off")
+    num(p + "a2", "Mod %d amount 2" % k, "lin", -1, 1, 0, "modamt")
+    for key in ("src", "via", "mod", "t1", "t2"):
+        popup_flag(p + key)
+
+for x in range(1, 5):
+    num("xy%d_x" % x, "XY %d X" % x, "lin", 0, 1, 0, "pct")
+    num("xy%d_y" % x, "XY %d Y" % x, "lin", 0, 1, 0, "pct")
+button("xy_auto", "XY auto-assign")
+enum("ui_mod", "Modulation page", ["ENVELOPES", "LFO 1", "LFO 2", "XY"], "ENVELOPES", ui=True)
+enum("ui_mx", "Matrix page", ["1-4", "5-8", "9-12", "MODIFIERS"], "1-4", ui=True)
 
 # --- voices (Milestone 2) ---
 enum("vmode", "Voice mode", ["Poly", "Duo", "Mono", "Legato"], "Poly")
@@ -325,20 +378,86 @@ def pages():
         ["f1_cut", "f1_res", "f1_env", "f1_drive", "f2_cut", "f2_res", "f2_env", "f2_drive",
          "f1_key", "f2_key", "f1_type", "f2_type", "routing", "engine", "e2_pos", "volume"]))
 
-    # ENV: amp + mod envelopes, output knobs on the right
-    L.append("[tab ENV]")
-    L.append(status)
-    for e, top, title, last in ((1, ROW_Y[0], "ENV 1   (AMP)", ("vel", "VELOCITY")),
-                                (2, ROW_Y[1], "ENV 2   (MOD)", ("pos", "> WAVE POS"))):
-        L.append('frame x=34 y=%d w=890 h=270 title="%s"' % (top, title))
-        for cx, (k, lab) in zip(SLOT8, [("a", "ATTACK"), ("d", "DECAY"), ("s", "SUSTAIN"), ("r", "RELEASE"), last]):
-            L.append(knob(cx, top + ROW_KNOB, lab, "e%d_%s" % (e, k)))
-    L.append('frame x=936 y=156 w=310 h=554 title="OUTPUT"')
-    L.append(knob(1091, ROW_Y[0] + ROW_KNOB, "VOLUME", "volume"))
-    L.append(knob(1091, ROW_Y[1] + ROW_KNOB, "VOICES", "voices"))
-    L.append('qlinks "ENV" = ' + ",".join(
+    # MOD: the envelopes, the two LFOs and the XY pads, one panel at a time.
+    L.append("[tab MOD]")
+    L.append('readout cx=420 cy=126 w=772 h=40 key=status')
+    L.append('enum_h cx=1040 cy=126 sw=100 key=ui_mod')
+    w = '"ui_mod:ENVELOPES"'
+    L.append('frame x=34 y=156 w=1212 h=270 title="ENV 1   (AMP)" when=%s' % w)
+    for cx, (k, lab) in zip(SLOT8, [("a", "ATTACK"), ("d", "DECAY"), ("s", "SUSTAIN"), ("r", "RELEASE"), ("vel", "VELOCITY")]):
+        L.append(knob(cx, ROW_Y[0] + ROW_KNOB, lab, "e1_" + k, w))
+    L.append('frame x=34 y=440 w=1212 h=270 title="ENV 2   (MOD)" when=%s' % w)
+    for cx, (k, lab) in zip(SLOT8, [("a", "ATTACK"), ("d", "DECAY"), ("s", "SUSTAIN"), ("r", "RELEASE"),
+                                    ("vel", "VELOCITY"), ("pos", "> WAVE POS")]):
+        L.append(knob(cx, ROW_Y[1] + ROW_KNOB, lab, "e2_" + k, w))
+    L.append('text cx=1100 cy=516 label="LOOP" when=%s' % w)
+    L.append('enum_v cx=1100 cy=568 sw=140 key=e2_loop when=%s' % w)
+    for l in (1, 2):
+        w = '"ui_mod:LFO %d"' % l
+        p = "l%d_" % l
+        L.append('frame x=34 y=156 w=1212 h=270 title="LFO %d" when=%s' % (l, w))
+        L.append('popup cx=150 cy=200 w=200 h=44 key=%swave when=%s' % (p, w))
+        L.append('enum_h cx=420 cy=200 sw=100 key=%ssync when=%s' % (p, w))
+        L.append('popup cx=640 cy=200 w=150 h=44 key=%sdiv when=%s' % (p, w))
+        L.append('enum_h cx=920 cy=200 sw=120 key=%spolar when=%s' % (p, w))
+        for cx, (k, lab) in zip(SLOT8, [("rate", "RATE"), ("phase", "PHASE"), ("delay", "DELAY"), ("fade", "FADE IN"),
+                                        ("depth", "DEPTH")]):
+            L.append(knob(cx, ROW_Y[0] + ROW_KNOB, lab, p + k, w))
+        L.append('frame x=34 y=440 w=1212 h=270 title="TRIGGER" when=%s' % w)
+        L.append('enum_h cx=330 cy=500 sw=140 key=%strig when=%s' % (p, w))
+        L.append('text cx=640 cy=600 label="RETRIG: EVERY NOTE  FREE: PER VOICE  GLOBAL: ONE FOR ALL, SYNCED TO THE BAR" when=%s' % w)
+    w = '"ui_mod:XY"'
+    L.append('frame x=34 y=156 w=1212 h=270 title="XY PADS" when=%s' % w)
+    for x in range(1, 5):
+        L.append(knob(SLOT8[2 * x - 2], ROW_Y[0] + ROW_KNOB, "X%d" % x, "xy%d_x" % x, w))
+        L.append(knob(SLOT8[2 * x - 1], ROW_Y[0] + ROW_KNOB, "Y%d" % x, "xy%d_y" % x, w))
+    L.append('frame x=34 y=440 w=1212 h=270 title="ASSIGN" when=%s' % w)
+    L.append('button cx=200 cy=520 label="AUTO-ASSIGN" key=xy_auto when=%s' % w)
+    L.append('text cx=760 cy=520 label="FILLS FREE MATRIX SLOTS: X1/Y1 CUTOFF/RESO, X2/Y2 WAVE POSITIONS ..." when=%s' % w)
+    L.append('qlinks "ENVELOPES" = ' + ",".join(
         ["e1_a", "e1_d", "e1_s", "e1_r", "e2_a", "e2_d", "e2_s", "e2_r",
-         "e1_vel", "e2_pos", "volume", "voices", "o1_pos", "o2_pos", "f1_cut", "f2_cut"]))
+         "e1_vel", "e2_vel", "e2_pos", "e2_loop", "volume", "voices", "f1_env", "f2_env"]))
+    for l in (1, 2):
+        p = "l%d_" % l
+        L.append('qlinks "LFO %d" = ' % l + ",".join(p + k for k in (
+            "rate", "phase", "delay", "fade", "depth", "wave", "sync", "div", "trig", "polar")))
+    L.append('qlinks "XY" = ' + ",".join("xy%d_%s" % (x, a) for x in range(1, 5) for a in "xy"))
+
+    # MATRIX: 12 slots, four per panel (source, via, two targets with amounts); the modifiers
+    # of all 12 on their own panel.
+    L.append("[tab MATRIX]")
+    L.append('readout cx=420 cy=126 w=772 h=40 key=status')
+    L.append('enum_h cx=1040 cy=126 sw=100 key=ui_mx')
+    rows = [230 + 125 * r for r in range(4)]
+    cols = [("src", "SOURCE", 180, 180), ("via", "VIA", 375, 170), ("t1", "TARGET 1", 590, 220),
+            ("a1", "AMOUNT", 785, 0), ("t2", "TARGET 2", 975, 220), ("a2", "AMOUNT", 1170, 0)]
+    for page, name in enumerate(["1-4", "5-8", "9-12"]):
+        w = '"ui_mx:%s"' % name
+        L.append('frame x=34 y=156 w=1212 h=554 title="SLOTS %s" when=%s' % (name, w))
+        for key, lab, cx, width in cols:
+            L.append('text cx=%d cy=186 label="%s" when=%s' % (cx, lab, w))
+        for r, cy in enumerate(rows):
+            k = page * 4 + r + 1
+            p = "m%d_" % k
+            L.append('text cx=58 cy=%d label="%d" when=%s' % (cy, k, w))
+            for key, lab, cx, width in cols:
+                if width:
+                    L.append('popup cx=%d cy=%d w=%d h=40 key=%s%s when=%s' % (cx, cy, width, p, key, w))
+                else:
+                    L.append('knob cx=%d cy=%d r=22 label="%s" key=%s%s when=%s' % (cx, cy, lab, p, key, w))
+        L.append('qlinks "SLOTS %s" = ' % name + ",".join(
+            ["m%d_%s" % (page * 4 + r + 1, a) for r in range(4) for a in ("a1", "a2")] +
+            ["m%d_src" % (page * 4 + r + 1) for r in range(4)] + ["m%d_t1" % (page * 4 + r + 1) for r in range(4)]))
+    w = '"ui_mx:MODIFIERS"'
+    L.append('frame x=34 y=156 w=1212 h=554 title="MODIFIERS" when=%s' % w)
+    for k in range(1, MOD_SLOTS + 1):
+        c, r = (k - 1) // 4, (k - 1) % 4
+        x0 = 34 + c * 404
+        p = "m%d_" % k
+        L.append('text cx=%d cy=%d label="%d" when=%s' % (x0 + 24, rows[r], k, w))
+        L.append('popup cx=%d cy=%d w=160 h=40 key=%smod when=%s' % (x0 + 130, rows[r], p, w))
+        L.append('knob cx=%d cy=%d r=22 label="AMOUNT" key=%smodamt when=%s' % (x0 + 290, rows[r], p, w))
+    L.append('qlinks "MODIFIERS" = ' + ",".join("m%d_modamt" % k for k in range(1, MOD_SLOTS + 1)))
 
     # VOICE: how notes become voices (Milestone 2)
     L.append("[tab VOICE]")
@@ -406,8 +525,11 @@ def _widget(line):
 def _rects(w, params):
     """Touch/drawn rectangles of a widget (x, y, w, h), as shadow_skin.py places them."""
     k = w["kind"]
-    if k == "knob":
-        return [(w["cx"] - KNOB_W // 2, w["cy"] - KNOB_UP, KNOB_W, KNOB_UP + KNOB_DOWN)]
+    if k == "knob":   # shadow_skin.py: filmstrip 2r+10 square, name and value labels under it
+        r = w.get("r", R)
+        side = 2 * r + 10
+        height = side // 2 + r + 2 + 20 + 2 + 26 + 6
+        return [(w["cx"] - max(130, side) // 2, w["cy"] - side // 2, max(130, side), height)]
     if k == "toggle":
         return [(w["cx"] - TOGGLE_W // 2, w["cy"] - TOGGLE_UP, TOGGLE_W, TOGGLE_UP + TOGGLE_DOWN)]
     if k == "button":
@@ -510,7 +632,8 @@ def check_layout(text):
 CURVE = {"readout": "Readout", "enum": "Enum", "lin": "Lin", "log": "Log", "int": "Int", "pow": "Pow"}
 FMT = {"none": "None", "enum": "Enum", "pct": "Percent", "bipct": "Bipolar", "hz": "Hz", "time": "Time",
        "semi": "Semi", "cent": "Cent", "oct": "Oct", "count": "Count", "db": "Db", "detune": "Detune",
-       "text": "Text", "frame1": "Frame1", "frame2": "Frame2", "pan": "Pan", "deg": "Degrees"}
+       "text": "Text", "frame1": "Frame1", "frame2": "Frame2", "pan": "Pan", "deg": "Degrees", "lfohz": "LfoHz",
+       "modamt": "ModAmt"}
 KIND = {"synth": "Synth", "ui": "Ui", "readout": "Readout", "stepper": "Stepper", "button": "Button",
         "tile": "Tile", "toggle": "Toggle", "popup": "Popup"}
 
@@ -546,7 +669,7 @@ enum ParamId : int {
 
 enum class Curve : unsigned char { Readout, Enum, Lin, Log, Int, Pow };
 enum class Fmt : unsigned char { None, Enum, Percent, Bipolar, Hz, Time, Semi, Cent, Oct, Count, Db, Detune, Text,
-                                 Frame1, Frame2, Pan, Degrees };
+                                 Frame1, Frame2, Pan, Degrees, LfoHz, ModAmt };
 // Who owns the value and what a set does: see surface.py "kind".
 enum class Kind : unsigned char { Synth, Ui, Readout, Stepper, Button, Tile, Toggle, Popup };
 
@@ -582,10 +705,17 @@ constexpr int kParamMaxUnison = %d;   // = kMaxUnison in dsp/synth.h
 constexpr int kStepperRange = %d;
 constexpr int kBrowserCats = %d;
 constexpr int kBrowserItems = %d;
+constexpr int kNumLfoWaves = %d;
+constexpr int kNumSyncDivisions = %d;
+constexpr int kNumModSources = %d;
+constexpr int kNumModTargets = %d;
+constexpr int kNumModModifiers = %d;
+constexpr int kNumModSlots = %d;
 
 } // namespace pf
 """ % (ids, specs, "\n".join(opts), info, c_str(VST["name"]), c_str(VST["vendor"]), uid, VST["uid"],
-       VST["version"], len(FILTER_TYPES), MAX_VOICES, MAX_UNISON, STEPPER_RANGE, BROWSER_CATS, BROWSER_ITEMS)
+       VST["version"], len(FILTER_TYPES), MAX_VOICES, MAX_UNISON, STEPPER_RANGE, BROWSER_CATS, BROWSER_ITEMS,
+       len(LFO_WAVES), len(SYNC_DIVS), len(MOD_SOURCES), len(MOD_TARGETS), len(MODIFIERS), MOD_SLOTS)
 
 
 def main():

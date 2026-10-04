@@ -3,14 +3,17 @@
 // CPU clock. Same verdict rule as sd88me's tools/bench.sh (percent of the 2902 us block):
 // PASS p99 <= 15% and max <= 50%, WARN p99 <= 35% and max <= 80%, else FAIL.
 //
-//   pfbench <plugin.so> [-v 1,2,4,8] [-u 1,2,4,8] [-s seconds] [-c cpu] [-t table.wav]
+//   pfbench <plugin.so> [-v 1,2,4,8] [-u 1,2,4,8] [-s seconds] [-c cpu] [-t table.wav] [-m 1]
 //
 // Patch under test: both oscillators on, filter 1 LP24 with drive, filter 2 LP12, serial.
+// -m 1 adds a busy modulation matrix: both LFOs on pitch, positions and cutoffs, env 2 and
+// velocity on more targets, a slewed and an S&H slot, envelope-stage modulation (8 slots).
 // -t also times importing one wavetable WAV (the loader is linked in, not the .so's copy):
 // what picking a table on the touchscreen would cost on this CPU.
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
+#include "../dsp/mod.h"
 #include "../dsp/wavetable.h"
 #include "../plugin/vst2.h"
 #include "param_ids.h"
@@ -92,7 +95,9 @@ int main(int argc, char** argv) {
     double seconds = 3.0;
     int cpu = 1;
     const char* table = nullptr;
+    bool busy = false;
     for (int i = 2; i + 1 < argc; i += 2) {
+        if (!std::strcmp(argv[i], "-m")) busy = std::atoi(argv[i + 1]) != 0;
         if (!std::strcmp(argv[i], "-v")) voices = list(argv[i + 1]);
         else if (!std::strcmp(argv[i], "-u")) unison = list(argv[i + 1]);
         else if (!std::strcmp(argv[i], "-s")) seconds = std::atof(argv[i + 1]);
@@ -155,6 +160,27 @@ int main(int argc, char** argv) {
     set(pf::P_F2_TYPE, 1);   // LP12
     set(pf::P_F2_CUT, 6000.0f);
     set(pf::P_E2_POS, 0.3f);
+    if (busy) {
+        struct S { int src, tgt; float amt; int mod; };
+        const S slots[8] = {{pf::MS_LFO1, pf::MT_PITCH, 0.05f, pf::MM_NONE},
+                            {pf::MS_LFO2, pf::MT_O1_POS, 0.4f, pf::MM_NONE},
+                            {pf::MS_LFO1, pf::MT_F1_CUT, 0.3f, pf::MM_NONE},
+                            {pf::MS_LFO2, pf::MT_F2_CUT, -0.3f, pf::MM_NONE},
+                            {pf::MS_ENV2, pf::MT_O2_POS, 0.5f, pf::MM_NONE},
+                            {pf::MS_VELOCITY, pf::MT_CUT, 0.2f, pf::MM_SLEW},
+                            {pf::MS_RANDOM, pf::MT_O1_PAN, 0.5f, pf::MM_SAMPLE_HOLD},
+                            {pf::MS_MODWHEEL, pf::MT_E1_A, 0.5f, pf::MM_NONE}};
+        const int stride = pf::P_M2_SRC - pf::P_M1_SRC;
+        for (int k = 0; k < 8; ++k) {
+            set(pf::P_M1_SRC + k * stride, static_cast<float>(slots[k].src));
+            set(pf::P_M1_T1 + k * stride, static_cast<float>(slots[k].tgt));
+            set(pf::P_M1_A1 + k * stride, slots[k].amt);
+            set(pf::P_M1_MOD + k * stride, static_cast<float>(slots[k].mod));
+        }
+        set(pf::P_L1_RATE, 5.0f);
+        set(pf::P_L2_RATE, 0.3f);
+        std::printf("busy matrix: 8 slots, both LFOs\n");
+    }
 
     std::vector<float> L(kBlock), R(kBlock);
     float* out[2] = {L.data(), R.data()};

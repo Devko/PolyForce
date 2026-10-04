@@ -319,6 +319,8 @@ int main() {
     oscillatorTests();
     std::printf("== filters + engines\n");
     filterTests();
+    std::printf("== modulation\n");
+    modulationTests();
     std::printf("== sustain pedal\n");
     testSustainPedal();
     std::printf("== stress\n");
