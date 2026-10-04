@@ -1,8 +1,7 @@
 // Offline checks: the wavetables, then the whole plugin driven through its VST2 entry
 // points the way MPC drives it (128-frame blocks, events with deltaFrames, 0..1 params).
 // Built with ASan/UBSan by `make test`.
-#include "../plugin/vst2.h"
-#include "../plugin/patch_map.h"
+#include "host.h"
 #include "../dsp/wavetable.h"
 
 #include <algorithm>
@@ -14,93 +13,38 @@
 #include <string>
 #include <vector>
 
-extern "C" AEffect* VSTPluginMain(audioMasterCallback master);
-
-namespace {
-
+namespace pft {
 int g_fail = 0, g_pass = 0;
-#define CHECK(c)                                                              \
-    do {                                                                      \
-        if (c) ++g_pass;                                                      \
-        else { ++g_fail; std::printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #c); } \
-    } while (0)
 
-int g_updates = 0;
-intptr_t master(AEffect*, int32_t op, int32_t, intptr_t, void*, float) {
+intptr_t hostMaster(AEffect* e, int32_t op, int32_t index, intptr_t, void*, float opt) {
+    HostLog* log = e ? static_cast<HostLog*>(e->user) : nullptr;
     if (op == 1) return 2400;   // audioMasterVersion
-    if (op == vst::audioMasterUpdateDisplay) ++g_updates;
+    if (!log) return 0;
+    if (op == vst::audioMasterUpdateDisplay) ++log->updates;
+    if (op == vst::audioMasterAutomate) {
+        log->automated[index] = opt;
+        ++log->automateCount[index];
+    }
+    if (op == vst::audioMasterGetTime) return reinterpret_cast<intptr_t>(&log->time);
     return 0;
 }
 
-constexpr int kBlock = 128;
-constexpr int kBlocksPerSec = 44100 / kBlock;
+std::string fixtureDir() {
+    static const std::string dir = [] {
+        char tmpl[] = "/tmp/pftest.XXXXXX";
+        const char* d = mkdtemp(tmpl);
+        return std::string(d ? d : "/tmp/pftest");
+    }();
+    return dir;
+}
+} // namespace pft
 
-struct Host {
-    AEffect* e;
-    std::vector<float> L, R;   // last run, all samples
-    bool finite = true;
-
-    Host() : e(VSTPluginMain(master)) { e->dispatcher(e, vst::effOpen, 0, 0, nullptr, 0.0f); }
-    ~Host() { e->dispatcher(e, vst::effClose, 0, 0, nullptr, 0.0f); }
-
-    void set(int id, float value) { e->setParameter(e, id, pf::paramNorm(id, value)); }
-    float get(int id) { return e->getParameter(e, id); }
-
-    void midi(uint8_t st, uint8_t d1, uint8_t d2, int delta = 0) {
-        VstMidiEvent ev{};
-        ev.type = vst::kVstMidiType;
-        ev.byteSize = sizeof ev;
-        ev.deltaFrames = delta;
-        ev.midiData[0] = st;
-        ev.midiData[1] = d1;
-        ev.midiData[2] = d2;
-        VstEvents evs{};
-        evs.numEvents = 1;
-        evs.events[0] = reinterpret_cast<VstEvent*>(&ev);
-        e->dispatcher(e, vst::effProcessEvents, 0, 0, &evs, 0.0f);
-    }
-    void on(int note, int vel = 100, int delta = 0) { midi(0x90, static_cast<uint8_t>(note), static_cast<uint8_t>(vel), delta); }
-    void off(int note) { midi(0x80, static_cast<uint8_t>(note), 0); }
-
-    // Renders `blocks` blocks; returns the peak |sample|.
-    float run(int blocks) {
-        L.assign(static_cast<size_t>(blocks) * kBlock, 0.0f);
-        R.assign(L.size(), 0.0f);
-        float peak = 0.0f;
-        for (int b = 0; b < blocks; ++b) {
-            float* out[2] = {&L[static_cast<size_t>(b) * kBlock], &R[static_cast<size_t>(b) * kBlock]};
-            e->processReplacing(e, nullptr, out, kBlock);
-        }
-        for (size_t i = 0; i < L.size(); ++i) {
-            if (!std::isfinite(L[i]) || !std::isfinite(R[i])) finite = false;
-            peak = std::max(peak, std::max(std::fabs(L[i]), std::fabs(R[i])));
-        }
-        return peak;
-    }
-
-    std::string display(int id) {
-        char b[256] = {};
-        e->dispatcher(e, vst::effGetParamDisplay, id, 0, b, 0.0f);
-        return b;
-    }
-    int voices() {   // from the status line ("VOICES n ..."), published every 0.5 s
-        run(kBlocksPerSec / 2 + 2);
-        return std::atoi(display(pf::P_STATUS).c_str() + 7);
-    }
-
-    // A plain, predictable voice: one sine oscillator, filters off.
-    void bare() {
-        set(pf::P_O1_POS, 0.0f);   // Classic frame 0 = sine
-        set(pf::P_O1_UNI, 1);
-        set(pf::P_O2_LEVEL, 0.0f);
-        set(pf::P_F1_TYPE, pf::F_OFF);
-        set(pf::P_F2_TYPE, pf::F_OFF);
-    }
-};
+namespace {
+using namespace pft;
 
 void testTables() {
     const auto& t = pf::builtinTables();
-    CHECK(t.size() == static_cast<size_t>(pf::kNumWaves));
+    CHECK(t.size() == 4);
     for (const auto& w : t) {
         CHECK(w.frames == 16);
         for (int f = 0; f < w.frames; ++f) {
@@ -108,13 +52,22 @@ void testTables() {
             float peak = 0.0f;
             for (int i = 0; i < pf::kTableSize; ++i) peak = std::max(peak, std::fabs(m0[i]));
             CHECK(peak > 0.99f && peak < 1.01f);
-            CHECK(m0[pf::kTableSize] == m0[0]);   // guard sample
+            bool guards = true;   // every level ends in a guard sample = its sample 0
+            for (int k = 0; k < pf::kMipLevels; ++k) {
+                const float* lv = w.get(f, k);
+                guards = guards && lv[pf::mipLength(k)] == lv[0];
+            }
+            CHECK(guards);
             // the top level keeps only the fundamental: at most one rise through zero (none
             // when the frame has no fundamental, e.g. Sync at an exact 2x or 8x ratio)
+            // (a silent level holds ~1e-16 FFT crosstalk from its paired frame: skip it)
             const float* top = w.get(f, pf::kMipLevels - 1);
+            const int topLen = pf::mipLength(pf::kMipLevels - 1);
+            float topPeak = 0.0f;
+            for (int i = 0; i < topLen; ++i) topPeak = std::max(topPeak, std::fabs(top[i]));
             int rises = 0;
-            for (int i = 0; i < pf::kTableSize; ++i) rises += (top[i] < 0.0f && top[i + 1] >= 0.0f) ? 1 : 0;
-            CHECK(rises <= 1);
+            for (int i = 0; i < topLen; ++i) rises += (top[i] < 0.0f && top[i + 1] >= 0.0f) ? 1 : 0;
+            CHECK(rises <= 1 || topPeak < 1e-6f);
         }
     }
     CHECK(pf::mipFor(1e-4f) == 0);
@@ -136,7 +89,7 @@ void testDisplay() {
     CHECK(h.display(pf::P_E1_A) == "3.0 ms");
     CHECK(h.display(pf::P_E1_D) == "400 ms");
     CHECK(h.display(pf::P_VOLUME) == "-6.0 dB");
-    CHECK(h.display(pf::P_O1_WAVE) == "Classic");
+    CHECK(h.display(pf::P_O1_TABLE) == "Built-in / Classic");
     CHECK(h.display(pf::P_F1_TYPE) == "LP24");
     CHECK(h.display(pf::P_O2_FINE) == "+7 ct");
     CHECK(h.display(pf::P_VOICES) == std::to_string(pf::kMaxVoices));
@@ -220,8 +173,7 @@ void testStress() {
     for (int type = 0; type < pf::kNumFilterTypes; ++type) {
         Host h;
         for (int o = 0; o < 2; ++o) {
-            const int d = o * (pf::P_O2_WAVE - pf::P_O1_WAVE);
-            h.set(pf::P_O1_WAVE + d, static_cast<float>((type + o) % pf::kNumWaves));
+            const int d = o * (pf::P_O2_TABLE - pf::P_O1_TABLE);
             h.set(pf::P_O1_UNI + d, pf::kMaxUnison);
             h.set(pf::P_O1_DETUNE + d, 1.0f);
             h.set(pf::P_O1_WIDTH + d, 1.0f);
@@ -335,10 +287,24 @@ void testImportedTable() {
 } // namespace
 
 int main() {
+    // Every table root, data file and preset lives in a throwaway folder: the tests never touch
+    // the build tree or the user's files.
+    const std::string fx = fixtureDir();
+    setenv("PF_DATA_DIR", (fx + "/data").c_str(), 1);
+    setenv("PF_TABLE_ROOTS", (fx + "/plugin:" + fx + "/ssd").c_str(), 1);
+    setenv("PF_PRESET_ROOTS", (fx + "/presets").c_str(), 1);
+    setenv("PF_TUNING_ROOTS", (fx + "/tunings").c_str(), 1);
+    std::filesystem::create_directories(fx + "/data");
+
     std::printf("== tables\n");
     testTables();
+    tablesTests();
+    std::printf("== library\n");
+    libraryTests();
     std::printf("== display\n");
     testDisplay();
+    std::printf("== stepping\n");
+    steppingTests();
     std::printf("== tuning\n");
     testTuning();
     std::printf("== note lifecycle\n");
@@ -353,8 +319,14 @@ int main() {
     testStress();
     std::printf("== chunk\n");
     testChunk();
+    std::printf("== loader\n");
+    loaderTests();
+    std::printf("== browser\n");
+    browserTests();
     std::printf("== imported wavetable\n");
     testImportedTable();
+    std::error_code ec;
+    std::filesystem::remove_all(fx, ec);
     std::printf("%s: %d passed, %d failed\n", g_fail ? "FAILED" : "PASSED", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

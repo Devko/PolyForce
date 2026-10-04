@@ -331,14 +331,17 @@ void Synth::renderOsc(Voice& v, int o, float pitch, float mod, float* L, float* 
     const float* A = t.get(fa, mip);
     const float* B = t.get(fb, mip);
 
-    constexpr float kFrac = 1.0f / static_cast<float>(1u << (32 - kTableBits));
+    // This level's own length: the top `bits` of the phase index it, the rest interpolate.
+    const int shift = 32 - kMipBits[mip];
+    const uint32_t mask = (1u << shift) - 1;
+    const float kFrac = 1.0f / static_cast<float>(1u << shift);
     for (int u = 0; u < s.n; ++u) {
         uint32_t ph = v.phase[o][u];
         const uint32_t dph = static_cast<uint32_t>(inc * s.ratio[u] * 4294967296.0f);
         const float gl = s.gl[u], gr = s.gr[u];
         for (int i = 0; i < n; ++i) {
-            const uint32_t idx = ph >> (32 - kTableBits);
-            const float fr = static_cast<float>(ph & ((1u << (32 - kTableBits)) - 1)) * kFrac;
+            const uint32_t idx = ph >> shift;
+            const float fr = static_cast<float>(ph & mask) * kFrac;
             const float a = A[idx] + fr * (A[idx + 1] - A[idx]);
             const float b = B[idx] + fr * (B[idx + 1] - B[idx]);
             const float x = a + morph * (b - a);

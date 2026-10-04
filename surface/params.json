@@ -35,15 +35,28 @@
    "default": "Serial"
   },
   {
-   "key": "o1_wave",
-   "name": "Osc 1 wave",
-   "options": [
-    "Classic",
-    "PWM",
-    "Sync",
-    "Formant"
-   ],
-   "default": "Classic"
+   "key": "o1_table",
+   "name": "Osc 1 table",
+   "min": 0,
+   "max": 1,
+   "display": "string",
+   "type": "stepper"
+  },
+  {
+   "key": "o1_table_prev",
+   "name": "Osc 1 table prev",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "o1_table_next",
+   "name": "Osc 1 table next",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
   },
   {
    "key": "o1_pos",
@@ -110,15 +123,28 @@
    "display": "string"
   },
   {
-   "key": "o2_wave",
-   "name": "Osc 2 wave",
-   "options": [
-    "Classic",
-    "PWM",
-    "Sync",
-    "Formant"
-   ],
-   "default": "Classic"
+   "key": "o2_table",
+   "name": "Osc 2 table",
+   "min": 0,
+   "max": 1,
+   "display": "string",
+   "type": "stepper"
+  },
+  {
+   "key": "o2_table_prev",
+   "name": "Osc 2 table prev",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "o2_table_next",
+   "name": "Osc 2 table next",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
   },
   {
    "key": "o2_pos",
@@ -373,6 +399,496 @@
    "max": 1,
    "default": 0.5,
    "display": "string"
+  },
+  {
+   "key": "br_target",
+   "name": "Browse for",
+   "options": [
+    "OSC 1",
+    "OSC 2"
+   ],
+   "default": "OSC 1"
+  },
+  {
+   "key": "cat_1",
+   "name": "Category 1",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_2",
+   "name": "Category 2",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_3",
+   "name": "Category 3",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_4",
+   "name": "Category 4",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_5",
+   "name": "Category 5",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_6",
+   "name": "Category 6",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_7",
+   "name": "Category 7",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_8",
+   "name": "Category 8",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_9",
+   "name": "Category 9",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_10",
+   "name": "Category 10",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_11",
+   "name": "Category 11",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_12",
+   "name": "Category 12",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_13",
+   "name": "Category 13",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_14",
+   "name": "Category 14",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_15",
+   "name": "Category 15",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_16",
+   "name": "Category 16",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "cat_prev",
+   "name": "Categories prev",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "cat_next",
+   "name": "Categories next",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "tbl_1",
+   "name": "Table 1",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_2",
+   "name": "Table 2",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_3",
+   "name": "Table 3",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_4",
+   "name": "Table 4",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_5",
+   "name": "Table 5",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_6",
+   "name": "Table 6",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_7",
+   "name": "Table 7",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_8",
+   "name": "Table 8",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_9",
+   "name": "Table 9",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_10",
+   "name": "Table 10",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_11",
+   "name": "Table 11",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_12",
+   "name": "Table 12",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_13",
+   "name": "Table 13",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_14",
+   "name": "Table 14",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_15",
+   "name": "Table 15",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_16",
+   "name": "Table 16",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_17",
+   "name": "Table 17",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_18",
+   "name": "Table 18",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_19",
+   "name": "Table 19",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_20",
+   "name": "Table 20",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_21",
+   "name": "Table 21",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_22",
+   "name": "Table 22",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_23",
+   "name": "Table 23",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_24",
+   "name": "Table 24",
+   "options": [
+    "-",
+    "On"
+   ],
+   "default": "-",
+   "display": "string"
+  },
+  {
+   "key": "tbl_prev",
+   "name": "Tables prev",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "tbl_next",
+   "name": "Tables next",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "tbl_page",
+   "name": "Tables page",
+   "min": 0,
+   "max": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "br_now",
+   "name": "Loaded",
+   "min": 0,
+   "max": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "fav",
+   "name": "Favorite",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": "Off"
+  },
+  {
+   "key": "rnd",
+   "name": "Random",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "copy",
+   "name": "Copy 1 > 2",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "swap",
+   "name": "Swap 1 <> 2",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
   }
  ]
 }

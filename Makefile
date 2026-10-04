@@ -17,9 +17,10 @@ MV       := third_party/mpc-vst-plugins
 SURF     := surface
 SURF_OUT := $(SURF)/build
 SKIN_DIR := $(SURF_OUT)/skin/Devko - VST - PolyForce
-GEN      := $(SURF_OUT)/params.h $(SURF_OUT)/param_ids.h
+GEN      := $(SURF_OUT)/param_ids.h
+SKIN     := $(SURF_OUT)/skin.stamp
 
-SRC      := $(wildcard dsp/*.cpp) plugin/plugin.cpp plugin/patch_map.cpp
+SRC      := $(wildcard dsp/*.cpp) $(wildcard plugin/*.cpp)
 HDR      := $(wildcard dsp/*.h plugin/*.h)
 INC      := -I$(SURF_OUT) -Iplugin
 
@@ -30,19 +31,27 @@ ARM_OPT  := -O3 -march=armv7-a -mtune=cortex-a17 -mfpu=neon-vfpv4 -mfloat-abi=ha
 ARM_SO   := $(BUILD)/arm/polyforce.so
 ARM_BENCH := $(BUILD)/arm/pfbench
 
-.PHONY: all surface test bench arm-plugin arm-bench bench-device preview plugin-package plugin-install clean
+.PHONY: all surface skin test test-arm bench arm-plugin arm-bench bench-device preview plugin-package plugin-install clean
 all: test arm-plugin
 
-# --- generated: params.json/layout.conf/param_ids.h (surface.py) -> params.h + skin -----------
+# --- generated --------------------------------------------------------------------------------
+# surface.py: params.json, layout.conf, vst.json and build/param_ids.h (the C++ side). Needs only
+# python3, so tests and the .so build anywhere. It also checks the layout (keys, options, when=,
+# Q-Link sets, geometry) before writing anything.
 surface: $(GEN)
-$(GEN) &: $(SURF)/surface.py $(MV)/tools/gen_vst.py $(MV)/tools/shadow_skin.py
+$(GEN): $(SURF)/surface.py
 	python3 $(SURF)/surface.py
+
+# The skin (TUI.json + PNGs) and the plugin-list entry: sd88me's generator, Pillow and a host gcc.
+skin: $(SKIN)
+$(SKIN): $(GEN) $(MV)/tools/gen_vst.py $(MV)/tools/shadow_skin.py
 	mkdir -p $(SURF_OUT)
 	gcc -O2 -I$(MV)/tools/vendor/force-shadow/tools -o $(SURF_OUT)/shadow_art $(MV)/tools/shadow_art.c -lm
 	cd $(SURF) && SHADOW_TITLE_FONT=fonts/TitilliumWeb-Bold.ttf $(PY) ../$(MV)/tools/gen_vst.py vst.json
+	touch $@
 
 # Skin previews (PNG per page) for checking the layout without a device.
-preview: $(GEN)
+preview: $(SKIN)
 	$(PY) $(MV)/tools/studio.py preview "$(SKIN_DIR)/Plugin Skins" -o $(SURF_OUT)/page_%d.png
 
 # --- native -----------------------------------------------------------------------------------
@@ -54,9 +63,19 @@ WAVETABLES ?= ../wavetables
 test: $(BUILD)/plugin_test
 	PF_WAVETABLES="$(WAVETABLES)" $(BUILD)/plugin_test
 
-$(BUILD)/plugin_test: test/plugin_test.cpp $(SRC) $(HDR) $(GEN) | $(BUILD)
-	$(CXX) -std=c++17 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -Wall -Wextra \
-		$(INC) $(SRC) $< -o $@
+TESTS    := $(wildcard test/*_test.cpp)
+$(BUILD)/plugin_test: $(TESTS) $(wildcard test/*.h) $(SRC) $(HDR) $(GEN) | $(BUILD)
+	$(CXX) -std=c++17 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -Wall -Wextra -pthread \
+		$(INC) $(SRC) $(TESTS) -o $@
+
+# The same suite cross-compiled for the Force's CPU and run under qemu-user (no sanitizers):
+# catches 32-bit and ARM-only code paths (the FPSCR flush, NEON float vectorisation).
+test-arm: $(BUILD)/arm/plugin_test
+	qemu-arm -L /usr/arm-linux-gnueabihf $<
+
+$(BUILD)/arm/plugin_test: $(TESTS) $(wildcard test/*.h) $(SRC) $(HDR) $(GEN)
+	mkdir -p $(BUILD)/arm
+	$(ARM_CXX) -std=c++17 $(ARM_OPT) -Wall -Wextra -Wno-psabi -pthread $(INC) $(SRC) $(TESTS) -o $@
 
 # Every WAV under $(WAVETABLES): load, check, play through the engine; load cost + memory.
 test-tables: $(BUILD)/tables_sweep
@@ -70,7 +89,7 @@ bench: $(BUILD)/polyforce.so $(BUILD)/pfbench
 	$(BUILD)/pfbench $(BUILD)/polyforce.so -s 1 -c -1
 
 $(BUILD)/polyforce.so: $(SRC) $(HDR) $(GEN) | $(BUILD)
-	$(CXX) -std=c++17 -O3 -fPIC -fvisibility=hidden -Wall -Wextra $(INC) -shared -Wl,--no-undefined $(SRC) -o $@
+	$(CXX) -std=c++17 -O3 -fPIC -fvisibility=hidden -Wall -Wextra -pthread $(INC) -shared -Wl,--no-undefined $(SRC) -o $@
 
 $(BUILD)/pfbench: tools/bench.cpp dsp/wavetable.cpp plugin/vst2.h $(GEN) | $(BUILD)
 	$(CXX) -std=c++17 -O2 -Wall -Wextra $(INC) $< dsp/wavetable.cpp -ldl -o $@
@@ -82,7 +101,7 @@ arm-plugin: $(ARM_SO)
 $(ARM_SO): $(SRC) $(HDR) $(GEN)
 	mkdir -p $(BUILD)/arm
 	$(ARM_CXX) -std=c++17 $(ARM_OPT) -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -Wall -Wextra -Wno-psabi \
-		$(INC) -shared -Wl,--no-undefined -Wl,-soname,polyforce.so $(SRC) -o $@
+		-pthread $(INC) -shared -Wl,--no-undefined -Wl,-soname,polyforce.so $(SRC) -o $@
 	arm-linux-gnueabihf-strip --strip-unneeded $@
 	@arm-linux-gnueabihf-readelf -V $@ | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1 | sed 's/^/needs /'
 	@arm-linux-gnueabihf-nm -D --defined-only $@ | grep -c ' T ' | sed 's/^/exported functions: /'
@@ -106,7 +125,7 @@ bench-device: $(ARM_SO) $(ARM_BENCH)
 # Release zip: plugin + skin + sd88me's installer (stops MPC, backs up and edits
 # MPC.settings, restarts MPC).
 PLUGIN_VERSION ?= 0.0.2
-plugin-package: $(ARM_SO)
+plugin-package: $(ARM_SO) $(SKIN)
 	@# Everything shipped runs under BusyBox on the device: a CR in a script breaks it there.
 	@! grep -l "$$(printf '\r')" $(MV)/tools/release/* || { echo "error: CRLF in a shipped script"; exit 1; }
 	$(PY) $(MV)/tools/release.py --so $(ARM_SO) --skin "$(SKIN_DIR)" --entry $(SURF_OUT)/pluginlist-entry.xml \

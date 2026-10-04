@@ -1,5 +1,4 @@
 #include "patch_map.h"
-#include "params.h"
 
 #include <algorithm>
 #include <cmath>
@@ -7,11 +6,10 @@
 
 namespace pf {
 
-static_assert(P_COUNT == NPARAMS, "param_ids.h and params.h disagree: run make surface");
 static_assert(kParamMaxVoices == kMaxVoices && kParamMaxUnison == kMaxUnison,
               "surface.py MAX_VOICES/MAX_UNISON must match dsp/synth.h kMaxVoices/kMaxUnison");
 // patchFromParams walks oscillator 2 / filter 2 / envelope 2 at a fixed offset from 1.
-static_assert(P_O2_LEVEL - P_O2_WAVE == P_O1_LEVEL - P_O1_WAVE, "oscillator params out of order");
+static_assert(P_O2_LEVEL - P_O2_TABLE == P_O1_LEVEL - P_O1_TABLE, "oscillator params out of order");
 static_assert(P_F2_DRIVE - P_F2_TYPE == P_F1_DRIVE - P_F1_TYPE, "filter params out of order");
 static_assert(P_E2_R - P_E2_A == P_E1_R - P_E1_A, "envelope params out of order");
 
@@ -24,6 +22,7 @@ float paramValue(int id, float n) {
         case Curve::Log:  return s.lo * std::pow(s.hi / s.lo, n);
         case Curve::Int:  return std::round(s.lo + n * (s.hi - s.lo));
         case Curve::Enum: return std::round(n * s.hi);   // lo = 0, hi = options - 1
+        case Curve::Pow:  return s.hi * n * n * n;       // 0..hi, fine near 0 (times that may be 0)
         default:          return 0.0f;
     }
 }
@@ -34,6 +33,7 @@ float paramNorm(int id, float v) {
     float n = 0.0f;
     switch (s.curve) {
         case Curve::Log: n = v > 0.0f ? std::log(v / s.lo) / std::log(s.hi / s.lo) : 0.0f; break;
+        case Curve::Pow: n = v > 0.0f && s.hi > 0.0f ? std::cbrt(v / s.hi) : 0.0f; break;
         case Curve::Lin:
         case Curve::Int:
         case Curve::Enum: n = s.hi > s.lo ? (v - s.lo) / (s.hi - s.lo) : 0.0f; break;
@@ -49,7 +49,7 @@ std::string paramDisplay(int id, float n) {
     switch (PARAM_SPECS[id].fmt) {
         case Fmt::Enum: {
             const int i = static_cast<int>(v);
-            return i >= 0 && i < PARAMS[id].nopts ? PARAMS[id].opts[i] : "";
+            return i >= 0 && i < PARAM_INFO[id].nopts ? PARAM_INFO[id].opts[i] : "";
         }
         case Fmt::Percent: std::snprintf(b, sizeof b, "%.0f%%", v * 100.0f); break;
         case Fmt::Bipolar:
@@ -85,9 +85,8 @@ Patch patchFromParams(const float* norm) {
     p.voices = static_cast<int>(V(P_VOICES));
     p.parallel = V(P_ROUTING) > 0.5f;
     for (int o = 0; o < 2; ++o) {
-        const int d = o * (P_O2_WAVE - P_O1_WAVE);
+        const int d = o * (P_O2_TABLE - P_O1_TABLE);
         OscPatch& x = p.osc[o];
-        x.wave = static_cast<int>(V(P_O1_WAVE + d));
         x.pos = V(P_O1_POS + d);
         x.pitch = 12.0f * V(P_O1_OCT + d) + V(P_O1_SEMI + d) + V(P_O1_FINE + d) / 100.0f;
         x.unison = static_cast<int>(V(P_O1_UNI + d));

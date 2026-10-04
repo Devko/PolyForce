@@ -1,19 +1,22 @@
 // PolyForce as a VST2 instrument for MPC OS (Force / MPC standalone).
 //
-// Phase 0 spike: 8 voices x 2 wavetable oscillators with 8x unison -> 2 filters -> 2 envelopes
-// (dsp/synth.h), three touchscreen pages generated from surface/surface.py, and a CPU meter
-// in the status line so the cost can be read on the device itself.
+// The engine (dsp/synth.h) behind the touchscreen pages generated from surface/surface.py;
+// plugin/surface.* decides what every parameter does, plugin/loader.* loads wavetables in the
+// background, and the status line carries a CPU meter so the cost can be read on the device.
 //
-// Threads (MPC_PLUGIN_SPEC.md §2.7 in RackForcePlugin): processReplacing runs on one of MPC's
+// Threads (RackForcePlugin's MPC_PLUGIN_SPEC.md §2.7): processReplacing runs on one of MPC's
 // audio workers (which one changes between calls, instances run concurrently); parameters,
-// display text and chunks come from MPC's UI side. Parameters cross over as relaxed atomics;
-// host callbacks are only made from processReplacing.
+// display text and chunks come from MPC's UI side; the loader has its own worker. Host
+// callbacks are only made from processReplacing.
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
 #include "vst2.h"
-#include "params.h"
+#include "param_ids.h"
 #include "patch_map.h"
+#include "loader.h"
+#include "library.h"
+#include "surface.h"
 #include "../dsp/synth.h"
 
 #include <algorithm>
@@ -31,11 +34,15 @@
 
 namespace {
 
+using namespace pf;
+
 constexpr size_t kTextCap = 48;   // JUCE reads names/display text into 256 bytes; stay well inside
 constexpr int kMaxMidi = 512;
 constexpr float kBendRange = 2.0f;   // semitones
 constexpr float kSampleRate = 44100.0f;   // MPC OS always runs 44.1 kHz (spec §2.7)
 constexpr int kScratch = 512;
+constexpr const char* kStateMagic = "polyforce ";
+constexpr int kStateVersion = 3;
 
 // Denormals (the tails of decaying filters and envelopes) are slow on the VFP unit. Flush
 // them to zero for our block only and hand MPC's worker back its own FP mode.
@@ -78,13 +85,14 @@ struct RawMidi {
 struct Plugin {
     AEffect             fx;          // must stay the first member: MPC hands us &fx back
     audioMasterCallback master = nullptr;
-    std::atomic<float>  norm[NPARAMS];
+    Loader              loader{{tableSlotType(), tableSlotType()}};
+    Surface             surface{loader};
     std::atomic<bool>   panic{false};
     pf::Synth           synth{kSampleRate};
     std::string         chunk;       // effGetChunk buffer: must outlive the call
 
     // audio thread only
-    float   snapshot[NPARAMS] = {};
+    float   snapshot[P_COUNT] = {};
     RawMidi midi[kMaxMidi] = {};
     int     nMidi = 0;
     float   scratch[2][kScratch] = {};
@@ -94,6 +102,16 @@ struct Plugin {
     double           winUs = 0.0, winBudgetUs = 0.0, winPeak = 0.0;
     std::atomic<int> shownVoices{0}, shownAvg{0}, shownPeak{0};   // percent
     int              lastVoices = -1, lastAvg = -1, lastPeak = -1;
+
+    Plugin() {
+        // Loaded tables show in the stepper texts and the browser; a fresh one goes on the
+        // Recent list. Runs on the loader's worker.
+        loader.setListener([this](int, const std::string& key, bool ok) {
+            if (ok && key.compare(0, 8, "builtin:") != 0) tableLibrary().touchRecent(key);
+            surface.refresh();
+        });
+    }
+    ~Plugin() { loader.stop(); }   // its listener uses the surface, destroyed before it
 };
 
 Plugin* self(AEffect* e) { return static_cast<Plugin*>(e->object); }
@@ -105,6 +123,8 @@ void copyStr(void* dst, const std::string& s, size_t cap) {
 }
 
 std::string statusText(const Plugin* p) {
+    const std::string busy = p->surface.busyText();
+    if (!busy.empty()) return busy;
     char b[64];
     std::snprintf(b, sizeof b, "VOICES %d   CPU %d%%   PEAK %d%%", p->shownVoices.load(),
                   p->shownAvg.load(), p->shownPeak.load());
@@ -113,48 +133,63 @@ std::string statusText(const Plugin* p) {
 
 // --- parameters (UI thread) ---------------------------------------------------------------
 
-float getParameter(AEffect* e, int32_t i) {
-    return i >= 0 && i < NPARAMS ? self(e)->norm[i].load(std::memory_order_relaxed) : 0.0f;
-}
+float getParameter(AEffect* e, int32_t i) { return self(e)->surface.get(i); }
 
-void setParameter(AEffect* e, int32_t i, float v) {
-    if (i <= pf::P_STATUS || i >= NPARAMS) return;   // the status line is read-only
-    self(e)->norm[i].store(std::clamp(v, 0.0f, 1.0f), std::memory_order_relaxed);
-}
+void setParameter(AEffect* e, int32_t i, float v) { self(e)->surface.set(i, v); }
 
-// State = "key=value" lines of REAL values (Hz, seconds, voice counts, option index): survives
-// parameters being added or reordered AND ranges changing (a 0..1 value would silently move:
-// unison 4 of 1..16 reads back as 2 of 1..8). Version 1 stored the 0..1 values; still read.
+// --- state --------------------------------------------------------------------------------
+// "polyforce 3": key=value lines of REAL values (Hz, seconds, voice counts, option index) for
+// every sound parameter, plus the tables by key. Survives parameters being added or reordered
+// AND ranges changing (a 0..1 value would silently move: unison 4 of 1..16 reads back as 2 of
+// 1..8). Version 1 stored 0..1 values; version 2 chose a built-in table by index (o1_wave).
+
 std::string saveState(const Plugin* p) {
-    std::string s = "polyforce 2\n";
+    std::string s = std::string(kStateMagic) + std::to_string(kStateVersion) + "\n";
     char b[96];
-    for (int i = pf::P_STATUS + 1; i < NPARAMS; ++i) {
-        std::snprintf(b, sizeof b, "%s=%.6g\n", PARAMS[i].key,   // 6 digits: 333 Hz, not 332.9999
-                      static_cast<double>(pf::paramValue(i, p->norm[i].load())));
+    for (int i = 0; i < P_COUNT; ++i) {
+        if (PARAM_INFO[i].kind != Kind::Synth) continue;
+        std::snprintf(b, sizeof b, "%s=%.6g\n", PARAM_INFO[i].key,   // 6 digits: 333 Hz, not 332.9999
+                      static_cast<double>(paramValue(i, p->surface.get(i))));
         s += b;
     }
+    for (int o = 0; o < 2; ++o) s += "o" + std::to_string(o + 1) + "_table=" + p->surface.tableKey(o) + "\n";
     return s;
 }
 
 bool loadState(Plugin* p, const std::string& s) {
-    if (s.compare(0, 10, "polyforce ") != 0) return false;
-    const bool normalised = std::atoi(s.c_str() + 10) < 2;
+    if (s.compare(0, std::strlen(kStateMagic), kStateMagic) != 0) return false;
+    const int version = std::atoi(s.c_str() + std::strlen(kStateMagic));
+    const bool normalised = version < 2;
+    std::string tables[2] = {"builtin:Classic", "builtin:Classic"};
     size_t at = s.find('\n');
     while (at != std::string::npos && at + 1 < s.size()) {
         const size_t end = s.find('\n', at + 1);
         const std::string line = s.substr(at + 1, end == std::string::npos ? std::string::npos : end - at - 1);
-        const size_t eq = line.find('=');
-        if (eq != std::string::npos) {
-            const std::string key = line.substr(0, eq);
-            for (int i = pf::P_STATUS + 1; i < NPARAMS; ++i)
-                if (key == PARAMS[i].key) {
-                    const float v = std::strtof(line.c_str() + eq + 1, nullptr);
-                    if (std::isfinite(v)) p->norm[i].store(normalised ? std::clamp(v, 0.0f, 1.0f) : pf::paramNorm(i, v));
-                    break;
-                }
-        }
         at = end;
+        const size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string key = line.substr(0, eq), val = line.substr(eq + 1);
+        if (key == "o1_table" || key == "o2_table") {
+            tables[key[1] - '1'] = val;
+            continue;
+        }
+        if (version < 3 && (key == "o1_wave" || key == "o2_wave")) {   // v2: a built-in by index
+            const auto& b = builtinTables();
+            const float v = std::strtof(val.c_str(), nullptr);
+            const int idx = std::isfinite(v) ? std::clamp(static_cast<int>(normalised ? std::lround(v * 3.0f) : std::lround(v)), 0,
+                                                          static_cast<int>(b.size()) - 1) : 0;
+            tables[key[1] - '1'] = "builtin:" + b[static_cast<size_t>(idx)].name;
+            continue;
+        }
+        for (int i = 0; i < P_COUNT; ++i)
+            if (PARAM_INFO[i].kind == Kind::Synth && key == PARAM_INFO[i].key) {
+                const float v = std::strtof(val.c_str(), nullptr);
+                if (std::isfinite(v)) p->surface.setValue(i, normalised ? std::clamp(v, 0.0f, 1.0f) : paramNorm(i, v));
+                break;
+            }
     }
+    for (int o = 0; o < 2; ++o) p->surface.setTable(o, tables[o], true);
+    p->surface.refresh();
     return true;
 }
 
@@ -180,8 +215,11 @@ void handleMidi(pf::Synth& s, const RawMidi& m) {
 }
 
 void runBlock(Plugin* p, float* L, float* R, int n) {
-    for (int i = 0; i < NPARAMS; ++i) p->snapshot[i] = p->norm[i].load(std::memory_order_relaxed);
-    p->synth.setPatch(pf::patchFromParams(p->snapshot));
+    p->surface.snapshot(p->snapshot);
+    Patch patch = patchFromParams(p->snapshot);
+    for (int o = 0; o < 2; ++o)   // read once per block: valid until blockDone() below
+        patch.osc[o].table = static_cast<const Wavetable*>(p->loader.live(o));
+    p->synth.setPatch(patch);
     if (p->panic.exchange(false)) p->synth.reset();
 
     // Events in time order (insertion sort: no allocation; MPC already sends them sorted),
@@ -223,6 +261,16 @@ void meter(Plugin* p, double us, int n) {
     }
 }
 
+void hostAutomate(void* ctx, int index, float value) {
+    Plugin* p = static_cast<Plugin*>(ctx);
+    if (p->master) p->master(&p->fx, vst::audioMasterAutomate, index, 0, nullptr, value);
+}
+
+void hostUpdate(void* ctx) {
+    Plugin* p = static_cast<Plugin*>(ctx);
+    if (p->master) p->master(&p->fx, vst::audioMasterUpdateDisplay, 0, 0, nullptr, 0.0f);
+}
+
 void processReplacing(AEffect* e, float** /*in*/, float** out, int32_t n) {
     if (!out || !out[0] || !out[1] || n <= 0) return;
     Plugin* p = self(e);
@@ -234,6 +282,8 @@ void processReplacing(AEffect* e, float** /*in*/, float** out, int32_t n) {
         std::memset(out[0], 0, sizeof(float) * static_cast<size_t>(n));
         std::memset(out[1], 0, sizeof(float) * static_cast<size_t>(n));
     }
+    p->loader.blockDone();   // the tables read at block start are no longer in use
+    p->surface.notify(hostAutomate, hostUpdate, p);
     meter(p, threadCpuUs() - t0, n);
 }
 
@@ -264,25 +314,25 @@ void onMidi(Plugin* p, const VstEvents* evs) {
 }
 
 intptr_t dispatch(Plugin* p, int32_t op, int32_t idx, intptr_t val, void* ptr) {
-    const bool validIdx = idx >= 0 && idx < NPARAMS;
+    const bool validIdx = idx >= 0 && idx < P_COUNT;
     switch (op) {
         case vst::effOpen: return 1;
         case vst::effClose: delete p; return 1;
         case vst::effGetProgram: return 0;
-        case vst::effGetProgramName: copyStr(ptr, PLUG_NAME, 24); return 0;
+        case vst::effGetProgramName: copyStr(ptr, kPlugName, 24); return 0;
         case vst::effGetPlugCategory: return vst::kPlugCategSynth;
         case vst::effGetEffectName:
-        case vst::effGetProductString: copyStr(ptr, PLUG_NAME, 32); return 1;
-        case vst::effGetVendorString: copyStr(ptr, PLUG_VENDOR, 32); return 1;
-        case vst::effGetVendorVersion: return PLUG_VERSION;
+        case vst::effGetProductString: copyStr(ptr, kPlugName, 32); return 1;
+        case vst::effGetVendorString: copyStr(ptr, kPlugVendor, 32); return 1;
+        case vst::effGetVendorVersion: return kPlugVersion;
         case vst::effGetVstVersion: return 2400;
-        case vst::effCanBeAutomated: return validIdx && idx != pf::P_STATUS ? 1 : 0;
-        case vst::effGetParamName: copyStr(ptr, validIdx ? PARAMS[idx].name : "", kTextCap); return 0;
+        case vst::effCanBeAutomated: return p->surface.automatable(idx) ? 1 : 0;
+        case vst::effGetParamName: copyStr(ptr, validIdx ? PARAM_INFO[idx].name : "", kTextCap); return 0;
         case vst::effGetParamLabel: copyStr(ptr, "", 8); return 0;
         case vst::effGetParamDisplay:
             if (!validIdx) copyStr(ptr, "", kTextCap);
-            else if (idx == pf::P_STATUS) copyStr(ptr, statusText(p), kTextCap);
-            else copyStr(ptr, pf::paramDisplay(idx, p->norm[idx].load()), kTextCap);
+            else if (idx == P_STATUS) copyStr(ptr, statusText(p), kTextCap);
+            else copyStr(ptr, p->surface.display(idx), kTextCap);
             return 0;
         case vst::effSetSampleRate:   // MPC OS is fixed at 44.1 kHz; the engine is built for it
         case vst::effSetBlockSize: return 1;
@@ -322,7 +372,6 @@ intptr_t dispatcher(AEffect* e, int32_t op, int32_t idx, intptr_t val, void* ptr
 AEffect* createPlugin(audioMasterCallback master) {
     Plugin* p = new Plugin();
     p->master = master;
-    for (int i = 0; i < NPARAMS; ++i) p->norm[i].store(PARAMS[i].def);
 
     AEffect* e = &p->fx;
     std::memset(e, 0, sizeof(*e));
@@ -332,12 +381,12 @@ AEffect* createPlugin(audioMasterCallback master) {
     e->setParameter     = setParameter;
     e->getParameter     = getParameter;
     e->processReplacing = processReplacing;
-    e->numParams        = NPARAMS;
+    e->numParams        = P_COUNT;
     e->numInputs        = 0;
     e->numOutputs       = 2;
     e->flags            = vst::effFlagsCanReplacing | vst::effFlagsIsSynth | vst::effFlagsProgramChunks;
-    e->uniqueID         = PLUG_UID;
-    e->version          = PLUG_VERSION;
+    e->uniqueID         = kPlugUid;
+    e->version          = kPlugVersion;
     e->object           = p;
     return e;
 }

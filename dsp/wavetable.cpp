@@ -16,37 +16,60 @@ namespace {
 using cd = std::complex<double>;
 constexpr double kPi = 3.14159265358979323846;
 
-// In-place iterative radix-2 FFT, load-time only. The inverse includes the 1/N. The
-// butterfly multiplies by hand: std::complex's operator* calls __muldc3 (NaN/inf fix-ups)
-// unless -ffast-math, which is several times slower on ARM.
-void fft(std::vector<cd>& a, bool inverse) {
-    const size_t n = a.size();
-    for (size_t i = 1, j = 0; i < n; ++i) {
-        size_t bit = n >> 1;
-        for (; j & bit; bit >>= 1) j ^= bit;
-        j ^= bit;
-        if (i < j) std::swap(a[i], a[j]);
-    }
-    for (size_t len = 2; len <= n; len <<= 1) {
-        const double ang = 2.0 * kPi / static_cast<double>(len) * (inverse ? 1.0 : -1.0);
-        const double wr = std::cos(ang), wi = std::sin(ang);
-        for (size_t i = 0; i < n; i += len) {
-            double cr = 1.0, ci = 0.0;
-            for (size_t k = 0; k < len / 2; ++k) {
-                const cd u = a[i + k];
-                const cd x = a[i + k + len / 2];
-                const cd v(x.real() * cr - x.imag() * ci, x.real() * ci + x.imag() * cr);
-                a[i + k] = u + v;
-                a[i + k + len / 2] = u - v;
-                const double nr = cr * wr - ci * wi;
-                ci = cr * wi + ci * wr;
-                cr = nr;
-            }
+// In-place iterative radix-2 FFT for one size, load time only. Twiddles and the bit-reversal
+// permutation are tabled once per plan (a recurrence drifts, and sin/cos per butterfly is
+// slow on the Force). The inverse includes the 1/N. Butterflies multiply by hand:
+// std::complex's operator* calls __muldc3 (NaN/inf fix-ups) unless -ffast-math.
+class Fft {
+public:
+    explicit Fft(size_t n) : n_(n), w_(n / 2), rev_(n) {
+        for (size_t k = 0; k < n / 2; ++k) {
+            const double a = -2.0 * kPi * static_cast<double>(k) / static_cast<double>(n);
+            w_[k] = cd(std::cos(a), std::sin(a));
+        }
+        for (size_t i = 1, j = 0; i < n; ++i) {
+            size_t bit = n >> 1;
+            for (; j & bit; bit >>= 1) j ^= bit;
+            j ^= bit;
+            rev_[i] = static_cast<uint32_t>(j);
         }
     }
-    if (inverse)
-        for (auto& x : a) x /= static_cast<double>(n);
-}
+    size_t size() const { return n_; }
+
+    void run(std::vector<cd>& a, bool inverse) const {
+        for (size_t i = 1; i < n_; ++i)
+            if (i < rev_[i]) std::swap(a[i], a[rev_[i]]);
+        for (size_t len = 2; len <= n_; len <<= 1) {
+            const size_t step = n_ / len;
+            for (size_t i = 0; i < n_; i += len) {
+                for (size_t k = 0; k < len / 2; ++k) {
+                    const cd w = w_[k * step];
+                    const double wr = w.real(), wi = inverse ? -w.imag() : w.imag();
+                    const cd u = a[i + k];
+                    const cd x = a[i + k + len / 2];
+                    const cd v(x.real() * wr - x.imag() * wi, x.real() * wi + x.imag() * wr);
+                    a[i + k] = u + v;
+                    a[i + k + len / 2] = u - v;
+                }
+            }
+        }
+        if (inverse)
+            for (auto& x : a) x /= static_cast<double>(n_);
+    }
+
+private:
+    size_t n_;
+    std::vector<cd> w_;
+    std::vector<uint32_t> rev_;
+};
+
+// The inverse plans of every mip length, shared by all builds in this call.
+struct Plans {
+    Fft p2048{2048}, p1024{1024}, p512{512}, p256{256};
+    const Fft& forLength(int n) const {
+        return n == 2048 ? p2048 : n == 1024 ? p1024 : n == 512 ? p512 : p256;
+    }
+};
 
 // A frame's spectrum: cosine (a) and sine (b) amplitude of harmonics 1..kMaxHarmonic-1.
 struct Spectrum {
@@ -110,98 +133,159 @@ Spectrum formant(double centre) {
     return s;
 }
 
-// Spectrum of one cycle given as samples (x.size() a power of two; overwritten). Harmonics
-// the cycle can't carry (h >= size/2) stay zero.
-Spectrum fromSamples(std::vector<cd>& x) {
+// Spectra of two real cycles at once, x = first + i * second (x.size() a power of two;
+// overwritten). Harmonics a cycle can't carry (h >= size/2) stay zero.
+void fromSamples(std::vector<cd>& x, const Fft& fft, Spectrum& first, Spectrum& second) {
     const size_t m = x.size();
-    fft(x, false);
-    Spectrum s;
+    fft.run(x, false);
     const int top = static_cast<int>(std::min<size_t>(kMaxHarmonic, m / 2));
+    const double scale = 2.0 / static_cast<double>(m);
     for (int h = 1; h < top; ++h) {
-        s.a[h] = 2.0 * x[static_cast<size_t>(h)].real() / static_cast<double>(m);
-        s.b[h] = -2.0 * x[static_cast<size_t>(h)].imag() / static_cast<double>(m);
+        const cd xh = x[static_cast<size_t>(h)];
+        const cd xm = std::conj(x[m - static_cast<size_t>(h)]);
+        const cd A = 0.5 * (xh + xm);                 // spectrum of the real part
+        const cd B = cd(0.0, -0.5) * (xh - xm);       // ... and of the imaginary part
+        first.a[h] = scale * A.real();
+        first.b[h] = -scale * A.imag();
+        second.a[h] = scale * B.real();
+        second.b[h] = -scale * B.imag();
     }
-    return s;
 }
 
 // Spectrum of a time-domain cycle f(t), t in [0,1), sampled 8x finer than a frame so the
 // harmonics we keep carry almost none of the naive rendering's own aliasing (-78 dB).
 Spectrum measure(const std::function<double(double)>& f) {
     const size_t m = static_cast<size_t>(kTableSize) * 8;
+    const Fft fft(m);
     std::vector<cd> x(m);
     for (size_t i = 0; i < m; ++i) x[i] = cd(f(static_cast<double>(i) / static_cast<double>(m)), 0.0);
-    return fromSamples(x);
+    Spectrum s, unused;
+    fromSamples(x, fft, s, unused);
+    return s;
 }
 
-// Renders one frame at every mip level. `normalise`: scale by mip 0's peak, so all levels
-// of a frame keep the same loudness and built-in frames don't jump in level as you morph.
-void addFrame(Wavetable& t, const Spectrum& s, bool normalise = true) {
+// Renders up to two frames (b may be null) at every mip level, appended to t, one inverse
+// FFT per level for both. `normalise`: scale each frame by its level-0 peak, so built-in
+// frames don't jump in level as you morph.
+void addFrames(Wavetable& t, const Plans& plans, const Spectrum& sa, const Spectrum* sb, bool normalise) {
+    const int count = sb ? 2 : 1;
     const size_t base = t.data.size();
-    t.data.resize(base + static_cast<size_t>(kMipLevels) * kFrameStride);
-    std::vector<cd> x(kTableSize);
-    double gain = 1.0;
+    t.data.resize(base + static_cast<size_t>(count) * kFrameStride);
+    std::vector<cd> x(static_cast<size_t>(kTableSize));
+    double gain[2] = {1.0, 1.0};
     for (int k = 0; k < kMipLevels; ++k) {
+        const int n = mipLength(k);
         const int top = std::min(kMaxHarmonic - 1, kMaxHarmonic >> k);
-        std::fill(x.begin(), x.end(), cd(0.0, 0.0));
+        x.assign(static_cast<size_t>(n), cd(0.0, 0.0));
+        const double half = n / 2.0;
         for (int h = 1; h <= top; ++h) {
-            const cd c(s.a[h] * kTableSize / 2.0, -s.b[h] * kTableSize / 2.0);
-            x[static_cast<size_t>(h)] = c;
-            x[static_cast<size_t>(kTableSize - h)] = std::conj(c);
+            // X = Ca + i * Cb, where Ca/Cb are the Hermitian spectra of the two real frames.
+            const cd ca(sa.a[h] * half, -sa.b[h] * half);
+            const cd cb = sb ? cd(sb->a[h] * half, -sb->b[h] * half) : cd(0.0, 0.0);
+            const cd i(0.0, 1.0);
+            x[static_cast<size_t>(h)] = ca + i * cb;
+            x[static_cast<size_t>(n - h)] = std::conj(ca) + i * std::conj(cb);
         }
-        fft(x, true);
+        plans.forLength(n).run(x, true);
         if (k == 0 && normalise) {
-            double peak = 0.0;
-            for (const auto& v : x) peak = std::max(peak, std::abs(v.real()));
-            gain = peak > 1e-9 ? 1.0 / peak : 1.0;
+            double peak[2] = {0.0, 0.0};
+            for (const auto& v : x) {
+                peak[0] = std::max(peak[0], std::abs(v.real()));
+                peak[1] = std::max(peak[1], std::abs(v.imag()));
+            }
+            for (int f = 0; f < 2; ++f) gain[f] = peak[f] > 1e-9 ? 1.0 / peak[f] : 1.0;
         }
-        float* dst = &t.data[base + static_cast<size_t>(k) * kFrameStride];
-        for (int i = 0; i < kTableSize; ++i) dst[i] = static_cast<float>(x[static_cast<size_t>(i)].real() * gain);
-        dst[kTableSize] = dst[0];
+        for (int f = 0; f < count; ++f) {
+            float* dst = &t.data[base + static_cast<size_t>(f) * kFrameStride + static_cast<size_t>(mipOffset(k))];
+            for (int s = 0; s < n; ++s) {
+                const cd v = x[static_cast<size_t>(s)];
+                dst[s] = static_cast<float>((f ? v.imag() : v.real()) * gain[f]);
+            }
+            dst[n] = dst[0];
+        }
     }
-    ++t.frames;
+    t.frames += count;
+}
+
+void addSpectra(Wavetable& t, const Plans& plans, const std::vector<Spectrum>& specs, bool normalise) {
+    for (size_t i = 0; i < specs.size(); i += 2)
+        addFrames(t, plans, specs[i], i + 1 < specs.size() ? &specs[i + 1] : nullptr, normalise);
 }
 
 constexpr int kFrames = 16;
+constexpr int kPulseFrames = 32;
 
-std::vector<Wavetable> build() {
-    std::vector<Wavetable> out(4);
+struct Tables {
+    std::vector<Wavetable> builtin;
+    Wavetable classic[CW_COUNT];
+};
+
+Tables build() {
+    const Plans plans;
+    Tables out;
+    auto& b = out.builtin;
+    b.resize(4);
 
     // Classic: sine -> triangle -> saw -> square, the key shapes on frames 0, 5, 10, 15.
-    out[0].name = "Classic";
+    b[0].name = "Classic";
     const Spectrum keys[4] = {sine(), triangle(), saw(), square()};
+    std::vector<Spectrum> specs;
     for (int f = 0; f < kFrames; ++f) {
         const double x = f / 5.0;
         const int i = std::min(static_cast<int>(x), 2);
-        addFrame(out[0], mix(keys[i], keys[i + 1], x - i));
+        specs.push_back(mix(keys[i], keys[i + 1], x - i));
     }
+    addSpectra(b[0], plans, specs, true);
 
     // PWM: duty cycle 50% -> 4%.
-    out[1].name = "PWM";
-    for (int f = 0; f < kFrames; ++f) addFrame(out[1], pulse(0.5 - 0.46 * f / (kFrames - 1)));
+    b[1].name = "PWM";
+    specs.clear();
+    for (int f = 0; f < kFrames; ++f) specs.push_back(pulse(0.5 - 0.46 * f / (kFrames - 1)));
+    addSpectra(b[1], plans, specs, true);
 
     // Sync: a saw hard-synced to the fundamental, slave ratio 1 -> 8 (exponential).
-    out[2].name = "Sync";
+    b[2].name = "Sync";
+    specs.clear();
     for (int f = 0; f < kFrames; ++f) {
         const double r = std::pow(8.0, static_cast<double>(f) / (kFrames - 1));
-        addFrame(out[2], measure([r](double t) {
+        specs.push_back(measure([r](double t) {
             const double p = t * r;
             return 2.0 * (p - std::floor(p)) - 1.0;
         }));
     }
+    addSpectra(b[2], plans, specs, true);
 
     // Formant: a resonant peak sweeping harmonics 1 -> 48.
-    out[3].name = "Formant";
-    for (int f = 0; f < kFrames; ++f) addFrame(out[3], formant(std::pow(48.0, static_cast<double>(f) / (kFrames - 1))));
+    b[3].name = "Formant";
+    specs.clear();
+    for (int f = 0; f < kFrames; ++f) specs.push_back(formant(std::pow(48.0, static_cast<double>(f) / (kFrames - 1))));
+    addSpectra(b[3], plans, specs, true);
 
+    // The classic oscillator shapes. Not normalised per frame: a square is louder than a
+    // sine, as on an analog synth. Saw and square peak above 1 by their Gibbs overshoot only.
+    const char* names[CW_COUNT] = {"Sine", "Triangle", "Saw", "Square", "Pulse"};
+    const Spectrum shapes[4] = {sine(), triangle(), saw(), square()};
+    for (int w = 0; w < CW_PULSE; ++w) {
+        out.classic[w].name = names[w];
+        addFrames(out.classic[w], plans, shapes[w], nullptr, false);
+    }
+    out.classic[CW_PULSE].name = names[CW_PULSE];
+    specs.clear();
+    for (int f = 0; f < kPulseFrames; ++f) specs.push_back(pulse(0.5 - 0.47 * f / (kPulseFrames - 1)));
+    addSpectra(out.classic[CW_PULSE], plans, specs, false);
     return out;
+}
+
+const Tables& tables() {
+    static const Tables t = build();   // thread-safe one-time init
+    return t;
 }
 
 } // namespace
 
-const std::vector<Wavetable>& builtinTables() {
-    static const std::vector<Wavetable> tables = build();   // thread-safe one-time init
-    return tables;
-}
+const std::vector<Wavetable>& builtinTables() { return tables().builtin; }
+
+const Wavetable& classicTable(int wave) { return tables().classic[std::clamp(wave, 0, CW_COUNT - 1)]; }
 
 // --- WAV import ---------------------------------------------------------------------------
 
@@ -286,14 +370,22 @@ bool loadWavetable(const std::string& path, Wavetable& out, std::string* err) {
     const size_t frames = std::min<size_t>(dataSize / align / static_cast<size_t>(frameSize), kMaxFrames);
     if (frames == 0) return fail(err, "shorter than one frame");
 
+    const Plans plans;
+    const Fft forward(static_cast<size_t>(frameSize));
     Wavetable t;
     t.name = stem(path);
-    t.data.reserve(frames * kMipLevels * kFrameStride);
+    t.data.reserve(frames * kFrameStride);
     std::vector<cd> x(static_cast<size_t>(frameSize));
-    for (size_t fr = 0; fr < frames; ++fr) {
-        for (size_t i = 0; i < x.size(); ++i)
-            x[i] = cd(readSample(data + (fr * x.size() + i) * align, tag, bits), 0.0);
-        addFrame(t, fromSamples(x), false);
+    Spectrum sa, sb;
+    for (size_t fr = 0; fr < frames; fr += 2) {
+        const bool pair = fr + 1 < frames;
+        for (size_t i = 0; i < x.size(); ++i) {
+            const float re = readSample(data + (fr * x.size() + i) * align, tag, bits);
+            const float im = pair ? readSample(data + ((fr + 1) * x.size() + i) * align, tag, bits) : 0.0f;
+            x[i] = cd(re, im);
+        }
+        fromSamples(x, forward, sa, sb);
+        addFrames(t, plans, sa, pair ? &sb : nullptr, false);
     }
 
     float peak = 0.0f;
