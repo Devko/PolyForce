@@ -120,6 +120,7 @@ struct Patch {
     LfoPatch lfo[2];
     ModSlot  mod[kModSlots];
     float    xy[kXyAxes] = {};   // the XY pads, 0..1
+    const float* tuning = nullptr;   // every MIDI note's pitch in semitones (dsp/tuning.h); null = 12-TET
 };
 
 // Envelope: analog-style one-pole segments (attack aims at 1.2 and stops at 1.0).
@@ -180,7 +181,8 @@ private:
         float    vel = 1.0f;          // 0..1 after the velocity curve
         float    velGain = 1.0f;
         uint32_t age = 0;             // start order, for stealing the oldest
-        float    pitch = 60.0f;       // sounding pitch (semitones), glides toward `note`
+        float    pitch = 60.0f;       // sounding pitch (semitones), glides toward `target`
+        float    target = 60.0f;      // the note's pitch in the current tuning
         float    glideStep = 0.0f;    // semitones per sample while gliding, 0 = arrived
         int      pendingNote = -1;    // a stolen voice: the note it starts after its fade
         int      pendingVel = 0;
@@ -253,6 +255,10 @@ private:
     void holdKey(int note, int velocity);
     void dropKey(int note);
     int  voiceLimit() const;
+    float tuned(int note) const {
+        const int n = note < 0 ? 0 : (note > 127 ? 127 : note);
+        return patch_.tuning ? patch_.tuning[n] : static_cast<float>(n);
+    }
     void renderVoice(Voice& v, float* outL, float* outR, int n);
     void renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, float* R, int n) const;
     void renderSub(Voice& v, int o, float pitch, float level, float* L, float* R, int n) const;

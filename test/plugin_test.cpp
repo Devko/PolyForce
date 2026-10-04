@@ -333,6 +333,8 @@ int main() {
     loaderTests();
     std::printf("== browser\n");
     browserTests();
+    std::printf("== tunings + presets\n");
+    patchTests();
     std::printf("== imported wavetable\n");
     testImportedTable();
     std::error_code ec;

@@ -15,6 +15,7 @@
 // sends a release echo ~0.7 s later. So every stepped parameter (choices, small whole
 // numbers, list steppers) moves exactly one step per event in MPC's direction, and the
 // plugin pushes the snapped value back (stepIndex / stepItem below, RackForce's rules).
+#include "library.h"
 #include "loader.h"
 #include "param_ids.h"
 
@@ -31,7 +32,7 @@ public:
     using AutomateFn = void (*)(void* ctx, int index, float value);
     using UpdateFn   = void (*)(void* ctx);
 
-    explicit Surface(Loader& loader);   // loader slots 0, 1 = oscillator tables
+    explicit Surface(Loader& loader);   // loader slots 0, 1 = oscillator tables, 2 = tuning
 
     // --- UI thread ---------------------------------------------------------------
     float       get(int i) const;
@@ -43,6 +44,10 @@ public:
     void        setValue(int i, float n);
     void        setTable(int osc, const std::string& key, bool now);
     std::string tableKey(int osc) const;   // what the oscillator wants (saved in the state)
+    void        setTuning(const std::string& key, bool now);
+    std::string tuningKey() const;
+    std::string presetKey() const;         // the preset this sound came from ("" = none)
+    void        setPresetKey(const std::string& key);
 
     // --- any thread --------------------------------------------------------------
     void        refresh();
@@ -64,8 +69,16 @@ private:
     int  stepItem(int i, float n, int normRange, int items, int cur);   // one item per event
     bool toggleBounce(int i, bool on);
     void stepTable(int osc, int delta);
+    static std::string stepKey(FileLibrary& lib, const std::string& cur, int delta);
     void browserAction(int i);
-    std::vector<Category> categories() const;   // FAVORITES, RECENT, then the library's
+    std::vector<Category> categories(FileLibrary& lib) const;   // FAVORITES, RECENT, then the library's
+    int  browseTarget() const;                  // 0, 1: an oscillator's table; 2: presets
+    static FileLibrary& browseLibrary(int target);
+    std::string browseKey(int target) const;    // with mtx_ held
+    void loadPreset(const std::string& key);
+    void savePreset();
+    void randomize(float amount);
+    std::string tuningText() const;
     std::string frameText(int osc, float n) const;
     std::string amountText(int i) const;
     void autoAssignXy();
@@ -93,6 +106,8 @@ private:
     int                      brCat_ = 2;       // index into categories(): starts on Built-in
     int                      catPage_ = 0, itemPage_ = 0;
     std::string              followed_;        // the target's key the browser last followed
+    int                      browsed_ = 0;     // the browser target the state above is for
+    std::string              presetKey_;
     std::vector<std::string> tileKeys_;        // what each table tile holds now
     std::vector<int>         catTiles_;        // which category each category tile holds
     uint32_t                 rng_ = 0x2545F491u;

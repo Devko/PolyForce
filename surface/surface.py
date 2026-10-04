@@ -255,8 +255,16 @@ num("bend_up", "Bend up", "int", 0, 24, 2, "semi")
 num("bend_dn", "Bend down", "int", 0, 24, 2, "semi")
 num("vel_curve", "Velocity curve", "lin", -1, 1, 0, "bipct")
 
-# --- the wavetable browser (docs/M1_DESIGN.md §6.2) ---
-enum("br_target", "Browse for", ["OSC 1", "OSC 2"], "OSC 1", ui=True)
+# --- tuning and presets (Milestone 7) ---
+stepper("tuning", "Tuning")
+stepper("preset", "Preset")
+button("pre_save", "Save preset")
+button("pre_init", "Init patch")
+button("pre_rand", "Randomize")
+num("rand_amt", "Randomize amount", "lin", 0, 1, 0.5, "pct")
+
+# --- the browser: wavetables (docs/M1_DESIGN.md §6.2) and presets ---
+enum("br_target", "Browse for", ["OSC 1", "OSC 2", "PRESETS"], "OSC 1", ui=True)
 for i in range(1, BROWSER_CATS + 1):
     tile("cat_%d" % i, "Category %d" % i)
 button("cat_prev", "Categories prev")
@@ -502,17 +510,24 @@ def pages():
     L.append('enum_v cx=780 cy=318 sw=170 key=steal')
     L.append('text cx=1060 cy=232 label="SAME NOTE"')
     L.append('enum_v cx=1060 cy=286 sw=170 key=same_note')
-    L.append('frame x=34 y=440 w=1212 h=270 title="GLIDE + BEND"')
+    L.append('frame x=34 y=440 w=740 h=270 title="GLIDE + BEND"')
     L.append(knob(SLOT8[0], ROW_Y[1] + ROW_KNOB, "GLIDE", "glide"))
-    L.append('text cx=380 cy=516 label="GLIDE"')
-    L.append('enum_v cx=380 cy=584 sw=150 key=glide_mode')
-    L.append('text cx=600 cy=516 label="TYPE"')
-    L.append('enum_v cx=600 cy=568 sw=150 key=glide_type')
-    L.append(knob(SLOT8[5], ROW_Y[1] + ROW_KNOB, "BEND UP", "bend_up"))
-    L.append(knob(SLOT8[6], ROW_Y[1] + ROW_KNOB, "BEND DOWN", "bend_dn"))
+    L.append('text cx=262 cy=516 label="GLIDE"')
+    L.append('enum_v cx=262 cy=584 sw=120 key=glide_mode')
+    L.append('text cx=402 cy=516 label="TYPE"')
+    L.append('enum_v cx=402 cy=568 sw=110 key=glide_type')
+    L.append(knob(545, ROW_Y[1] + ROW_KNOB, "BEND UP", "bend_up"))
+    L.append(knob(690, ROW_Y[1] + ROW_KNOB, "BEND DOWN", "bend_dn"))
+    L.append('frame x=786 y=440 w=460 h=270 title="TUNING + PATCH"')
+    L.append('stepper cx=1016 cy=490 w=440 h=40 key=tuning')
+    L.append('stepper cx=1016 cy=540 w=440 h=40 key=preset')
+    L.append('button cx=846 cy=604 label="SAVE" key=pre_save')
+    L.append('button cx=941 cy=604 label="INIT" key=pre_init')
+    L.append('button cx=1050 cy=604 label="RANDOM" key=pre_rand')
+    L.append('knob cx=1178 cy=612 r=22 label="AMOUNT" key=rand_amt')
     L.append('qlinks "VOICE" = ' + ",".join(
         ["voices", "vel_curve", "volume", "vmode", "steal", "same_note", "glide_mode", "glide_type",
-         "glide", "bend_up", "bend_dn", "o1_pos", "o2_pos", "f1_cut", "f2_cut", "e2_pos"]))
+         "glide", "bend_up", "bend_dn", "tuning", "preset", "rand_amt", "f1_cut", "f2_cut"]))
 
     # SEQ: arpeggiator / step sequencer settings, the 16 steps, the 4 shape lanes.
     L.append("[tab SEQ]")
@@ -559,14 +574,14 @@ def pages():
     L.append('qlinks "SHAPE 3+4" = ' + ",".join("sh%d_%d" % (l, k) for l in (3, 4) for k in range(1, SHAPE_STEPS + 1)))
 
     # TABLES: the browser (docs/M1_DESIGN.md §6.2). Categories left, tables right, actions below.
-    L.append("[tab TABLES]")
+    L.append("[tab BROWSE]")
     L.append('readout cx=440 cy=126 w=812 h=40 key=status')
-    L.append('enum_h cx=1080 cy=126 sw=150 key=br_target')
+    L.append('enum_h cx=1080 cy=126 sw=110 key=br_target')
     L.append('frame x=34 y=156 w=360 h=554 title="CATEGORY"')
     L.append('list x=46 y=196 w=336 cols=2 rows=8 th=48 gap=8 key=cat')
     L.append('button cx=130 cy=672 label="< PREV" key=cat_prev')
     L.append('button cx=298 cy=672 label="NEXT >" key=cat_next')
-    L.append('frame x=406 y=156 w=840 h=470 title="TABLES"')
+    L.append('frame x=406 y=156 w=840 h=470 title="TABLES / PRESETS"')
     L.append('list x=418 y=196 w=816 cols=3 rows=8 th=42 gap=6 key=tbl')
     L.append('button cx=500 cy=600 label="< PREV" key=tbl_prev')
     L.append('readout cx=826 cy=600 w=360 h=34 key=tbl_page')
@@ -576,9 +591,9 @@ def pages():
     L.append('button cx=1060 cy=672 label="RND" key=rnd')
     L.append('button cx=1140 cy=672 label="1>2" key=copy')
     L.append('button cx=1222 cy=672 label="1<>2" key=swap')
-    L.append('qlinks "TABLES" = ' + ",".join(
+    L.append('qlinks "BROWSE" = ' + ",".join(
         ["o1_table", "o1_pos", "o1_level", "o1_detune", "o2_table", "o2_pos", "o2_level", "o2_detune",
-         "f1_cut", "f1_res", "f1_env", "e2_pos", "f2_cut", "f2_res", "f2_env", "volume"]))
+         "preset", "tuning", "f1_cut", "f1_res", "f2_cut", "f2_res", "rand_amt", "volume"]))
     return "\n".join(L) + "\n"
 
 
@@ -797,6 +812,65 @@ constexpr int kNumShapeSteps = %d;
        len(ARP_DIRS), SEQ_STEPS, SHAPE_STEPS)
 
 
+# --- factory presets: presets/Factory/*.pfp, embedded in the .so ------------------------------
+PRESET_DIR = os.path.join(HERE, "..", "presets", "Factory")
+STATE_EXTRA_KEYS = ("o1_table", "o2_table", "tuning", "preset")
+
+
+def factory_presets():
+    """[(name, text)] in file order, "NN_" prefixes dropped, "_" shown as spaces. Every line must be a sound parameter
+    (or a table/tuning key) with a value in range: a typo fails the build, not the device."""
+    params = {p["key"]: p for p in P}
+    out, errors = [], []
+    for f in sorted(os.listdir(PRESET_DIR)):
+        if not f.endswith(".pfp"):
+            continue
+        text = open(os.path.join(PRESET_DIR, f), encoding="utf-8").read().replace("\r\n", "\n")
+        lines = text.split("\n")
+        if not lines[0].startswith("polyforce "):
+            errors.append("%s: no 'polyforce N' header" % f)
+        for n, line in enumerate(lines[1:], 2):
+            if not line.strip():
+                continue
+            key, _, val = line.partition("=")
+            if key in STATE_EXTRA_KEYS:
+                continue
+            p = params.get(key)
+            if not p or p["kind"] != "synth":
+                errors.append("%s:%d: %r is not a sound parameter" % (f, n, key))
+                continue
+            try:
+                v = float(val)
+            except ValueError:
+                errors.append("%s:%d: %r is not a number" % (f, n, val))
+                continue
+            lo, hi = p["lo"], p["hi"]
+            if not (min(lo, hi) - 1e-9 <= v <= max(lo, hi) + 1e-9):
+                errors.append("%s:%d: %s=%s outside %s..%s" % (f, n, key, val, lo, hi))
+        name = re.sub(r"^\d+\s+", "", f[:-4].replace("_", " "))   # "02_Supersaw_Lead.pfp" -> "Supersaw Lead"
+        out.append((name, text))
+    if errors:
+        raise SystemExit("factory presets:\n  " + "\n  ".join(errors))
+    return out
+
+
+def presets_header(presets):
+    rows = ",\n".join("    {%s, %s}" % (c_str(n), c_str(t).replace("\n", "\\n")) for n, t in presets)
+    return """// generated by surface/surface.py from presets/Factory/*.pfp: do not edit
+#pragma once
+
+namespace pf {
+
+struct FactoryPreset { const char* name; const char* text; };
+static const FactoryPreset kFactoryPresets[] = {
+%s
+};
+constexpr int kNumFactoryPresets = %d;
+
+} // namespace pf
+""" % (rows, len(presets))
+
+
 def main():
     keys = [p["key"] for p in P]
     assert len(set(keys)) == len(keys), "duplicate parameter key"
@@ -812,7 +886,10 @@ def main():
         json.dump(VST, f, indent=1)
     with open(os.path.join(HERE, "build", "param_ids.h"), "w", newline="\n") as f:
         f.write(header())
-    print("surface: %d parameters, layout ok" % len(P))
+    presets = factory_presets()
+    with open(os.path.join(HERE, "build", "factory_presets.h"), "w", newline="\n") as f:
+        f.write(presets_header(presets))
+    print("surface: %d parameters, layout ok, %d factory presets" % (len(P), len(presets)))
 
 
 if __name__ == "__main__":

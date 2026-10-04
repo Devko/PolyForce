@@ -1,0 +1,23 @@
+polyforce 4
+vmode=3
+engine=2
+o1_wave=3
+o1_uni=2
+o1_detune=0.15
+o1_sub_wave=0
+o1_sub_level=0.5
+o2_wave=4
+o2_oct=-1
+o2_level=0.5
+f1_type=2
+f1_cut=180
+f1_res=0.55
+f1_env=0
+f1_drive=0.4
+l1_sync=1
+l1_div=9
+l1_polar=1
+m1_src=3
+m1_t1=16
+m1_a1=0.55
+volume=-6

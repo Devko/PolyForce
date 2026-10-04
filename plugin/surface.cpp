@@ -2,6 +2,8 @@
 
 #include "library.h"
 #include "patch_map.h"
+#include "presets.h"
+#include "state.h"
 
 #include <algorithm>
 #include <chrono>
@@ -20,7 +22,9 @@ constexpr int kTextEveryBlocks     = 4;    // at most one UpdateDisplay per ~12 
 constexpr float kQuant             = 0.0015f;   // MPC rounds values to 1/1000
 constexpr long long kGestureMs     = 300;   // sends closer than this belong to one gesture
 constexpr float kFirstMoveMax      = 0.16f; // a gesture's first event is a turn, not a jump
-constexpr int kTableSlots          = 2;
+constexpr int kTableSlots          = 2;    // loader slots 0, 1
+constexpr int kTuningSlot          = 2;    // loader slot 2
+constexpr int kPresetTarget        = 2;    // br_target: OSC 1, OSC 2, PRESETS
 
 long long nowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -129,7 +133,7 @@ void Surface::apply(int i, float n) {
             break;
         }
         case Kind::Popup: want_[i].store(n > 0.5f ? 1.0f : 0.0f); break;
-        case Kind::Stepper:
+        case Kind::Stepper: {
             for (int o = 0; o < kTableSlots; ++o)
                 if (i == kTableParam[o]) {
                     const auto L = tableLibrary().listing();
@@ -138,12 +142,38 @@ void Surface::apply(int i, float n) {
                     const int pick = stepItem(i, n, kStepperRange, items, cur);
                     if (pick != cur && pick < items) loader_.want(o, L->items[static_cast<size_t>(pick)].key, false);
                 }
+            if (i == P_TUNING) {
+                const auto L = tuningLibrary().listing();
+                const int items = static_cast<int>(L->items.size());
+                const int cur = std::max(0, L->find(loader_.wanted(kTuningSlot)));
+                const int pick = stepItem(i, n, kStepperRange, items, cur);
+                if (pick != cur && pick < items) loader_.want(kTuningSlot, L->items[static_cast<size_t>(pick)].key, false);
+            }
+            if (i == P_PRESET) {
+                const auto L = presetLibrary().listing();
+                const int items = static_cast<int>(L->items.size());
+                const int cur = std::max(0, L->find(presetKey()));
+                const int pick = stepItem(i, n, kStepperRange, items, cur);
+                if (pick != cur && pick < items) loadPreset(L->items[static_cast<size_t>(pick)].key);
+            }
             break;
+        }
         case Kind::Button:
             for (int o = 0; o < kTableSlots; ++o) {
                 if (i == kTablePrev[o]) stepTable(o, -1);
                 if (i == kTableNext[o]) stepTable(o, +1);
             }
+            if (i == P_TUNING_PREV || i == P_TUNING_NEXT) {
+                const std::string k = stepKey(tuningLibrary(), loader_.wanted(kTuningSlot), i == P_TUNING_NEXT ? 1 : -1);
+                if (!k.empty()) loader_.want(kTuningSlot, k, false);
+            }
+            if (i == P_PRESET_PREV || i == P_PRESET_NEXT) {
+                const std::string k = stepKey(presetLibrary(), presetKey(), i == P_PRESET_NEXT ? 1 : -1);
+                if (!k.empty()) loadPreset(k);
+            }
+            if (i == P_PRE_INIT) loadPreset("builtin:Init");
+            if (i == P_PRE_SAVE) savePreset();
+            if (i == P_PRE_RAND) randomize(paramValue(P_RAND_AMT, want_[P_RAND_AMT].load()));
             if (i == P_XY_AUTO) autoAssignXy();
             browserAction(i);
             break;
@@ -221,16 +251,21 @@ bool Surface::toggleBounce(int i, bool on) {
 }
 
 void Surface::stepTable(int osc, int delta) {
-    const auto L = tableLibrary().listing();
-    const int items = static_cast<int>(L->items.size());
-    if (items == 0) return;
-    const int cur = L->find(loader_.wanted(osc));
-    const int pick = cur < 0 ? 0 : clampi(cur + delta, 0, items - 1);
-    loader_.want(osc, L->items[static_cast<size_t>(pick)].key, false);
+    const std::string k = stepKey(tableLibrary(), loader_.wanted(osc), delta);
+    if (!k.empty()) loader_.want(osc, k, false);
 }
 
-std::vector<Surface::Category> Surface::categories() const {
-    FileLibrary& lib = tableLibrary();
+// The next (delta +1) or previous item of a library's flat list; the first item if `cur` isn't listed.
+std::string Surface::stepKey(FileLibrary& lib, const std::string& cur, int delta) {
+    const auto L = lib.listing();
+    const int items = static_cast<int>(L->items.size());
+    if (items == 0) return {};
+    const int at = L->find(cur);
+    const int pick = at < 0 ? 0 : clampi(at + delta, 0, items - 1);
+    return L->items[static_cast<size_t>(pick)].key;
+}
+
+std::vector<Surface::Category> Surface::categories(FileLibrary& lib) const {
     const auto L = lib.listing();
     std::vector<Category> out;
     out.push_back({"FAVORITES", lib.favorites()});
@@ -243,53 +278,167 @@ std::vector<Surface::Category> Surface::categories() const {
     return out;
 }
 
-void Surface::browserAction(int i) {
-    const int target = clampi(static_cast<int>(std::lround(want_[P_BR_TARGET].load())), 0, kTableSlots - 1);
-    FileLibrary& lib = tableLibrary();
-    std::lock_guard<std::mutex> lk(mtx_);
-    const std::vector<Category> cats = categories();
-    const int ncat = static_cast<int>(cats.size());
-    for (int t = 0; t < kBrowserCats; ++t)
-        if (i == kCatTiles[t] && t < static_cast<int>(catTiles_.size()) && catTiles_[static_cast<size_t>(t)] >= 0) {
-            brCat_ = catTiles_[static_cast<size_t>(t)];
-            itemPage_ = 0;
-            followed_ = loader_.wanted(target);   // the next refresh must not jump back to its category
-        }
-    for (int t = 0; t < kBrowserItems; ++t)
-        if (i == kItemTiles[t] && t < static_cast<int>(tileKeys_.size()) && !tileKeys_[static_cast<size_t>(t)].empty()) {
-            const std::string key = tileKeys_[static_cast<size_t>(t)];
-            loader_.want(target, key, false);
-            followed_ = key;   // picked here: stay on this category and page
-        }
-    const int catPages = std::max(1, (ncat + kBrowserCats - 1) / kBrowserCats);
-    if (i == P_CAT_PREV) catPage_ = clampi(catPage_ - 1, 0, catPages - 1);
-    if (i == P_CAT_NEXT) catPage_ = clampi(catPage_ + 1, 0, catPages - 1);
-    const int nitems = brCat_ < ncat ? static_cast<int>(cats[static_cast<size_t>(brCat_)].keys.size()) : 0;
-    const int itemPages = std::max(1, (nitems + kBrowserItems - 1) / kBrowserItems);
-    if (i == P_TBL_PREV) itemPage_ = clampi(itemPage_ - 1, 0, itemPages - 1);
-    if (i == P_TBL_NEXT) itemPage_ = clampi(itemPage_ + 1, 0, itemPages - 1);
+int Surface::browseTarget() const {
+    return clampi(static_cast<int>(std::lround(want_[P_BR_TARGET].load() * 2.0f)), 0, kPresetTarget);
+}
 
-    const std::string cur = loader_.wanted(target);
-    if (i == P_FAV) lib.setFavorite(cur, !lib.isFavorite(cur));
-    if (i == P_RND && brCat_ < ncat) {   // a random table from this category, never the current one
-        std::vector<std::string> pool;
-        for (const std::string& k : cats[static_cast<size_t>(brCat_)].keys)
-            if (k != cur) pool.push_back(k);
-        if (!pool.empty()) {
-            rng_ ^= rng_ << 13;
-            rng_ ^= rng_ >> 17;
-            rng_ ^= rng_ << 5;
-            const std::string k = pool[rng_ % pool.size()];
-            loader_.want(target, k, true);
-            followed_ = k;
+FileLibrary& Surface::browseLibrary(int target) { return target == kPresetTarget ? presetLibrary() : tableLibrary(); }
+
+std::string Surface::browseKey(int target) const {
+    return target == kPresetTarget ? presetKey_ : loader_.wanted(target);   // presetKey_: with mtx_ held
+}
+
+void Surface::browserAction(int i) {
+    const int target = browseTarget();
+    FileLibrary& lib = browseLibrary(target);
+    std::string load;   // a preset to load: done after the lock (loading refreshes the surface)
+    {
+        std::lock_guard<std::mutex> lk(mtx_);
+        const std::vector<Category> cats = categories(lib);
+        const int ncat = static_cast<int>(cats.size());
+        const std::string cur = browseKey(target);
+        for (int t = 0; t < kBrowserCats; ++t)
+            if (i == kCatTiles[t] && t < static_cast<int>(catTiles_.size()) && catTiles_[static_cast<size_t>(t)] >= 0) {
+                brCat_ = catTiles_[static_cast<size_t>(t)];
+                itemPage_ = 0;
+                followed_ = cur;   // the next refresh must not jump back to its category
+            }
+        for (int t = 0; t < kBrowserItems; ++t)
+            if (i == kItemTiles[t] && t < static_cast<int>(tileKeys_.size()) && !tileKeys_[static_cast<size_t>(t)].empty()) {
+                const std::string key = tileKeys_[static_cast<size_t>(t)];
+                if (target == kPresetTarget) load = key;
+                else loader_.want(target, key, false);
+                followed_ = key;   // picked here: stay on this category and page
+            }
+        const int catPages = std::max(1, (ncat + kBrowserCats - 1) / kBrowserCats);
+        if (i == P_CAT_PREV) catPage_ = clampi(catPage_ - 1, 0, catPages - 1);
+        if (i == P_CAT_NEXT) catPage_ = clampi(catPage_ + 1, 0, catPages - 1);
+        const int nitems = brCat_ < ncat ? static_cast<int>(cats[static_cast<size_t>(brCat_)].keys.size()) : 0;
+        const int itemPages = std::max(1, (nitems + kBrowserItems - 1) / kBrowserItems);
+        if (i == P_TBL_PREV) itemPage_ = clampi(itemPage_ - 1, 0, itemPages - 1);
+        if (i == P_TBL_NEXT) itemPage_ = clampi(itemPage_ + 1, 0, itemPages - 1);
+
+        if (i == P_FAV && !cur.empty()) lib.setFavorite(cur, !lib.isFavorite(cur));
+        if (i == P_RND && brCat_ < ncat) {   // a random item of this category, never the current one
+            std::vector<std::string> pool;
+            for (const std::string& k : cats[static_cast<size_t>(brCat_)].keys)
+                if (k != cur) pool.push_back(k);
+            if (!pool.empty()) {
+                rng_ ^= rng_ << 13;
+                rng_ ^= rng_ >> 17;
+                rng_ ^= rng_ << 5;
+                const std::string k = pool[rng_ % pool.size()];
+                if (target == kPresetTarget) load = k;
+                else loader_.want(target, k, true);
+                followed_ = k;
+            }
+        }
+        if (i == P_COPY) loader_.want(1, loader_.wanted(0), true);
+        if (i == P_SWAP) {
+            const std::string a = loader_.wanted(0), b = loader_.wanted(1);
+            loader_.want(0, b, true);
+            loader_.want(1, a, true);
         }
     }
-    if (i == P_COPY) loader_.want(1, loader_.wanted(0), true);
-    if (i == P_SWAP) {
-        const std::string a = loader_.wanted(0), b = loader_.wanted(1);
-        loader_.want(0, b, true);
-        loader_.want(1, a, true);
+    if (!load.empty()) loadPreset(load);
+}
+
+// --- presets ------------------------------------------------------------------------------
+
+void Surface::loadPreset(const std::string& key) {
+    std::string text;
+    if (!presetText(key, text) || !loadState(*this, text, true)) return;
+    setPresetKey(key);
+    presetLibrary().touchRecent(key);
+    refresh();
+}
+
+void Surface::savePreset() {
+    std::string key;
+    const std::string path = nextUserPreset(&key);
+    if (path.empty() || !writeFileAtomic(path, saveState(*this, true))) return;
+    presetLibrary().rescan();
+    setPresetKey(key);
+    refresh();
+}
+
+// Moves the sound toward a random one by `amount` (0..1), inside ranges that stay playable:
+// envelopes, filters, oscillators, LFOs and the amounts of the matrix slots in use. Volume,
+// voicing, glide, bend, the arp/sequencer and the matrix routing stay as they are.
+void Surface::randomize(float amount) {
+    amount = clamp01(amount);
+    auto rnd = [this] {
+        rng_ ^= rng_ << 13;
+        rng_ ^= rng_ >> 17;
+        rng_ ^= rng_ << 5;
+        return static_cast<float>(rng_ >> 8) / 16777216.0f;
+    };
+    auto ends = [](const std::string& k, const char* s) {
+        const size_t n = std::char_traits<char>::length(s);
+        return k.size() >= n && k.compare(k.size() - n, n, s) == 0;
+    };
+    const int stride = P_M2_SRC - P_M1_SRC;
+    for (int i = 0; i < P_COUNT; ++i) {
+        if (PARAM_INFO[i].kind != Kind::Synth) continue;
+        const std::string k = PARAM_INFO[i].key;
+        float lo = -1.0f, hi = -1.0f;   // the 0..1 range to draw from; lo < 0 = leave alone
+        int pickFrom = 0;               // choices: draw an option index below this
+        const bool env = k.size() == 4 && k[0] == 'e' && k[2] == '_';
+        const bool osc = k[0] == 'o' && (k[1] == '1' || k[1] == '2') && k[2] == '_';
+        const bool flt = k[0] == 'f' && (k[1] == '1' || k[1] == '2') && k[2] == '_';
+        const bool lfo = k[0] == 'l' && (k[1] == '1' || k[1] == '2') && k[2] == '_';
+        if (env && ends(k, "_a")) { lo = 0.0f; hi = k[1] == '1' ? 0.4f : 0.6f; }
+        else if (env && ends(k, "_d")) { lo = 0.15f; hi = 0.75f; }
+        else if (env && ends(k, "_s")) { lo = 0.2f; hi = 1.0f; }
+        else if (env && ends(k, "_r")) { lo = 0.15f; hi = 0.6f; }
+        else if (k == "e2_pos") { lo = 0.25f; hi = 0.85f; }
+        else if (flt && ends(k, "_cut")) { lo = 0.4f; hi = 1.0f; }
+        else if (flt && ends(k, "_res")) { lo = 0.0f; hi = 0.75f; }
+        else if (flt && ends(k, "_drive")) { lo = 0.0f; hi = 0.5f; }
+        else if (flt && ends(k, "_env")) { lo = 0.35f; hi = 0.85f; }
+        else if (flt && ends(k, "_key")) { lo = 0.0f; hi = 1.0f; }
+        else if (k == "f1_type") pickFrom = F_PEAK + 1;   // the classic types; combs and vowel by hand
+        else if (osc && ends(k, "_wave")) pickFrom = OW_PULSE + 1;   // no noise oscillator
+        else if (osc && ends(k, "_pos")) { lo = 0.0f; hi = 1.0f; }
+        else if (osc && ends(k, "_uni")) { lo = 0.0f; hi = 1.0f; }
+        else if (osc && ends(k, "_detune")) { lo = 0.0f; hi = 0.7f; }
+        else if (osc && ends(k, "_width")) { lo = 0.3f; hi = 1.0f; }
+        else if (k == "o1_level") { lo = 0.6f; hi = 1.0f; }
+        else if (k == "o2_level") { lo = 0.0f; hi = 0.9f; }
+        else if (osc && ends(k, "_pan")) { lo = 0.35f; hi = 0.65f; }
+        else if (osc && ends(k, "_sub_level")) { lo = 0.0f; hi = 0.5f; }
+        else if (k == "noise_level") { lo = 0.0f; hi = 0.25f; }
+        else if (k == "noise_color") { lo = 0.0f; hi = 1.0f; }
+        else if (lfo && ends(k, "_rate")) { lo = 0.2f; hi = 0.8f; }
+        else if (lfo && ends(k, "_depth")) { lo = 0.3f; hi = 1.0f; }
+        else if (lfo && ends(k, "_wave")) pickFrom = LW_COUNT;
+        else if (k == "engine") pickFrom = 3;
+        else if (k[0] == 'm' && (ends(k, "_a1") || ends(k, "_a2") || ends(k, "_modamt"))) {
+            const int slot = (i - P_M1_SRC) / stride;
+            if (slot >= 0 && slot < kModSlots && want_[P_M1_SRC + slot * stride].load() > 0.0f) { lo = 0.2f; hi = 0.8f; }
+        }
+        if (pickFrom > 0) {
+            if (rnd() < amount) {
+                const int steps = PARAM_INFO[i].nopts - 1;
+                const int o = std::min(static_cast<int>(rnd() * static_cast<float>(pickFrom)), pickFrom - 1);
+                setValue(i, steps > 0 ? static_cast<float>(o) / static_cast<float>(steps) : 0.0f);
+            }
+            continue;
+        }
+        if (lo < 0.0f) continue;
+        const float n = want_[i].load();
+        setValue(i, n + amount * (lo + rnd() * (hi - lo) - n));
     }
+    // New tables too, the further the more likely.
+    for (int o = 0; o < kTableSlots; ++o)
+        if (rnd() < amount * 0.6f) {
+            const auto L = tableLibrary().listing();
+            if (!L->items.empty()) {
+                const size_t pick = std::min(L->items.size() - 1, static_cast<size_t>(rnd() * static_cast<float>(L->items.size())));
+                loader_.want(o, L->items[pick].key, true);
+            }
+        }
+    setPresetKey("");   // no longer any preset
 }
 
 std::string Surface::display(int i) const {
@@ -404,35 +553,59 @@ std::string Surface::tableText(int osc) const {
     return label;
 }
 
+std::string Surface::tuningText() const {
+    const Loader::View v = loader_.view(kTuningSlot);
+    const std::string label = tuningLibrary().listing()->label(v.key);
+    if (v.state == Loader::Loading) return "LOADING " + label;
+    if (v.state == Loader::Missing) return "MISSING " + label;
+    return "TUNING  " + label;
+}
+
 std::string Surface::busyText() const {
     for (int o = 0; o < kTableSlots; ++o) {
         const Loader::View v = loader_.view(o);
         if (v.state == Loader::Loading) return "OSC " + std::to_string(o + 1) + " LOADING " + tableLibrary().listing()->label(v.key);
         if (v.state == Loader::Missing) return "OSC " + std::to_string(o + 1) + " MISSING " + tableLibrary().listing()->label(v.key);
     }
+    const Loader::View t = loader_.view(kTuningSlot);
+    if (t.state == Loader::Loading) return "TUNING LOADING " + tuningLibrary().listing()->label(t.key);
+    if (t.state == Loader::Missing) return "TUNING MISSING " + tuningLibrary().listing()->label(t.key);
     return {};
 }
 
 // --- any thread ---------------------------------------------------------------------------
 
 void Surface::refresh() {
-    const auto L = tableLibrary().listing();
-    FileLibrary& lib = tableLibrary();
+    const int target = browseTarget();
+    FileLibrary& lib = browseLibrary(target);
+    const auto L = lib.listing();
+    const auto T = tableLibrary().listing();
+    const auto TU = tuningLibrary().listing();
+    const auto PR = presetLibrary().listing();
     std::lock_guard<std::mutex> lk(mtx_);
     std::vector<std::string> t(P_COUNT);
 
-    // Table steppers: position in the flat list, text = the table.
+    // Steppers: position in the flat list, text = the item.
     for (int o = 0; o < kTableSlots; ++o) {
-        const int idx = L->find(loader_.wanted(o));
+        const int idx = T->find(loader_.wanted(o));
         if (idx >= 0) want_[kTableParam[o]].store(static_cast<float>(idx) / kStepperRange);
         t[static_cast<size_t>(kTableParam[o])] = tableText(o);
     }
+    const int tidx = TU->find(loader_.wanted(kTuningSlot));
+    if (tidx >= 0) want_[P_TUNING].store(static_cast<float>(tidx) / kStepperRange);
+    t[P_TUNING] = tuningText();
+    const int pidx = PR->find(presetKey_);
+    if (pidx >= 0) want_[P_PRESET].store(static_cast<float>(pidx) / kStepperRange);
+    t[P_PRESET] = presetKey_.empty() ? "PRESET  -" : "PRESET  " + PR->label(presetKey_);
 
-    // Browser: follow the target oscillator's table when it changed from outside the browser.
-    const int target = clampi(static_cast<int>(std::lround(want_[P_BR_TARGET].load())), 0, kTableSlots - 1);
-    const std::string key = loader_.wanted(target);
-    const std::vector<Category> cats = categories();
+    // Browser: follow the target's table (or preset) when it changed from outside the browser.
+    const std::string key = browseKey(target);
+    const std::vector<Category> cats = categories(lib);
     const int ncat = static_cast<int>(cats.size());
+    if (target != browsed_) {   // another library: start from its own place
+        browsed_ = target;
+        followed_ = "\x01";
+    }
     brCat_ = clampi(brCat_, 0, ncat - 1);
     auto pos = [&cats](int c, const std::string& k) {
         const auto& keys = cats[static_cast<size_t>(c)].keys;
@@ -442,9 +615,10 @@ void Surface::refresh() {
     if (key != followed_) {
         followed_ = key;
         if (pos(brCat_, key) < 0) {
-            const int item = L->find(key);
-            const int c = L->categoryOf(item);
-            if (c >= 0) brCat_ = c + 2;   // past FAVORITES and RECENT
+            const int c = L->categoryOf(L->find(key));
+            brCat_ = c >= 0 ? c + 2 : 2;   // past FAVORITES and RECENT
+            brCat_ = clampi(brCat_, 0, ncat - 1);
+            itemPage_ = 0;
         }
         const int p = pos(brCat_, key);
         if (p >= 0) itemPage_ = p / kBrowserItems;
@@ -479,10 +653,14 @@ void Surface::refresh() {
     char b[64];
     std::snprintf(b, sizeof b, "PAGE %d / %d", itemPage_ + 1, itemPages);
     t[P_TBL_PAGE] = b;
-    const Loader::View v = loader_.view(target);
-    std::snprintf(b, sizeof b, "  %d FR", std::max(1, v.info));
-    t[P_BR_NOW] = "OSC " + std::to_string(target + 1) + "  " + tableText(target) + (v.state == Loader::Ready ? b : "");
-    want_[P_FAV].store(lib.isFavorite(key) ? 1.0f : 0.0f);
+    if (target == kPresetTarget) {
+        t[P_BR_NOW] = presetKey_.empty() ? "PRESET  -" : "PRESET  " + PR->label(presetKey_);
+    } else {
+        const Loader::View v = loader_.view(target);
+        std::snprintf(b, sizeof b, "  %d FR", std::max(1, v.info));
+        t[P_BR_NOW] = "OSC " + std::to_string(target + 1) + "  " + tableText(target) + (v.state == Loader::Ready ? b : "");
+    }
+    want_[P_FAV].store(!key.empty() && lib.isFavorite(key) ? 1.0f : 0.0f);
 
     size_t h = 0;
     std::hash<std::string> hs;
@@ -511,6 +689,20 @@ void Surface::setTable(int osc, const std::string& key, bool now) {
 }
 
 std::string Surface::tableKey(int osc) const { return loader_.wanted(osc); }
+
+void Surface::setTuning(const std::string& key, bool now) { loader_.want(kTuningSlot, key, now); }
+
+std::string Surface::tuningKey() const { return loader_.wanted(kTuningSlot); }
+
+std::string Surface::presetKey() const {
+    std::lock_guard<std::mutex> lk(mtx_);
+    return presetKey_;
+}
+
+void Surface::setPresetKey(const std::string& key) {
+    std::lock_guard<std::mutex> lk(mtx_);
+    presetKey_ = key;
+}
 
 // --- audio thread -------------------------------------------------------------------------
 

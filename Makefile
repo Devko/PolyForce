@@ -39,7 +39,7 @@ all: test arm-plugin
 # python3, so tests and the .so build anywhere. It also checks the layout (keys, options, when=,
 # Q-Link sets, geometry) before writing anything.
 surface: $(GEN)
-$(GEN): $(SURF)/surface.py
+$(GEN): $(SURF)/surface.py $(wildcard presets/Factory/*.pfp)
 	python3 $(SURF)/surface.py
 
 # The skin (TUI.json + PNGs) and the plugin-list entry: sd88me's generator, Pillow and a host gcc.

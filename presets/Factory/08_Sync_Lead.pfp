@@ -1,0 +1,21 @@
+polyforce 4
+vmode=3
+o1_table=builtin:Sync
+o1_pos=0.1
+o1_uni=2
+o1_detune=0.15
+o2_wave=4
+o2_oct=-1
+o2_level=0.4
+f1_type=2
+f1_cut=6000
+f1_res=0.1
+f1_env=0.1
+e2_a=0.005
+e2_d=0.6
+e2_s=0.15
+e2_pos=0.75
+e1_r=0.25
+glide_mode=2
+glide=0.04
+volume=-8

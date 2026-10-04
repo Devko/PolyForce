@@ -410,7 +410,7 @@ void browserTests() {
         return h.display(pf::P_O1_TABLE) == "Built-in / Sync" && h.display(pf::P_O2_TABLE) == "Analog / Saw";
     }));
     // The target switch: the browser now follows OSC 2.
-    h.setN(pf::P_BR_TARGET, 1.0f);
+    h.setN(pf::P_BR_TARGET, 0.5f);   // OSC 1, OSC 2, PRESETS
     h.run(2);
     CHECK(h.get(catTile("ANALOG")) == 1.0f && h.get(pf::P_TBL_2) == 1.0f);
     CHECK(h.display(pf::P_BR_NOW).rfind("OSC 2  Analog / Saw", 0) == 0);

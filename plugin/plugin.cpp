@@ -16,7 +16,10 @@
 #include "patch_map.h"
 #include "loader.h"
 #include "library.h"
+#include "presets.h"
+#include "state.h"
 #include "surface.h"
+#include "../dsp/tuning.h"
 #include "../dsp/notegen.h"
 #include "../dsp/synth.h"
 
@@ -41,8 +44,6 @@ constexpr size_t kTextCap = 48;   // JUCE reads names/display text into 256 byte
 constexpr int kMaxMidi = 512;
 constexpr float kSampleRate = 44100.0f;   // MPC OS always runs 44.1 kHz (spec §2.7)
 constexpr int kScratch = 512;
-constexpr const char* kStateMagic = "polyforce ";
-constexpr int kStateVersion = 4;
 
 // Denormals (the tails of decaying filters and envelopes) are slow on the VFP unit. Flush
 // them to zero for our block only and hand MPC's worker back its own FP mode.
@@ -85,7 +86,7 @@ struct RawMidi {
 struct Plugin {
     AEffect             fx;          // must stay the first member: MPC hands us &fx back
     audioMasterCallback master = nullptr;
-    Loader              loader{{tableSlotType(), tableSlotType()}};
+    Loader              loader{{tableSlotType(), tableSlotType(), tuningSlotType()}};
     Surface             surface{loader};
     std::atomic<bool>   panic{false};
     pf::Synth           synth{kSampleRate};
@@ -138,67 +139,6 @@ float getParameter(AEffect* e, int32_t i) { return self(e)->surface.get(i); }
 
 void setParameter(AEffect* e, int32_t i, float v) { self(e)->surface.set(i, v); }
 
-// --- state --------------------------------------------------------------------------------
-// "polyforce 4": key=value lines of REAL values (Hz, seconds, voice counts, option index) for
-// every sound parameter, plus the tables by key. Survives parameters being added or reordered
-// AND ranges changing (a 0..1 value would silently move: unison 4 of 1..16 reads back as 2 of
-// 1..8). Version 1 stored 0..1 values; version 2 chose a built-in table by index (o1_wave, now
-// the oscillator's wave mode); version 3 had no per-oscillator routes.
-
-std::string saveState(const Plugin* p) {
-    std::string s = std::string(kStateMagic) + std::to_string(kStateVersion) + "\n";
-    char b[96];
-    for (int i = 0; i < P_COUNT; ++i) {
-        if (PARAM_INFO[i].kind != Kind::Synth) continue;
-        std::snprintf(b, sizeof b, "%s=%.6g\n", PARAM_INFO[i].key,   // 6 digits: 333 Hz, not 332.9999
-                      static_cast<double>(paramValue(i, p->surface.get(i))));
-        s += b;
-    }
-    for (int o = 0; o < 2; ++o) s += "o" + std::to_string(o + 1) + "_table=" + p->surface.tableKey(o) + "\n";
-    return s;
-}
-
-bool loadState(Plugin* p, const std::string& s) {
-    if (s.compare(0, std::strlen(kStateMagic), kStateMagic) != 0) return false;
-    const int version = std::atoi(s.c_str() + std::strlen(kStateMagic));
-    const bool normalised = version < 2;
-    std::string tables[2] = {"builtin:Classic", "builtin:Classic"};
-    size_t at = s.find('\n');
-    while (at != std::string::npos && at + 1 < s.size()) {
-        const size_t end = s.find('\n', at + 1);
-        const std::string line = s.substr(at + 1, end == std::string::npos ? std::string::npos : end - at - 1);
-        at = end;
-        const size_t eq = line.find('=');
-        if (eq == std::string::npos) continue;
-        const std::string key = line.substr(0, eq), val = line.substr(eq + 1);
-        if (key == "o1_table" || key == "o2_table") {
-            tables[key[1] - '1'] = val;
-            continue;
-        }
-        if (version < 3 && (key == "o1_wave" || key == "o2_wave")) {   // v2: a built-in by index
-            const auto& b = builtinTables();
-            const float v = std::strtof(val.c_str(), nullptr);
-            const int idx = std::isfinite(v) ? std::clamp(static_cast<int>(normalised ? std::lround(v * 3.0f) : std::lround(v)), 0,
-                                                          static_cast<int>(b.size()) - 1) : 0;
-            tables[key[1] - '1'] = "builtin:" + b[static_cast<size_t>(idx)].name;
-            continue;
-        }
-        for (int i = 0; i < P_COUNT; ++i)
-            if (PARAM_INFO[i].kind == Kind::Synth && key == PARAM_INFO[i].key) {
-                const float v = std::strtof(val.c_str(), nullptr);
-                if (std::isfinite(v)) p->surface.setValue(i, normalised ? std::clamp(v, 0.0f, 1.0f) : paramNorm(i, v));
-                break;
-            }
-    }
-    // Before version 4, Parallel meant osc 1 -> F1 and osc 2 -> F2; now every source has its
-    // own route (default F1) and Parallel only stops F1 feeding F2.
-    if (version < 4 && paramValue(P_ROUTING, p->surface.get(P_ROUTING)) > 0.5f && s.find("\no2_route=") == std::string::npos)
-        p->surface.setValue(P_O2_ROUTE, paramNorm(P_O2_ROUTE, RT_F2));
-    for (int o = 0; o < 2; ++o) p->surface.setTable(o, tables[o], true);
-    p->surface.refresh();
-    return true;
-}
-
 // --- audio thread -------------------------------------------------------------------------
 
 void handleMidi(Plugin* p, const RawMidi& m) {
@@ -245,6 +185,7 @@ void runBlock(Plugin* p, float* L, float* R, int n) {
     Patch patch = patchFromParams(p->snapshot);
     for (int o = 0; o < 2; ++o)   // read once per block: valid until blockDone() below
         patch.osc[o].table = static_cast<const Wavetable*>(p->loader.live(o));
+    if (const auto* tuning = static_cast<const Tuning*>(p->loader.live(2))) patch.tuning = tuning->pitch;
     p->synth.setPatch(patch);
     if (p->panic.exchange(false)) {
         p->gen.panic(p->synth);
@@ -401,14 +342,14 @@ intptr_t dispatch(Plugin* p, int32_t op, int32_t idx, intptr_t val, void* ptr) {
         }
         case vst::effGetChunk:
             if (!ptr) return 0;
-            p->chunk = saveState(p);
+            p->chunk = saveState(p->surface, false);
             *static_cast<void**>(ptr) = const_cast<char*>(p->chunk.c_str());
             return static_cast<intptr_t>(p->chunk.size() + 1);
         case vst::effSetChunk: {
             if (!ptr || val <= 0) return 0;
             std::string s(static_cast<const char*>(ptr), static_cast<size_t>(val));
             while (!s.empty() && s.back() == '\0') s.pop_back();
-            return loadState(p, s) ? 1 : 0;
+            return loadState(p->surface, s, false) ? 1 : 0;
         }
         default: return 0;
     }

@@ -4989,11 +4989,92 @@
    "display": "string"
   },
   {
+   "key": "tuning",
+   "name": "Tuning",
+   "min": 0,
+   "max": 1,
+   "display": "string",
+   "type": "stepper"
+  },
+  {
+   "key": "tuning_prev",
+   "name": "Tuning prev",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "tuning_next",
+   "name": "Tuning next",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "preset",
+   "name": "Preset",
+   "min": 0,
+   "max": 1,
+   "display": "string",
+   "type": "stepper"
+  },
+  {
+   "key": "preset_prev",
+   "name": "Preset prev",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "preset_next",
+   "name": "Preset next",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "pre_save",
+   "name": "Save preset",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "pre_init",
+   "name": "Init patch",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "pre_rand",
+   "name": "Randomize",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "rand_amt",
+   "name": "Randomize amount",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
    "key": "br_target",
    "name": "Browse for",
    "options": [
     "OSC 1",
-    "OSC 2"
+    "OSC 2",
+    "PRESETS"
    ],
    "default": "OSC 1"
   },

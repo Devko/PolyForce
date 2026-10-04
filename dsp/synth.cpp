@@ -361,16 +361,17 @@ void Synth::startOrSteal(Voice& v, int note, int velocity) {
 
 void Synth::glideTo(Voice& v, int note, bool legatoMove) {
     v.note = note;
+    v.target = tuned(note);
     const bool glide = patch_.glideMode == GL_ALWAYS || (patch_.glideMode == GL_LEGATO && legatoMove);
-    const float dist = std::fabs(static_cast<float>(note) - v.pitch);
+    const float dist = std::fabs(v.target - v.pitch);
     if (!glide || dist < 1e-4f || patch_.glideTime <= 1e-4f) {
-        v.pitch = static_cast<float>(note);
+        v.pitch = v.target;
         v.glideStep = 0.0f;
     } else {
         const float samples = patch_.glideTime * sr_ * (patch_.glideRate ? dist / 12.0f : 1.0f);
         v.glideStep = dist / std::max(samples, 1.0f);
     }
-    lastPitch_ = static_cast<float>(note);
+    lastPitch_ = v.target;
 }
 
 void Synth::start(Voice& v, int note, int velocity, bool retrigger) {
@@ -378,7 +379,7 @@ void Synth::start(Voice& v, int note, int velocity, bool retrigger) {
     // Where the pitch comes from: this voice's own pitch if it was sounding, else the last
     // note played (poly glide). "Legato" glides only while another key is held.
     const float from = wasActive ? v.pitch : lastPitch_;
-    v.pitch = from >= 0.0f ? from : static_cast<float>(note);
+    v.pitch = from >= 0.0f ? from : tuned(note);
     glideTo(v, note, nHeld_ > 1);
     v.active = true;
     v.gate = true;
@@ -779,7 +780,7 @@ void Synth::renderVoice(Voice& v, float* outL, float* outR, int n) {
     const EnvCoef& c1 = v.ownEnv ? v.envc[1] : envc_[1];
     for (int i = 0; i < n; ++i) tick(v.env[1], c1, patch_.env[1].loop && v.gate);
     if (v.glideStep > 0.0f) {   // glide toward the note
-        const float target = static_cast<float>(v.note), step = v.glideStep * static_cast<float>(n);
+        const float target = v.target, step = v.glideStep * static_cast<float>(n);
         if (std::fabs(target - v.pitch) <= step) {
             v.pitch = target;
             v.glideStep = 0.0f;
