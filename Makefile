@@ -31,9 +31,10 @@ INC      := -I$(SURF_OUT) -Iplugin
 ARM_OPT  := -O3 -march=armv7-a -mtune=cortex-a17 -mfpu=neon-vfpv4 -mfloat-abi=hard \
             -funsafe-math-optimizations -fno-math-errno -fno-tree-loop-distribute-patterns
 ARM_SO   := $(BUILD)/arm/polyforce.so
+ARM_SO_STAGES := $(BUILD)/arm/polyforce_stages.so
 ARM_BENCH := $(BUILD)/arm/pfbench
 
-.PHONY: all surface skin test test-arm test-tables bench arm-plugin arm-bench bench-device preview plugin-package plugin-install clean
+.PHONY: all surface skin test test-arm test-tables bench arm-plugin arm-bench arm-bench-stages bench-device preview plugin-package plugin-install clean
 # A recipe that fails leaves no half-written target behind for the next make to trust.
 .DELETE_ON_ERROR:
 all: test arm-plugin
@@ -94,12 +95,17 @@ test-tables: $(BUILD)/tables_sweep
 $(BUILD)/tables_sweep: test/tables_sweep.cpp $(wildcard dsp/*.cpp) $(HDR) | $(BUILD)
 	$(CXX) -std=c++17 -O2 -Wall -Wextra $(wildcard dsp/*.cpp) $< -o $@
 
-# x86 numbers say nothing about the Force; this only checks the bench and the .so path work.
-bench: $(BUILD)/polyforce.so $(BUILD)/pfbench
+# x86 numbers say nothing about the Force; this only checks the bench and the .so paths work
+# (the plain plugin, then the stage-timing build).
+bench: $(BUILD)/polyforce.so $(BUILD)/polyforce_stages.so $(BUILD)/pfbench
 	$(BUILD)/pfbench $(BUILD)/polyforce.so -s 1 -c -1
+	$(BUILD)/pfbench $(BUILD)/polyforce_stages.so -v 8 -u 1,8 -s 1 -c -1
 
+X86_SO_CMD = $(CXX) -std=c++17 -O3 -fno-tree-loop-distribute-patterns -fPIC -fvisibility=hidden -Wall -Wextra -pthread $(INC) -shared -Wl,--no-undefined
 $(BUILD)/polyforce.so: $(SRC) $(HDR) $(GEN) | $(BUILD)
-	$(CXX) -std=c++17 -O3 -fno-tree-loop-distribute-patterns -fPIC -fvisibility=hidden -Wall -Wextra -pthread $(INC) -shared -Wl,--no-undefined $(SRC) -o $@
+	$(X86_SO_CMD) $(SRC) -o $@
+$(BUILD)/polyforce_stages.so: $(SRC) $(HDR) $(GEN) | $(BUILD)
+	$(X86_SO_CMD) -DPF_STAGE_TIMING $(SRC) -o $@
 
 $(BUILD)/pfbench: tools/bench.cpp dsp/wavetable.cpp $(HDR) $(GEN) | $(BUILD)
 	$(CXX) -std=c++17 -O2 -Wall -Wextra $(INC) $< dsp/wavetable.cpp -ldl -o $@
@@ -107,31 +113,43 @@ $(BUILD)/pfbench: tools/bench.cpp dsp/wavetable.cpp $(HDR) $(GEN) | $(BUILD)
 # --- device -----------------------------------------------------------------------------------
 # The .so MPC loads: only VSTPluginMain exported; --no-undefined because an unresolved symbol
 # otherwise only shows up as MPC crashing on load.
+ARM_SO_CMD = $(ARM_CXX) -std=c++17 $(ARM_OPT) -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -Wall -Wextra -Wno-psabi \
+	-pthread $(INC) -shared -Wl,--no-undefined -Wl,-soname,polyforce.so
 arm-plugin: $(ARM_SO)
 $(ARM_SO): $(SRC) $(HDR) $(GEN)
 	mkdir -p $(BUILD)/arm
-	$(ARM_CXX) -std=c++17 $(ARM_OPT) -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -Wall -Wextra -Wno-psabi \
-		-pthread $(INC) -shared -Wl,--no-undefined -Wl,-soname,polyforce.so $(SRC) -o $@
+	$(ARM_SO_CMD) $(SRC) -o $@
 	arm-linux-gnueabihf-strip --strip-unneeded $@
 	@arm-linux-gnueabihf-readelf -V $@ | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1 | sed 's/^/needs /'
 	@arm-linux-gnueabihf-nm -D --defined-only $@ | grep -c ' T ' | sed 's/^/exported functions: /'
+
+# The profiling build: the same plugin with timers between the render passes (dsp/stages.h)
+# and one more export, PolyForceStageTimes, which pfbench reads. Never shipped.
+arm-bench-stages: $(ARM_SO_STAGES) $(ARM_BENCH)
+$(ARM_SO_STAGES): $(SRC) $(HDR) $(GEN)
+	mkdir -p $(BUILD)/arm
+	$(ARM_SO_CMD) -DPF_STAGE_TIMING $(SRC) -o $@
+	arm-linux-gnueabihf-strip --strip-unneeded $@
 
 arm-bench: $(ARM_BENCH)
 $(ARM_BENCH): tools/bench.cpp dsp/wavetable.cpp $(HDR) $(GEN)
 	mkdir -p $(BUILD)/arm
 	$(ARM_CXX) -std=c++17 $(ARM_OPT) -Wall -Wextra -Wno-psabi $(INC) $< dsp/wavetable.cpp -ldl -o $@
 
-# Bench on the Force: copies the .so, the bench and one full-size (256-frame) sample table to
-# /tmp, runs pinned to core 1 (MPC's audio workers own cores 2-3) while MPC keeps running,
-# then deletes them. Touches nothing else on the device.
-#   wsl -e make -C /mnt/d/DEV/mockba/PolyForce bench-device FORCE=root@<ip>
+# Bench on the Force: copies the .so, its stage-timing build, the bench and one full-size
+# (256-frame) sample table to /tmp, runs pinned to core 1 (MPC's audio workers own cores 2-3)
+# while MPC keeps running, then deletes them. Touches nothing else on the device. Verdicts come
+# from the plain .so; the stage build then shows where the time goes, and with a table how
+# much a multi-MB table costs over one that fits the cache.
+#   wsl -e make -C /mnt/d/DEV/mockba/PolyForce bench-device FORCE=root@<ip> WAVETABLES=<folder>
 BENCH_ARGS ?= -v 1,2,4,8 -u 1,2,4,8 -s 3
 BENCH_MATRIX_ARGS ?= -v 8 -u 1,8 -s 3 -m 1   # the same with a busy modulation matrix
+BENCH_STAGE_ARGS ?= -v 8 -u 1,8 -s 3
 TABLE      ?= $(shell find "$(WAVETABLES)" -name '*.wav' -size +2047k 2>/dev/null | sort | head -1)
-bench-device: $(ARM_SO) $(ARM_BENCH)
-	scp -q $(SSH_OPTS) $(ARM_SO) $(ARM_BENCH) $(FORCE):/tmp/
+bench-device: $(ARM_SO) $(ARM_SO_STAGES) $(ARM_BENCH)
+	scp -q $(SSH_OPTS) $(ARM_SO) $(ARM_SO_STAGES) $(ARM_BENCH) $(FORCE):/tmp/
 	@if [ -n "$(TABLE)" ]; then scp -q $(SSH_OPTS) "$(TABLE)" $(FORCE):/tmp/pf_table.wav; fi
-	$(SSH) $(FORCE) 'T=; [ -f /tmp/pf_table.wav ] && T="-t /tmp/pf_table.wav"; /tmp/pfbench /tmp/polyforce.so $(BENCH_ARGS) -c 1 $$T; /tmp/pfbench /tmp/polyforce.so $(BENCH_MATRIX_ARGS) -c 1; rm -f /tmp/pfbench /tmp/polyforce.so /tmp/pf_table.wav'
+	$(SSH) $(FORCE) 'T=; [ -f /tmp/pf_table.wav ] && T="-t /tmp/pf_table.wav"; /tmp/pfbench /tmp/polyforce.so $(BENCH_ARGS) -c 1; /tmp/pfbench /tmp/polyforce.so $(BENCH_MATRIX_ARGS) -c 1; /tmp/pfbench /tmp/polyforce_stages.so $(BENCH_STAGE_ARGS) -c 1 $$T; rm -f /tmp/pfbench /tmp/polyforce.so /tmp/polyforce_stages.so /tmp/pf_table.wav'
 
 # Release zip: plugin + skin + sd88me's installer (stops MPC, backs up and edits
 # MPC.settings, restarts MPC).

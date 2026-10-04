@@ -298,7 +298,8 @@ private:
         int    buses;        // which buses it sent to: 1 = into F1, 2 = into F2, 4 = past both
         Mods   m;
     };
-    void prepareVoice(Voice& v, int lane, int n);
+    void controlVoice(Voice& v, int lane, int n);
+    void renderSources(int lane, int n);
     void finishVoice(const Lane& l, int lane, float* outL, float* outR, int n);
     void filterLanes(int f, float* busL, float* busR, int n);
     void renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, float* R, int n) const;   // adds into L, R

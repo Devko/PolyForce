@@ -1,6 +1,7 @@
 #include "synth.h"
 
 #include "simd.h"
+#include "stages.h"
 
 #include <algorithm>
 #include <cmath>
@@ -8,6 +9,11 @@
 #include <cstring>
 
 namespace pf {
+
+#ifdef PF_STAGE_TIMING
+uint64_t g_stageNs[STG_COUNT] = {};
+#endif
+
 namespace {
 
 constexpr float kPi = 3.14159265f;
@@ -983,6 +989,7 @@ void Synth::render(float* outL, float* outR, int n) {
             if (lfoUsed_[l] && patch_.lfo[l].trig == LT_GLOBAL) lfoStep(glfo_[l], patch_.lfo[l], 1.0f, len, patch_.lfo[l].sync, rng_);
         beats_ += bpm_ / 60.0 * static_cast<double>(len) / static_cast<double>(sr_);
 
+        StageClock clock;   // the profiling build's pass timer (dsp/stages.h); else nothing
         nLanes_ = 0;
         for (auto& v : voices_)
             if (v.active) ++nLanes_;
@@ -1014,8 +1021,12 @@ void Synth::render(float* outL, float* outR, int n) {
             }
             int lane = 0;
             for (auto& v : voices_)
-                if (v.active) prepareVoice(v, lane++, len);
+                if (v.active) controlVoice(v, lane++, len);
+            clock.lap(STG_CONTROL);
+            for (int k = 0; k < nLanes_; ++k) renderSources(k, len);
+            clock.lap(STG_SOURCES);
             filterLanes(0, bus_[0][0], bus_[0][1], len);
+            clock.lap(STG_FILTER1);
             if (!patch_.parallel)   // serial: filter 1 feeds filter 2
                 for (int ch = 0; ch < 2; ++ch) {
                     float* to = bus_[1][ch];
@@ -1025,7 +1036,9 @@ void Synth::render(float* outL, float* outR, int n) {
                             store4(to + i + q, toF2 ? load4(to + i + q) + load4(from + i + q) : load4(from + i + q));
                 }
             filterLanes(1, bus_[1][0], bus_[1][1], len);
+            clock.lap(STG_FILTER2);
             for (int k = 0; k < nLanes_; ++k) finishVoice(lanes_[k], k, L, R, len);
+            clock.lap(STG_OUTPUT);
         }
 
         const float g0 = vol_;
@@ -1040,9 +1053,8 @@ void Synth::render(float* outL, float* outR, int n) {
     }
 }
 
-// Pass 1 for one voice: modulation, envelopes, pitch, and its sources into the three buses
-// (column `lane`).
-void Synth::prepareVoice(Voice& v, int lane, int n) {
+// Pass 1a for one voice: modulation, the mod envelope, glide, pitch: its Lane.
+void Synth::controlVoice(Voice& v, int lane, int n) {
     // Control rate: the mod envelope's value at the start of the chunk drives this chunk,
     // scaled by velocity as much as its VEL knob says; then the LFOs and the matrix.
     const float e2vel = clampf(patch_.env[1].vel, 0.0f, 1.0f);
@@ -1077,9 +1089,17 @@ void Synth::prepareVoice(Voice& v, int lane, int n) {
     }
 
     for (int o = 0; o < 2; ++o) m.pos[o] += mod * patch_.env2Pos;
+    ln.pitch = pitch;
+}
 
-    // Three buses: into filter 1, into filter 2, and past both. Summed here (contiguous), then
-    // stored once into this lane's column of each bus it uses.
+// Pass 1b for one voice: its oscillators, subs and noise into the three buses (column `lane`):
+// into filter 1, into filter 2, and past both. Summed here (contiguous), then stored once into
+// this lane's column of each bus it uses.
+void Synth::renderSources(int lane, int n) {
+    Lane& ln = lanes_[lane];
+    Voice& v = *ln.v;
+    const Mods& m = ln.m;
+    const float pitch = ln.pitch;
     float loc[3][2][kChunk];
     auto bus = [&](int b) {   // a local bus, cleared on first use
         if (!(ln.buses & (1 << b))) {
@@ -1132,7 +1152,6 @@ void Synth::prepareVoice(Voice& v, int lane, int n) {
                 float* col = bus_[b][ch] + lane;
                 for (int i = 0; i < n; ++i) col[i * kMaxVoices] = loc[b][ch][i];
             }
-    ln.pitch = pitch;
 }
 
 // Pass 4 for one voice: its filtered buses, the voice pan, the amp envelope, a steal's fade.

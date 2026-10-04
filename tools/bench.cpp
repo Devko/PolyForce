@@ -9,7 +9,12 @@
 // -m 1 adds a busy modulation matrix: both LFOs on pitch, positions and cutoffs, env 2 and
 // velocity on more targets, a slewed and an S&H slot, envelope-stage modulation (8 slots).
 // -t also times importing one wavetable WAV (the loader is linked in, not the .so's copy):
-// what picking a table on the touchscreen would cost on this CPU.
+// what picking a table on the touchscreen would cost on this CPU; then plays the largest voice
+// count with an LFO sweeping both positions, first on the built-in Classic table (fits the
+// cache), then on that table (several MB): if the oscillators wait on memory, the second
+// takes clearly longer.
+// A profiling build of the plugin (make arm-bench-stages: polyforce_stages.so) also reports
+// where each case's time goes, per render pass.
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -19,6 +24,7 @@
 #include "param_ids.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -27,6 +33,7 @@
 #include <dlfcn.h>
 #include <sched.h>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -71,6 +78,12 @@ std::vector<int> list(const char* s) {
     return out;
 }
 
+std::string display(AEffect* e, int id) {
+    char b[256] = {};
+    e->dispatcher(e, vst::effGetParamDisplay, id, 0, b, 0.0f);
+    return b;
+}
+
 void midi(AEffect* e, uint8_t st, uint8_t d1, uint8_t d2) {
     VstMidiEvent ev{};
     ev.type = vst::kVstMidiType;
@@ -110,17 +123,24 @@ int main(int argc, char** argv) {
         CPU_SET(cpu, &set);
         if (sched_setaffinity(0, sizeof set, &set) != 0) std::printf("note: could not pin to cpu %d\n", cpu);
     }
+    std::string tableKey;   // the plugin's key for it, once it imports
     if (table) {
         pf::Wavetable t;
         std::string err;
         const double a = wallMs();
         const bool ok = pf::loadWavetable(table, t, &err);
         const double ms = wallMs() - a;
-        if (ok)
+        if (ok) {
             std::printf("wavetable import: %d frames in %.0f ms (%.2f ms/frame), %.1f MB\n", t.frames, ms,
                         ms / t.frames, static_cast<double>(t.data.size() * sizeof(float)) / (1024.0 * 1024.0));
-        else
+            // The plugin's only table root becomes the table's folder (its "plugin" root).
+            const std::string path = table;
+            const size_t slash = path.rfind('/');
+            setenv("PF_TABLE_ROOTS", slash == std::string::npos ? "." : path.substr(0, slash).c_str(), 1);
+            tableKey = "plugin:" + (slash == std::string::npos ? path : path.substr(slash + 1));
+        } else {
             std::printf("wavetable import failed: %s\n", err.c_str());
+        }
     }
 
     void* so = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
@@ -130,6 +150,8 @@ int main(int argc, char** argv) {
     }
     using Main = AEffect* (*)(audioMasterCallback);
     auto entry = reinterpret_cast<Main>(dlsym(so, "VSTPluginMain"));
+    using StageFn = int (*)(double*, const char**, int);
+    const auto stages = reinterpret_cast<StageFn>(dlsym(so, "PolyForceStageTimes"));   // profiling build only
     if (!entry) {
         std::fprintf(stderr, "no VSTPluginMain\n");
         return 1;
@@ -188,31 +210,86 @@ int main(int argc, char** argv) {
     const int blocks = std::max(1, static_cast<int>(seconds * 44100.0 / kBlock));
 
     std::printf("plugin: %s   load (VSTPluginMain, tables): %.0f ms   %d blocks/case\n", argv[1], loadMs, blocks);
-    std::printf("voices unison  p50_us  p99_us  max_us   p99%%   max%%  verdict\n");
+    if (stages) std::printf("stage timing build: per-pass wall time on each case's second line (us per block)\n");
+    const char* header = "voices unison  p50_us  p99_us  max_us   p99%   max%  verdict\n";
     int worst = 0;
-    for (int u : unison) {
+    auto runCase = [&](int v, int u) {
         set(pf::P_O1_UNI, static_cast<float>(u));
         set(pf::P_O2_UNI, static_cast<float>(u));
-        for (int v : voices) {
-            for (int n = 0; n < v; ++n) midi(e, 0x90, static_cast<uint8_t>(36 + n * 3), 100);
-            for (int b = 0; b < warm; ++b) e->processReplacing(e, nullptr, out, kBlock);
-            std::vector<double> t(static_cast<size_t>(blocks));
-            for (int b = 0; b < blocks; ++b) {
-                const double a = cpuUs();
-                e->processReplacing(e, nullptr, out, kBlock);
-                t[static_cast<size_t>(b)] = cpuUs() - a;
-            }
-            midi(e, 0xB0, 120, 0);   // all sound off before the next case
+        for (int n = 0; n < v; ++n) midi(e, 0x90, static_cast<uint8_t>(36 + n * 3), 100);
+        for (int b = 0; b < warm; ++b) e->processReplacing(e, nullptr, out, kBlock);
+        double st[8];
+        const char* names[8];
+        if (stages) stages(st, names, 8);   // drops the warm-up's
+        std::vector<double> t(static_cast<size_t>(blocks));
+        double sum = 0.0;
+        for (int b = 0; b < blocks; ++b) {
+            const double a = cpuUs();
             e->processReplacing(e, nullptr, out, kBlock);
+            t[static_cast<size_t>(b)] = cpuUs() - a;
+            sum += t[static_cast<size_t>(b)];
+        }
+        const int ns = stages ? stages(st, names, 8) : 0;
+        midi(e, 0xB0, 120, 0);   // all sound off before the next case
+        e->processReplacing(e, nullptr, out, kBlock);
 
-            std::sort(t.begin(), t.end());
-            const double p50 = t[t.size() / 2], p99 = t[t.size() * 99 / 100], mx = t.back();
-            const double p99p = 100.0 * p99 / kBudgetUs, maxp = 100.0 * mx / kBudgetUs;
-            const int verdict = (p99p <= 15.0 && maxp <= 50.0) ? 0 : (p99p <= 35.0 && maxp <= 80.0) ? 1 : 2;
-            worst = std::max(worst, verdict);
-            std::printf("%6d %6d %7.0f %7.0f %7.0f %6.1f %6.1f  %s\n", v, u, p50, p99, mx, p99p, maxp,
-                        verdict == 0 ? "PASS" : verdict == 1 ? "WARN" : "FAIL");
-            std::fflush(stdout);
+        std::sort(t.begin(), t.end());
+        const double p50 = t[t.size() / 2], p99 = t[t.size() * 99 / 100], mx = t.back();
+        const double p99p = 100.0 * p99 / kBudgetUs, maxp = 100.0 * mx / kBudgetUs;
+        const int verdict = (p99p <= 15.0 && maxp <= 50.0) ? 0 : (p99p <= 35.0 && maxp <= 80.0) ? 1 : 2;
+        worst = std::max(worst, verdict);
+        std::printf("%6d %6d %7.0f %7.0f %7.0f %6.1f %6.1f  %s\n", v, u, p50, p99, mx, p99p, maxp,
+                    verdict == 0 ? "PASS" : verdict == 1 ? "WARN" : "FAIL");
+        if (ns > 0) {   // the rest: the plugin glue, note generator, events, the master volume
+            double staged = 0.0;
+            std::printf("              ");
+            for (int i = 0; i < ns; ++i) {
+                std::printf(" %s %.1f", names[i], st[i] / blocks);
+                staged += st[i] / blocks;
+            }
+            std::printf("  rest %.1f\n", sum / blocks - staged);
+        }
+        std::fflush(stdout);
+    };
+    std::printf("%s", header);
+    for (int u : unison)
+        for (int v : voices) runCase(v, u);
+
+    if (!tableKey.empty()) {
+        // Both positions swept by LFO 1 (slot 9, clear of the busy matrix's): the frames read
+        // keep changing, as when a table is played rather than parked on one frame.
+        const int stride = pf::P_M2_SRC - pf::P_M1_SRC, slot = 8 * stride;
+        set(pf::P_M1_SRC + slot, static_cast<float>(pf::MS_LFO1));
+        set(pf::P_M1_T1 + slot, static_cast<float>(pf::MT_O1_POS));
+        set(pf::P_M1_A1 + slot, 0.5f);
+        set(pf::P_M1_T2 + slot, static_cast<float>(pf::MT_O2_POS));
+        set(pf::P_M1_A2 + slot, 0.5f);
+        const int v = *std::max_element(voices.begin(), voices.end());
+        std::printf("\nplayback, positions swept, table %s\n", display(e, pf::P_O1_TABLE).c_str());
+        std::printf("%s", header);
+        for (int u : unison) runCase(v, u);
+
+        void* data = nullptr;   // a project chunk changes only what it names: the two tables
+        const intptr_t size = e->dispatcher(e, vst::effGetChunk, 0, 0, &data, 0.0f);
+        const std::string state = size > 0 && data ? std::string(static_cast<const char*>(data), static_cast<size_t>(size)) : "";
+        const std::string tables = state.substr(0, state.find('\n')) + "\no1_table=" + tableKey + "\no2_table=" + tableKey + "\n";
+        const std::string before = display(e, pf::P_O1_TABLE);
+        e->dispatcher(e, vst::effSetChunk, 0, static_cast<intptr_t>(tables.size()), const_cast<char*>(tables.data()), 0.0f);
+        auto loaded = [&](int id) {   // the loader imports it on its own thread ("LOADING ..." meanwhile)
+            const std::string d = display(e, id);
+            return d != before && d.find("LOADING") == std::string::npos;
+        };
+        const double until = wallMs() + 20000.0;
+        while (!(loaded(pf::P_O1_TABLE) && loaded(pf::P_O2_TABLE)) && wallMs() < until) {
+            e->processReplacing(e, nullptr, out, kBlock);
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        if (!(loaded(pf::P_O1_TABLE) && loaded(pf::P_O2_TABLE))) {
+            std::printf("\nthe plugin did not load %s\n", tableKey.c_str());
+        } else {
+            std::printf("\nplayback, positions swept, table %s\n", display(e, pf::P_O1_TABLE).c_str());
+            std::printf("%s", header);
+            for (int u : unison) runCase(v, u);
         }
     }
     std::printf("worst case: %s\n", worst == 0 ? "PASS" : worst == 1 ? "WARN" : "FAIL");

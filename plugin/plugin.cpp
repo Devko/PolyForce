@@ -22,6 +22,7 @@
 #include "../dsp/tuning.h"
 #include "../dsp/notegen.h"
 #include "../dsp/synth.h"
+#include "../dsp/stages.h"
 
 #include <algorithm>
 #include <atomic>
@@ -452,3 +453,18 @@ extern "C" __attribute__((visibility("default"))) AEffect* VSTPluginMain(audioMa
         return nullptr;
     }
 }
+
+#ifdef PF_STAGE_TIMING
+// The profiling build only (make arm-bench-stages): the engine's time per render pass since
+// the last call, in microseconds, with the passes' names; tools/bench.cpp reads it with dlsym.
+// Returns the number of passes written.
+extern "C" __attribute__((visibility("default"))) int PolyForceStageTimes(double* us, const char** names, int max) {
+    const int n = std::min<int>(max, pf::STG_COUNT);
+    for (int i = 0; i < n; ++i) {
+        us[i] = static_cast<double>(pf::g_stageNs[i]) * 1e-3;
+        names[i] = pf::kStageNames[i];
+    }
+    for (auto& t : pf::g_stageNs) t = 0;
+    return n;
+}
+#endif
