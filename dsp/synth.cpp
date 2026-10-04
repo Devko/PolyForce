@@ -52,16 +52,23 @@ inline float tanFast(float w) {
     return upper ? 1.0f / std::max(r, 1e-12f) : r;
 }
 
-// Equal-power pan gains for a balance -1..1 (sqrt 2 at the sides, 1 in the middle): sin/cos
-// as short series on [0, pi/2] (error < 4e-6).
+// sin(x) for |x| <= pi/2 as a short odd series, error < 4e-6.
+inline float sinQuarter(float x) {
+    const float x2 = x * x;
+    return x * (1.0f + x2 * (-1.666666667e-1f + x2 * (8.333333333e-3f + x2 * (-1.984126984e-4f + x2 * 2.755731922e-6f))));
+}
+
+// sin(2 pi x) for 0 <= x < 1 (the LFO sine), folded onto a quarter wave.
+inline float sinCycle(float x) {
+    const float y = x < 0.25f ? x : (x < 0.75f ? 0.5f - x : x - 1.0f);
+    return sinQuarter(6.283185307f * y);
+}
+
+// Equal-power pan gains for a balance -1..1 (sqrt 2 at the sides, 1 in the middle).
 inline void panGains(float pan, float& gl, float& gr) {
     const float a = (clampf(pan, -1.0f, 1.0f) + 1.0f) * 0.785398163f;   // 0 .. pi/2
-    auto sinq = [](float x) {
-        const float x2 = x * x;
-        return x * (1.0f + x2 * (-1.666666667e-1f + x2 * (8.333333333e-3f + x2 * (-1.984126984e-4f + x2 * 2.755731922e-6f))));
-    };
-    gl = sinq(1.570796327f - a) * 1.41421356f;
-    gr = sinq(a) * 1.41421356f;
+    gl = sinQuarter(1.570796327f - a) * 1.41421356f;
+    gr = sinQuarter(a) * 1.41421356f;
 }
 
 inline float noteHz(float note) { return 440.0f * exp2Fast((note - 69.0f) * (1.0f / 12.0f)); }
@@ -305,7 +312,7 @@ QuadFn quadFor(int type, bool dirty) {
 
 } // namespace
 
-Synth::Synth(float sampleRate) : sr_(sampleRate) {
+Synth::Synth(float sampleRate) : sr_(sampleRate), invSr_(1.0f / sampleRate) {
     builtinTables();   // build the shared tables now (UI thread), never on the audio thread
     classicTable(0);
     combMem_.assign(static_cast<size_t>(kMaxVoices) * 2 * 2 * kCombLen, 0.0f);
@@ -333,6 +340,12 @@ void Synth::setPatch(const Patch& p) {
     envTargeted_ = false;
     for (int s = 0; s < kModSlots; ++s) {
         const ModSlot& ms = patch_.mod[s];
+        SlotRun r;
+        r.slot = s;
+        r.src = std::clamp(ms.src, 0, MS_COUNT - 1);
+        r.via = ms.via == MS_NONE ? MS_CONSTANT : std::clamp(ms.via, 0, MS_COUNT - 1);
+        r.mod = ms.mod;
+        r.modAmt = clampf(ms.modAmt, -1.0f, 1.0f);
         bool live = false;
         for (int k = 0; k < 2; ++k) {
             const float a = clampf(ms.amt[k], -1.0f, 1.0f);
@@ -346,22 +359,22 @@ void Synth::setPatch(const Patch& p) {
                 case Unit::None: scale = 0.0f; break;
                 default: break;
             }
-            slotScale_[s][k] = scale;
-            live = live || (scale != 0.0f && ms.src != MS_NONE);
+            const bool valid = ms.tgt[k] > MT_OFF && ms.tgt[k] < MT_COUNT;
+            r.tgt[k] = valid ? ms.tgt[k] : MT_OFF;
+            r.scale[k] = valid ? scale : 0.0f;
+            live = live || (r.scale[k] != 0.0f && ms.src != MS_NONE);
             const Unit u = targetUnit(ms.tgt[k]);
-            if (scale != 0.0f && (u == Unit::EnvTime || u == Unit::EnvLevel)) envTargeted_ = true;
+            if (r.scale[k] != 0.0f && (u == Unit::EnvTime || u == Unit::EnvLevel)) envTargeted_ = true;
         }
-        const float m = std::fabs(clampf(ms.modAmt, -1.0f, 1.0f));
+        const float m = std::fabs(r.modAmt);
         slotSlewK_[s] = onePole(0.001f * std::exp2(m * 11.0f), sr_ / 16.0f);   // per 16 samples (chunkStep)
         slotPeriod_[s] = sr_ / (0.5f * std::exp2(m * 7.0f));
-        if (live) slots_[nSlots_++] = s;
+        if (live) runs_[nSlots_++] = r;
     }
     for (int l = 0; l < 2; ++l) {
         lfoUsed_[l] = false;
-        for (int k = 0; k < nSlots_; ++k) {
-            const ModSlot& ms = patch_.mod[slots_[k]];
-            lfoUsed_[l] = lfoUsed_[l] || ms.src == MS_LFO1 + l || ms.via == MS_LFO1 + l;
-        }
+        for (int k = 0; k < nSlots_; ++k)
+            lfoUsed_[l] = lfoUsed_[l] || runs_[k].src == MS_LFO1 + l || runs_[k].via == MS_LFO1 + l;
     }
     volTarget_ = patch_.volumeDb <= -59.5f ? 0.0f : std::pow(10.0f, patch_.volumeDb / 20.0f) * kHeadroom;
 
@@ -790,12 +803,12 @@ float Synth::lfoStep(LfoState& st, const LfoPatch& p, float rateMul, int n, bool
         case LW_SAW_DOWN: w = 1.0f - 2.0f * ph; break;
         case LW_SQUARE: w = ph < 0.5f ? 1.0f : -1.0f; break;
         case LW_SAMPLE_HOLD: w = st.held; break;
-        case LW_SMOOTH: w = st.from + (st.to - st.from) * (0.5f - 0.5f * std::cos(kPi * ph)); break;
-        default: w = std::sin(2.0f * kPi * ph); break;
+        case LW_SMOOTH: w = st.from + (st.to - st.from) * (0.5f - 0.5f * sinQuarter(kPi * (0.5f - ph))); break;   // cos(pi ph)
+        default: w = sinCycle(ph); break;
     }
     if (!locked) {
-        const double hz = (p.sync ? bpm_ / 60.0 / divBeats : static_cast<double>(p.rateHz)) * rateMul;
-        float next = ph + static_cast<float>(hz * n / sr_);
+        const float hz = (p.sync ? static_cast<float>(bpm_ / 60.0 / divBeats) : p.rateHz) * rateMul;
+        float next = ph + hz * static_cast<float>(n) * invSr_;
         if (next >= 1.0f) {
             next -= std::floor(next);
             newCycle();
@@ -817,7 +830,7 @@ void Synth::modulate(Voice& v, float env2, int n, Mods& m) {
     m.noiseColor = patch_.noise.color;
 
     float lfo[2] = {};
-    const float t = static_cast<float>(v.sinceOn) / sr_;
+    const float t = static_cast<float>(v.sinceOn) * invSr_;
     for (int l = 0; l < 2; ++l) {
         if (!lfoUsed_[l]) continue;   // nothing listens: don't spend the cycles
         const LfoPatch& p = patch_.lfo[l];
@@ -842,36 +855,26 @@ void Synth::modulate(Voice& v, float env2, int n, Mods& m) {
         return;
     }
 
-    float src[MS_COUNT];
-    src[MS_NONE] = 0.0f;
+    float* src = src_;   // the shared sources are in (render); now this voice's
     src[MS_ENV1] = v.env[0].v;
     src[MS_ENV2] = env2;
     src[MS_LFO1] = lfo[0];
     src[MS_LFO2] = lfo[1];
     src[MS_VELOCITY] = v.vel;
-    src[MS_NOTE] = (static_cast<float>(v.note) - 60.0f) / 60.0f;
-    src[MS_MODWHEEL] = cc_[0];
+    src[MS_NOTE] = (static_cast<float>(v.note) - 60.0f) * (1.0f / 60.0f);
     src[MS_AFTERTOUCH] = std::max(pressure_, v.pressure);
-    src[MS_BEND] = bend_;
     src[MS_RANDOM] = v.rnd;
     src[MS_ALTERNATE] = v.alt;
     src[MS_GATE] = v.gate || v.sustained ? 1.0f : 0.0f;
-    src[MS_SEQ] = seqSrc_;
-    for (int i = 0; i < 4; ++i) src[MS_SHAPE1 + i] = shapeSrc_[i];
-    for (int i = 0; i < kXyAxes; ++i) src[MS_X1 + i] = clampf(patch_.xy[i], 0.0f, 1.0f);
-    src[MS_BREATH] = cc_[1];
-    src[MS_EXPRESSION] = cc_[2];
-    src[MS_CONSTANT] = 1.0f;
 
     alignas(16) float acc[(MT_COUNT + 3) & ~3];   // cleared with vector stores (a memset call costs more)
     for (int i = 0; i < MT_COUNT; i += 4) store4(acc + i, splat(0.0f));
     for (int k = 0; k < nSlots_; ++k) {
-        const int s = slots_[k];
-        const ModSlot& ms = patch_.mod[s];
-        float x = src[std::clamp(ms.src, 0, MS_COUNT - 1)];
-        if (ms.via != MS_NONE) x *= src[std::clamp(ms.via, 0, MS_COUNT - 1)];
-        const float a = clampf(ms.modAmt, -1.0f, 1.0f);
-        switch (ms.mod) {
+        const SlotRun& r = runs_[k];
+        const int s = r.slot;
+        float x = src[r.src] * src[r.via];
+        const float a = r.modAmt;
+        switch (r.mod) {
             case MM_CURVE:   // + toward exponential, - toward logarithmic
                 if (a > 0.0f) x += a * (x * std::fabs(x) - x);
                 else if (a < 0.0f) x += -a * ((x < 0.0f ? -1.0f : 1.0f) * std::sqrt(std::fabs(x)) - x);
@@ -897,8 +900,8 @@ void Synth::modulate(Voice& v, float env2, int n, Mods& m) {
                 break;
             default: break;
         }
-        for (int j = 0; j < 2; ++j)
-            if (ms.tgt[j] > MT_OFF && ms.tgt[j] < MT_COUNT) acc[ms.tgt[j]] += slotScale_[s][j] * x;
+        acc[r.tgt[0]] += r.scale[0] * x;   // a dead target: MT_OFF, scale 0
+        acc[r.tgt[1]] += r.scale[1] * x;
     }
 
     for (int o = 0; o < 2; ++o) {
@@ -983,6 +986,17 @@ void Synth::render(float* outL, float* outR, int n) {
         nLanes_ = 0;
         for (auto& v : voices_)
             if (v.active) ++nLanes_;
+        if (nLanes_ > 0 && nSlots_ > 0) {   // the matrix sources every voice shares (modulate adds its own)
+            src_[MS_NONE] = 0.0f;
+            src_[MS_MODWHEEL] = cc_[0];
+            src_[MS_BEND] = bend_;
+            src_[MS_SEQ] = seqSrc_;
+            for (int i = 0; i < 4; ++i) src_[MS_SHAPE1 + i] = shapeSrc_[i];
+            for (int i = 0; i < kXyAxes; ++i) src_[MS_X1 + i] = clampf(patch_.xy[i], 0.0f, 1.0f);
+            src_[MS_BREATH] = cc_[1];
+            src_[MS_EXPRESSION] = cc_[2];
+            src_[MS_CONSTANT] = 1.0f;
+        }
         if (nLanes_ > 0) {
             // A filter reads whole quads of lanes: clear them where a lane may not write. The
             // direct bus is only read by the lanes that wrote it; F2's input only needs clearing

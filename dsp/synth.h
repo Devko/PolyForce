@@ -316,6 +316,7 @@ private:
     void modulate(Voice& v, float env2, int n, Mods& m);
 
     float    sr_;
+    float    invSr_;
     Patch    patch_;
     OscState osc_[2];
     EnvCoef  envc_[2];
@@ -349,9 +350,12 @@ private:
     float    pressure_ = 0.0f;       // channel aftertouch
     float    alt_ = 1.0f;
     float    seqSrc_ = 0.0f, shapeSrc_[4] = {};
-    int      slots_[kModSlots] = {};   // the slots that do something, in order
+    // The slots that do something, in order, resolved once for modulate(): indices in range
+    // (no via reads MS_CONSTANT, a dead target adds into MT_OFF), amounts in target units.
+    struct SlotRun { int slot, src, via, mod; float modAmt; int tgt[2]; float scale[2]; };
+    SlotRun  runs_[kModSlots] = {};
     int      nSlots_ = 0;
-    float    slotScale_[kModSlots][2] = {};   // amount -> target units
+    float    src_[MS_COUNT] = {};    // matrix sources: the shared ones set per chunk, a voice's in modulate()
     float    slotSlewK_[kModSlots] = {};      // Slew: one-pole step per chunk
     float    slotPeriod_[kModSlots] = {};     // S&H: samples between samples
     bool     envTargeted_ = false;
