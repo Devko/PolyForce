@@ -17,7 +17,11 @@ namespace pf {
 // block on the Force. surface/surface.py MAX_VOICES / MAX_UNISON must match.
 constexpr int kMaxVoices = 8;
 constexpr int kMaxUnison = 8;
-constexpr int kChunk = 16;   // control rate: filter coefficients, mod envelope, wave position
+// Control rate: modulation, envelopes' control outputs, filter coefficients and wave position
+// are computed once per chunk; each glides in over the chunk it applies to (Voice::Ramp), the
+// filter coefficients in steps of kSubChunk.
+constexpr int kChunk = 32;
+constexpr int kSubChunk = 16;
 
 enum FilterType : int { F_OFF, F_LP12, F_LP24, F_BP, F_HP12, F_HP24, F_NOTCH, F_PEAK, F_COMB_PLUS, F_COMB_MINUS,
                         F_VOWEL };
@@ -218,6 +222,19 @@ private:
         float    slotHold[kModSlots] = {};       // S&H modifier: held value
         float    slotTimer[kModSlots] = {};      // S&H modifier: samples to the next sample
         float    slotSlew[kModSlots] = {};       // Slew modifier: current value
+        // Control values reach the audio one chunk late and glide there across the chunk (no
+        // steps at the control rate): what the previous chunk ended on. A fresh note jumps.
+        struct Ramp {
+            bool  valid = false;
+            float oscGain[2][2] = {};   // [osc][channel]: level x modulated pan (0 = was silent)
+            float morph[2] = {};
+            int   frame[2] = {-1, -1};  // the frame pair (by its first frame) morph[] was for
+            float subGain[2] = {};
+            float noiseGain = 0.0f, oscNoiseGain[2] = {};
+            float outGain[2] = {};      // velocity x matrix volume x voice pan, per channel
+            int   fType[2] = {-1, -1};  // the filter type coef[] holds values for
+            float coef[2][16] = {};
+        } ramp;
         EnvCoef  envc[2];             // envelope coefficients with the matrix's stage modulation
         float    envKey[2][4] = {};   // the modulation they were computed for
         bool     ownEnv = false;
@@ -284,9 +301,10 @@ private:
     void prepareVoice(Voice& v, int lane, int n);
     void finishVoice(const Lane& l, int lane, float* outL, float* outR, int n);
     void filterLanes(int f, float* busL, float* busR, int n);
-    void renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, float* R, int n) const;
+    void renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, float* R, int n) const;   // adds into L, R
     void renderSub(Voice& v, int o, float pitch, float level, float* L, float* R, int n) const;
-    void renderNoise(uint32_t& rng, float* lp, float color, float gain, float* L, float* R, int n) const;
+    // gain glides from prevGain (unless !ramped) and is left there for the next chunk.
+    void renderNoise(uint32_t& rng, float* lp, float color, float gain, float& prevGain, bool ramped, float* L, float* R, int n) const;
     struct Ctl { float hz, res, drive, pre, post, wet; };
     Ctl controls(int f, float pitch, const Mods& m, float mod) const;
     // Comb and vowel, one voice at a time (contiguous channel buffers).

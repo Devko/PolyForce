@@ -287,12 +287,34 @@ void plugin() {
     CHECK(z.run(80) < 200.0f && z.finite);
 }
 
+// The matrix runs once per kChunk samples; what it moves glides across the chunk instead of
+// stepping there. A 33 Hz sine under a 40 Hz LFO on level, volume or pan: no sample-to-sample
+// jump beyond about the sine's own slope (0.0047 of its peak; stepping every 16 samples, the
+// engine before the glides jumped 0.02 .. 0.045).
+void controlRate() {
+    for (int tgt : {pf::MT_O1_LEVEL, pf::MT_VOLUME, pf::MT_PAN, pf::MT_O1_PAN}) {
+        pf::Patch p = base();
+        p.osc[0].level = 0.5f;
+        p.lfo[0].rateHz = 40.0f;
+        route(p, 0, pf::MS_LFO1, tgt, tgt == pf::MT_VOLUME ? 0.3f : 0.5f);
+        const Rec r = play(p, 0.5, 24);
+        float peak = 0.0f, jump = 0.0f;
+        for (size_t i = 4410; i < r.L.size(); ++i) {
+            peak = std::max(peak, std::fabs(r.L[i]));
+            jump = std::max(jump, std::fabs(r.L[i] - r.L[i - 1]));
+        }
+        CHECK(peak > 0.05f);
+        CHECK(jump < 0.008f * peak);
+    }
+}
+
 } // namespace
 
 void modulationTests() {
     lfos();
     globalLfo();
     targetsAndModifiers();
+    controlRate();
     plugin();
 }
 

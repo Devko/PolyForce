@@ -79,10 +79,12 @@ inline float softclip(float x) {
 // Per-sample one-pole step for a time constant of `tau` seconds.
 inline float onePole(float tau, float sr) { return 1.0f - std::exp(-1.0f / (std::max(tau, 1e-5f) * sr)); }
 
-// A one-pole step `k` meant for a whole chunk, for a chunk of `n` samples (render() splits
-// chunks at MIDI events and sequencer steps: a short chunk must not smooth a full step).
+// A one-pole step `k` meant for 16 samples, over `n` samples (a chunk; render() also splits
+// chunks at MIDI events and sequencer steps): the smoothing times don't depend on the chunk size.
 inline float chunkStep(float k, int n) {
-    return n >= kChunk ? k : 1.0f - std::pow(1.0f - k, static_cast<float>(n) / static_cast<float>(kChunk));
+    if (n == 16) return k;
+    if (n == 32) return k * (2.0f - k);   // 1 - (1 - k)^2
+    return 1.0f - std::pow(1.0f - k, static_cast<float>(n) / 16.0f);
 }
 
 // The envelope over a run of samples: one-pole segments, attack aiming at 1.2 and stopping at
@@ -350,7 +352,7 @@ void Synth::setPatch(const Patch& p) {
             if (scale != 0.0f && (u == Unit::EnvTime || u == Unit::EnvLevel)) envTargeted_ = true;
         }
         const float m = std::fabs(clampf(ms.modAmt, -1.0f, 1.0f));
-        slotSlewK_[s] = onePole(0.001f * std::exp2(m * 11.0f), sr_ / static_cast<float>(kChunk));
+        slotSlewK_[s] = onePole(0.001f * std::exp2(m * 11.0f), sr_ / 16.0f);   // per 16 samples (chunkStep)
         slotPeriod_[s] = sr_ / (0.5f * std::exp2(m * 7.0f));
         if (live) slots_[nSlots_++] = s;
     }
@@ -626,6 +628,7 @@ void Synth::start(Voice& v, int note, int velocity, bool legato) {
             for (auto& ch : f)
                 for (auto& st : ch) st = Svf{};
         v.combLive[0] = v.combLive[1] = false;   // a comb clears its lines when it first runs
+        v.ramp = Voice::Ramp{};                   // a fresh note's control values start where they are
         v.drift = 0.0f;
         resetPhases(v);
     }
@@ -1054,7 +1057,7 @@ void Synth::prepareVoice(Voice& v, int lane, int n) {
     if (patch_.engine != EN_CLEAN) {   // analog drift: a slow random walk, a few cents
         const float range = patch_.engine == EN_DIRTY ? 6.0f : 2.5f;
         const float r = randomBipolar(v.rng);
-        const float w = n >= kChunk ? 1.0f : std::sqrt(static_cast<float>(n) / static_cast<float>(kChunk));   // a walk's step grows with sqrt(time)
+        const float w = n == 32 ? 1.41421356f : std::sqrt(static_cast<float>(n) / 16.0f);   // a walk's step grows with sqrt(time)
         v.drift = clampf(v.drift * (1.0f - chunkStep(0.0005f, n)) + r * 0.08f * range * w, -range, range);
         pitch += v.drift * 0.01f;
     }
@@ -1092,6 +1095,11 @@ void Synth::prepareVoice(Voice& v, int lane, int n) {
     };
     for (int o = 0; o < 2; ++o) {
         const bool osc = m.level[o] > 0.0f, sub = m.subLevel[o] > 0.0f;
+        if (!osc) {   // silent this chunk: a later one fades in from silence
+            v.ramp.oscGain[o][0] = v.ramp.oscGain[o][1] = v.ramp.oscNoiseGain[o] = 0.0f;
+            v.ramp.frame[o] = -1;
+        }
+        if (!sub) v.ramp.subGain[o] = 0.0f;
         if (!osc && !sub) continue;
         source(patch_.osc[o].route, [&](float* l, float* r) {
             if (osc) renderOsc(v, o, pitch, m, l, r, n);
@@ -1100,8 +1108,10 @@ void Synth::prepareVoice(Voice& v, int lane, int n) {
     }
     if (m.noiseLevel > 0.0f)
         source(patch_.noise.route, [&](float* l, float* r) {
-            renderNoise(v.noiseRng, v.noiseLp, m.noiseColor, 0.5f * m.noiseLevel, l, r, n);
+            renderNoise(v.noiseRng, v.noiseLp, m.noiseColor, 0.5f * m.noiseLevel, v.ramp.noiseGain, v.ramp.valid, l, r, n);
         });
+    else
+        v.ramp.noiseGain = 0.0f;
     for (int b = 0; b < 3; ++b)
         if (ln.buses & (1 << b))
             for (int ch = 0; ch < 2; ++ch) {
@@ -1115,9 +1125,17 @@ void Synth::prepareVoice(Voice& v, int lane, int n) {
 void Synth::finishVoice(const Lane& l, int lane, float* outL, float* outR, int n) {
     Voice& v = *l.v;
     const Mods& m = l.m;
-    // Voice pan (a matrix target): an equal-power balance on the voice's stereo output.
+    // Voice pan (a matrix target): an equal-power balance on the voice's stereo output. With
+    // the velocity and the matrix's volume it glides in from the last chunk's.
     float bl = 1.0f, br = 1.0f;
     if (m.voicePan != 0.0f) panGains(m.voicePan, bl, br);
+    const float vg = v.velGain * m.amp;
+    const float gl1 = vg * bl, gr1 = vg * br;
+    const float gl0 = v.ramp.valid ? v.ramp.outGain[0] : gl1, gr0 = v.ramp.valid ? v.ramp.outGain[1] : gr1;
+    v.ramp.outGain[0] = gl1;
+    v.ramp.outGain[1] = gr1;
+    v.ramp.valid = true;   // this chunk's values are the next one's starting points
+    const float invN = 1.0f / static_cast<float>(n), dgl = (gl1 - gl0) * invN, dgr = (gr1 - gr0) * invN;
     float tl[kChunk], tr[kChunk];
     for (int i = 0; i < n; ++i) {
         const int at = i * kMaxVoices + lane;
@@ -1134,22 +1152,16 @@ void Synth::finishVoice(const Lane& l, int lane, float* outL, float* outR, int n
             tl[i] += bus_[2][0][i * kMaxVoices + lane];
             tr[i] += bus_[2][1][i * kMaxVoices + lane];
         }
-    if (bl != 1.0f || br != 1.0f)
-        for (int i = 0; i < n; ++i) {
-            tl[i] *= bl;
-            tr[i] *= br;
-        }
-
-    const float vg = v.velGain * m.amp;
     const EnvCoef& c0 = v.ownEnv ? v.envc[0] : envc_[0];
     float amp[kChunk];
     envRun<true>(v.env[0], c0, false, amp, n);
     if (v.fade > 0) {   // being stolen: fade out, then start the waiting note
         constexpr float kInv = 1.0f / static_cast<float>(kFadeSamples);
         for (int i = 0; i < n; ++i) {
-            const float a = amp[i] * vg * static_cast<float>(std::max(v.fade - i, 0)) * kInv;
-            outL[i] += tl[i] * a;
-            outR[i] += tr[i] * a;
+            const float k = static_cast<float>(i + 1);
+            const float a = amp[i] * static_cast<float>(std::max(v.fade - i, 0)) * kInv;
+            outL[i] += tl[i] * a * (gl0 + dgl * k);
+            outR[i] += tr[i] * a * (gr0 + dgr * k);
         }
         v.fade -= n;
         if (v.fade <= 0) {
@@ -1164,9 +1176,9 @@ void Synth::finishVoice(const Lane& l, int lane, float* outL, float* outR, int n
         return;
     }
     for (int i = 0; i < n; ++i) {
-        const float a = amp[i] * vg;
-        outL[i] += tl[i] * a;
-        outR[i] += tr[i] * a;
+        const float k = static_cast<float>(i + 1);
+        outL[i] += tl[i] * amp[i] * (gl0 + dgl * k);
+        outR[i] += tr[i] * amp[i] * (gr0 + dgr * k);
     }
     if (v.env[0].stage == Idle) v.active = false;
 }
@@ -1179,7 +1191,8 @@ void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, flo
     const OscPatch& p = patch_.osc[o];
     if (!s.table) {   // Noise: the position knob is its colour, unison doesn't apply
         const float level = m.level[o];
-        renderNoise(v.noiseRng, v.oscNoiseLp[o], 2.0f * clampf(p.pos + m.pos[o], 0.0f, 1.0f) - 1.0f, 0.5f * level, L, R, n);
+        renderNoise(v.noiseRng, v.oscNoiseLp[o], 2.0f * clampf(p.pos + m.pos[o], 0.0f, 1.0f) - 1.0f, 0.5f * level,
+                    v.ramp.oscNoiseGain[o], v.ramp.valid, L, R, n);
         return;
     }
     const Wavetable& t = *s.table;
@@ -1189,6 +1202,12 @@ void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, flo
     const int fa = std::min(static_cast<int>(fpos), std::max(t.frames - 2, 0));
     const int fb = std::min(fa + 1, t.frames - 1);
     const float morph = fpos - static_cast<float>(fa);
+    // The morph glides between the same two frames (a new pair: it jumps, the frames differ anyway).
+    const float morph0 = v.ramp.valid && v.ramp.frame[o] == fa ? v.ramp.morph[o] : morph;
+    v.ramp.morph[o] = morph;
+    v.ramp.frame[o] = fa;
+    const float invN = 1.0f / static_cast<float>(n);
+    const float dMorph = (morph - morph0) * invN;
 
     // Detune modulated: this voice's unison ratios, from the stack's spread.
     float ratio[kMaxUnison];
@@ -1212,16 +1231,21 @@ void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, flo
         lvl *= pl;
         lvr *= pr;
     }
+    const float lvl0 = v.ramp.valid ? v.ramp.oscGain[o][0] : lvl, lvr0 = v.ramp.valid ? v.ramp.oscGain[o][1] : lvr;
+    v.ramp.oscGain[o][0] = lvl;
+    v.ramp.oscGain[o][1] = lvr;
 
     // This level's own length: the top `bits` of the phase index it, the rest interpolate.
     const int shift = 32 - kMipBits[mip];
     const uint32_t mask = (1u << shift) - 1;
     const float kFrac = 1.0f / static_cast<float>(1u << shift);
-    const bool twoFrames = fb != fa && morph > 0.0f;   // else frame A alone (classic shapes, a position on a frame)
+    const bool twoFrames = fb != fa && (morph > 0.0f || morph0 > 0.0f);   // else frame A alone (classic shapes, a position on a frame)
     for (int u = 0; u < s.n; ++u) {
         uint32_t ph = v.phase[o][u];
         const uint32_t dph = static_cast<uint32_t>(inc * ratio[u] * 4294967296.0f);
-        const float gl = s.gl[u] * lvl, gr = s.gr[u] * lvr;
+        // Gains glide from the last chunk's: sample i gets g0 + dg * (i + 1), the last one the target.
+        const float gl0 = s.gl[u] * lvl0, gr0 = s.gr[u] * lvr0;
+        const float dgl = (s.gl[u] * lvl - gl0) * invN, dgr = (s.gr[u] * lvr - gr0) * invN;
         int i = 0;
 #ifdef PF_NEON
         // Four samples at a time. The four table positions are computed in core registers;
@@ -1229,8 +1253,10 @@ void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, flo
         // "this sample" and "next sample" vectors. The fractions come from a phase vector.
         uint32x4_t phv = {ph, ph + dph, ph + 2 * dph, ph + 3 * dph};
         const uint32x4_t step4 = vdupq_n_u32(4 * dph), maskv = vdupq_n_u32(mask);
-        const float32x4_t fracScale = vdupq_n_f32(kFrac), mv = vdupq_n_f32(morph);
-        const float32x4_t glv = vdupq_n_f32(gl), grv = vdupq_n_f32(gr);
+        const float32x4_t fracScale = vdupq_n_f32(kFrac), one4 = {1.0f, 2.0f, 3.0f, 4.0f};
+        float32x4_t mv = vmlaq_n_f32(vdupq_n_f32(morph0), one4, dMorph);
+        float32x4_t glv = vmlaq_n_f32(vdupq_n_f32(gl0), one4, dgl), grv = vmlaq_n_f32(vdupq_n_f32(gr0), one4, dgr);
+        const float32x4_t dm4 = vdupq_n_f32(4.0f * dMorph), dgl4 = vdupq_n_f32(4.0f * dgl), dgr4 = vdupq_n_f32(4.0f * dgr);
         for (; i + 4 <= n; i += 4) {
             const uint32_t i0 = ph >> shift, i1 = (ph + dph) >> shift, i2 = (ph + 2 * dph) >> shift, i3 = (ph + 3 * dph) >> shift;
             const float32x4_t fr = vmulq_f32(vcvtq_f32_u32(vandq_u32(phv, maskv)), fracScale);
@@ -1247,26 +1273,31 @@ void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, flo
             vst1q_f32(R + i, vmlaq_f32(vld1q_f32(R + i), x, grv));
             phv = vaddq_u32(phv, step4);
             ph += 4 * dph;
+            mv = vaddq_f32(mv, dm4);
+            glv = vaddq_f32(glv, dgl4);
+            grv = vaddq_f32(grv, dgr4);
         }
 #endif
         if (twoFrames) {
             for (; i < n; ++i) {
+                const float k = static_cast<float>(i + 1);
                 const uint32_t idx = ph >> shift;
                 const float fr = static_cast<float>(ph & mask) * kFrac;
                 const float a = A[idx] + fr * (A[idx + 1] - A[idx]);
                 const float b = B[idx] + fr * (B[idx + 1] - B[idx]);
-                const float x = a + morph * (b - a);
-                L[i] += x * gl;
-                R[i] += x * gr;
+                const float x = a + (morph0 + dMorph * k) * (b - a);
+                L[i] += x * (gl0 + dgl * k);
+                R[i] += x * (gr0 + dgr * k);
                 ph += dph;
             }
         } else {
             for (; i < n; ++i) {
+                const float k = static_cast<float>(i + 1);
                 const uint32_t idx = ph >> shift;
                 const float fr = static_cast<float>(ph & mask) * kFrac;
                 const float x = A[idx] + fr * (A[idx + 1] - A[idx]);
-                L[i] += x * gl;
-                R[i] += x * gr;
+                L[i] += x * (gl0 + dgl * k);
+                R[i] += x * (gr0 + dgr * k);
                 ph += dph;
             }
         }
@@ -1284,14 +1315,20 @@ void Synth::renderSub(Voice& v, int o, float pitch, float level, float* L, float
     const int shift = 32 - kMipBits[mip];
     const uint32_t mask = (1u << shift) - 1;
     const float kFrac = 1.0f / static_cast<float>(1u << shift);
-    const float gl = osc_[o].subGl * level, gr = osc_[o].subGr * level;
+    const float level0 = v.ramp.valid ? v.ramp.subGain[o] : level;
+    v.ramp.subGain[o] = level;
+    const float invN = 1.0f / static_cast<float>(n);
+    const float gl0 = osc_[o].subGl * level0, gr0 = osc_[o].subGr * level0;
+    const float dgl = (osc_[o].subGl * level - gl0) * invN, dgr = (osc_[o].subGr * level - gr0) * invN;
     uint32_t ph = v.subPhase[o];
     const uint32_t dph = static_cast<uint32_t>(inc * 4294967296.0f);
     int i = 0;
 #ifdef PF_NEON
     uint32x4_t phv = {ph, ph + dph, ph + 2 * dph, ph + 3 * dph};
     const uint32x4_t step4 = vdupq_n_u32(4 * dph), maskv = vdupq_n_u32(mask);
-    const float32x4_t fracScale = vdupq_n_f32(kFrac), glv = vdupq_n_f32(gl), grv = vdupq_n_f32(gr);
+    const float32x4_t fracScale = vdupq_n_f32(kFrac), one4 = {1.0f, 2.0f, 3.0f, 4.0f};
+    float32x4_t glv = vmlaq_n_f32(vdupq_n_f32(gl0), one4, dgl), grv = vmlaq_n_f32(vdupq_n_f32(gr0), one4, dgr);
+    const float32x4_t dgl4 = vdupq_n_f32(4.0f * dgl), dgr4 = vdupq_n_f32(4.0f * dgr);
     for (; i + 4 <= n; i += 4) {   // as in renderOsc
         const uint32_t i0 = ph >> shift, i1 = (ph + dph) >> shift, i2 = (ph + 2 * dph) >> shift, i3 = (ph + 3 * dph) >> shift;
         const float32x4_t fr = vmulq_f32(vcvtq_f32_u32(vandq_u32(phv, maskv)), fracScale);
@@ -1302,14 +1339,17 @@ void Synth::renderSub(Voice& v, int o, float pitch, float level, float* L, float
         vst1q_f32(R + i, vmlaq_f32(vld1q_f32(R + i), x, grv));
         phv = vaddq_u32(phv, step4);
         ph += 4 * dph;
+        glv = vaddq_f32(glv, dgl4);
+        grv = vaddq_f32(grv, dgr4);
     }
 #endif
     for (; i < n; ++i) {
+        const float k = static_cast<float>(i + 1);
         const uint32_t idx = ph >> shift;
         const float fr = static_cast<float>(ph & mask) * kFrac;
         const float x = A[idx] + fr * (A[idx + 1] - A[idx]);
-        L[i] += x * gl;
-        R[i] += x * gr;
+        L[i] += x * (gl0 + dgl * k);
+        R[i] += x * (gr0 + dgr * k);
         ph += dph;
     }
     v.subPhase[o] = ph;
@@ -1319,7 +1359,7 @@ void Synth::renderSub(Voice& v, int o, float pitch, float level, float* L, float
 // ~100 Hz. Bright: white plus up to 1.5x its own highpassed part (an upward tilt). Both
 // continuous through white at 0, and scaled by the exact RMS of the filter on white noise
 // so the colour knob changes the tone, not the level.
-void Synth::renderNoise(uint32_t& rng, float* lp, float color, float gain, float* L, float* R, int n) const {
+void Synth::renderNoise(uint32_t& rng, float* lp, float color, float gain, float& prevGain, bool ramped, float* L, float* R, int n) const {
     color = clampf(color, -1.0f, 1.0f);
     constexpr float kB = 0.3f;   // the bright side's fixed lowpass (~2 kHz)
     float a, k, var;
@@ -1332,9 +1372,13 @@ void Synth::renderNoise(uint32_t& rng, float* lp, float color, float gain, float
         k = 1.5f * color;
         var = (1.0f + k) * (1.0f + k) + k * k * kB / (2.0f - kB) - 2.0f * k * (1.0f + k) * kB;
     }
-    const float g = gain * std::min(1.0f / std::sqrt(std::max(var, 1e-6f)), 12.0f);   // dark end needs 11.5
+    const float g1 = gain * std::min(1.0f / std::sqrt(std::max(var, 1e-6f)), 12.0f);   // dark end needs 11.5
+    const float g0 = ramped ? prevGain : g1, dg = (g1 - g0) / static_cast<float>(n);
+    prevGain = g1;
     constexpr float kScale = 1.7320508f / 2147483648.0f;   // uniform -1..1 has RMS 1/sqrt(3): make it 1
+    float g = g0;
     for (int i = 0; i < n; ++i) {
+        g += dg;
         for (int ch = 0; ch < 2; ++ch) {
             rng ^= rng << 13;
             rng ^= rng >> 17;
@@ -1359,9 +1403,15 @@ constexpr float kFormantGain[3] = {1.0f, 0.63f, 0.4f};
 void Synth::filterOne(Voice& v, int f, float pitch, const Mods& m, float mod, float* L, float* R, int n) const {
     const FilterPatch& p = patch_.flt[f];
     const Ctl c = controls(f, pitch, m, mod);
-    const float hz = c.hz, res = c.res, drive = c.drive, pre = c.pre, post = c.post, wet = c.wet;
-    auto drv = [&](float x) { return x + wet * (softclip(x * pre) * post - x); };
+    const float hz = c.hz, res = c.res;
     const bool dirty = patch_.engine == EN_DIRTY;
+    // Like the state-variable types (filterLanes), the controls glide from the last chunk's.
+    auto glideFrom = [&](const float* to, int nc, bool same, float* from) {
+        const bool glide = v.ramp.valid && same;
+        std::copy(glide ? v.ramp.coef[f] : to, (glide ? v.ramp.coef[f] : to) + nc, from);
+        std::copy(to, to + nc, v.ramp.coef[f]);
+        v.ramp.fType[f] = p.type;
+    };
 
     if (isComb(p.type)) {
         // A feedback comb tuned to the cutoff (keytrack 100% = the note's pitch): metallic
@@ -1369,26 +1419,42 @@ void Synth::filterOne(Voice& v, int f, float pitch, const Mods& m, float mod, fl
         // and hollow. Resonance = feedback.
         const float delay = clampf(sr_ / hz, 2.0f, static_cast<float>(kCombLen - 2));
         const float fb = (0.25f + 0.72f * res) * (p.type == F_COMB_MINUS ? -1.0f : 1.0f);
-        const float out = 1.0f - 0.55f * std::fabs(fb);
-        const int d0 = static_cast<int>(delay);
-        const float frac = delay - static_cast<float>(d0);
         constexpr int kMask = kCombLen - 1;
-        if (!v.combLive[f]) {   // this note's first comb chunk: no older note in the lines
+        const bool live = v.combLive[f];
+        if (!live) {   // this note's first comb chunk: no older note in the lines
             std::fill_n(v.comb + static_cast<size_t>(f) * 2 * kCombLen, 2 * kCombLen, 0.0f);
             v.combLive[f] = true;
         }
+        // Delay, feedback and drive move per sample (a delay step would click).
+        const float to[5] = {delay, fb, c.pre, c.post, c.wet};
+        float from[5], d[5];
+        glideFrom(to, 5, live && isComb(v.ramp.fType[f]), from);
+        const float inv = 1.0f / static_cast<float>(n);
+        for (int j = 0; j < 5; ++j) d[j] = (to[j] - from[j]) * inv;
+        const bool drives = from[4] > 0.0f || to[4] > 0.0f;
         for (int ch = 0; ch < 2; ++ch) {
             float* x = ch ? R : L;
             float* line = v.comb + (static_cast<size_t>(f) * 2 + static_cast<size_t>(ch)) * kCombLen;
             int w = v.combPos;
+            float dl = from[0], g = from[1], pre = from[2], post = from[3], wet = from[4];
             for (int i = 0; i < n; ++i) {
-                const float in = drive > 0.0f ? drv(x[i]) : x[i];
+                dl += d[0];
+                g += d[1];
+                float in = x[i];
+                if (drives) {
+                    pre += d[2];
+                    post += d[3];
+                    wet += d[4];
+                    in += wet * (softclip(in * pre) * post - in);
+                }
+                const int d0 = static_cast<int>(dl);
+                const float frac = dl - static_cast<float>(d0);
                 const float a = line[(w - d0) & kMask], b = line[(w - d0 - 1) & kMask];
-                float y = in + fb * (a + frac * (b - a));
+                float y = in + g * (a + frac * (b - a));
                 if (dirty) y = softclip(y);
                 line[w] = y;
                 w = (w + 1) & kMask;
-                x[i] = y * out;
+                x[i] = y * (1.0f - 0.55f * std::fabs(g));
             }
         }
         if (f == 1 || !isComb(patch_.flt[1].type))   // both filters share the write position
@@ -1403,21 +1469,40 @@ void Synth::filterOne(Voice& v, int f, float pitch, const Mods& m, float mod, fl
         const int i0 = std::min(static_cast<int>(t), 3);
         const float u = t - static_cast<float>(i0);
         const float k = 0.9f - 0.8f * res;
-        SvfCoef fc[3];
+        constexpr int kC = 15;   // per formant k, a1, a2, a3 | drive pre, post, wet
+        float to[kC], from[kC];
         for (int j = 0; j < 3; ++j) {
             const float fhz = kVowels[i0][j] + u * (kVowels[i0 + 1][j] - kVowels[i0][j]);
-            fc[j] = makeSvf(tanFast(kPi * std::min(fhz, 0.45f * sr_) / sr_), k);
+            const SvfCoef fc = makeSvf(tanFast(kPi * std::min(fhz, 0.45f * sr_) / sr_), k);
+            to[4 * j] = fc.k;
+            to[4 * j + 1] = fc.a1;
+            to[4 * j + 2] = fc.a2;
+            to[4 * j + 3] = fc.a3;
         }
-        for (int ch = 0; ch < 2; ++ch) {
-            float* x = ch ? R : L;
-            for (int i = 0; i < n; ++i) {
-                const float in = drive > 0.0f ? drv(x[i]) : x[i];
-                float y = 0.0f, b, l;
-                for (int j = 0; j < 3; ++j) {
-                    svf(v.svf[f][ch][j], fc[j], in, b, l);
-                    y += kFormantGain[j] * k * b;
+        to[12] = c.pre;
+        to[13] = c.post;
+        to[14] = c.wet;
+        glideFrom(to, kC, v.ramp.fType[f] == F_VOWEL, from);
+        const int steps = (n + kSubChunk - 1) / kSubChunk;
+        for (int st = 0; st < steps; ++st) {
+            const float s = static_cast<float>(st + 1) / static_cast<float>(steps);
+            float cc[kC];
+            for (int j = 0; j < kC; ++j) cc[j] = from[j] + (to[j] - from[j]) * s;
+            SvfCoef fc[3];
+            for (int j = 0; j < 3; ++j) fc[j] = SvfCoef{0.0f, cc[4 * j], cc[4 * j + 1], cc[4 * j + 2], cc[4 * j + 3]};
+            const float pre = cc[12], post = cc[13], wet = cc[14];
+            const int i1 = st * kSubChunk, i2 = std::min(n, i1 + kSubChunk);
+            for (int ch = 0; ch < 2; ++ch) {
+                float* x = ch ? R : L;
+                for (int i = i1; i < i2; ++i) {
+                    const float in = wet > 0.0f ? x[i] + wet * (softclip(x[i] * pre) * post - x[i]) : x[i];
+                    float y = 0.0f, b, l;
+                    for (int j = 0; j < 3; ++j) {
+                        svf(v.svf[f][ch][j], fc[j], in, b, l);
+                        y += kFormantGain[j] * fc[j].k * b;
+                    }
+                    x[i] = 1.6f * y;
                 }
-                x[i] = 1.6f * y;
             }
         }
     }
@@ -1449,7 +1534,10 @@ void Synth::filterLanes(int f, float* busL, float* busR, int n) {
     const FilterPatch& p = patch_.flt[f];
     if (!isComb(p.type))   // switched to a comb later: it starts from silence
         for (int k = 0; k < nLanes_; ++k) lanes_[k].v->combLive[f] = false;
-    if (p.type == F_OFF) return;
+    if (p.type == F_OFF) {
+        for (int k = 0; k < nLanes_; ++k) lanes_[k].v->ramp.fType[f] = F_OFF;
+        return;
+    }
     if (isComb(p.type) || p.type == F_VOWEL) {
         for (int k = 0; k < nLanes_; ++k) {
             float L[kChunk], R[kChunk];
@@ -1466,81 +1554,132 @@ void Synth::filterLanes(int f, float* busL, float* busR, int n) {
         }
         return;
     }
+    // The state-variable types. Each lane's g (the tuned cutoff), k (resonance) and drive glide
+    // from the last chunk's values to this one's in kSubChunk steps: the coefficients are rebuilt
+    // per step, so the SVF stays stable all the way (any SVF type ramps into any other).
+    constexpr int kC = 5;   // g, k, drive pre, post, wet
+    constexpr float kFlat = 1.4142f;   // the 24 dB types' second stage: Q 0.7, no extra peak
+    const float piOverSr = kPi / sr_;
+    auto isSvf = [](int t) { return t >= F_LP12 && t <= F_PEAK; };
+    // A lane's start and end values; the end is the next chunk's start.
+    auto ramp = [&](const Lane& l, float* from, float* to) {
+        const Ctl ctl = controls(f, l.pitch, l.m, l.mod);
+        to[0] = tanFast(piOverSr * ctl.hz);
+        to[1] = 1.4142f - 1.36f * ctl.res;   // Q 0.7 .. ~18
+        to[2] = ctl.pre;
+        to[3] = ctl.post;
+        to[4] = ctl.wet;
+        Voice& v = *l.v;
+        float* last = v.ramp.coef[f];
+        const bool glide = v.ramp.valid && isSvf(v.ramp.fType[f]);
+        for (int j = 0; j < kC; ++j) {
+            from[j] = glide ? last[j] : to[j];
+            last[j] = to[j];
+        }
+        v.ramp.fType[f] = p.type;
+    };
     const bool dirty = patch_.engine == EN_DIRTY;
+    const int steps = (n + kSubChunk - 1) / kSubChunk;
+    const float invSteps = 1.0f / static_cast<float>(steps);
     for (int q = 0; q < nLanes_; q += 4) {
         if (nLanes_ - q == 1) {   // one voice left: scalar
             const Lane& l = lanes_[q];
-            const Ctl ctl = controls(f, l.pitch, l.m, l.mod);
-            const float g = tanFast(kPi * ctl.hz / sr_);
-            const SvfCoef c = makeSvf(g, 1.4142f - 1.36f * ctl.res), fl = makeSvf(g, 1.4142f);
+            float from[kC], to[kC], d[kC];
+            ramp(l, from, to);
+            for (int j = 0; j < kC; ++j) d[j] = (to[j] - from[j]) * invSteps;
+            const bool drive = from[4] > 0.0f || to[4] > 0.0f;
+            Svf(&st)[2][3] = l.v->svf[f];
             for (int ch = 0; ch < 2; ++ch) {
                 float x[kChunk];
                 float* col = (ch ? busR : busL) + q;
                 for (int i = 0; i < n; ++i) x[i] = col[i * kMaxVoices];
-                if (ctl.drive > 0.0f)
-                    for (int i = 0; i < n; ++i) x[i] += ctl.wet * (softclip(x[i] * ctl.pre) * ctl.post - x[i]);
-                if (dirty) svfScalar<true>(p.type, l.v->svf[f][ch][0], l.v->svf[f][ch][1], c, fl, x, n);
-                else svfScalar<false>(p.type, l.v->svf[f][ch][0], l.v->svf[f][ch][1], c, fl, x, n);
+                float c[kC];
+                std::copy(from, from + kC, c);
+                for (int sc = 0; sc < steps; ++sc) {
+                    for (int j = 0; j < kC; ++j) c[j] += d[j];
+                    const SvfCoef s1 = makeSvf(c[0], c[1]), s2 = makeSvf(c[0], kFlat);
+                    float* xs = x + sc * kSubChunk;
+                    const int len = std::min(kSubChunk, n - sc * kSubChunk);
+                    if (drive)
+                        for (int i = 0; i < len; ++i) xs[i] += c[4] * (softclip(xs[i] * c[2]) * c[3] - xs[i]);
+                    if (dirty) svfScalar<true>(p.type, st[ch][0], st[ch][1], s1, s2, xs, len);
+                    else svfScalar<false>(p.type, st[ch][0], st[ch][1], s1, s2, xs, len);
+                }
                 for (int i = 0; i < n; ++i) col[i * kMaxVoices] = x[i];
             }
             break;
         }
-        // Lane j: its voice's coefficients and state; past the last voice a lane that passes
-        // silence (g = 0) and is never written back.
-        alignas(16) float k[4], a1[4], a2[4], a3[4], fk[4], fa1[4], fa2[4], fa3[4], pre[4], post[4], wet[4];
+        // Lane j: its voice's values and state; past the last voice a lane that passes silence
+        // (g = 0: a1 = 1, a2 = a3 = 0) and is never written back.
+        alignas(16) float from[kC][4], to[kC][4];
         alignas(16) float s[2][4][4];        // [channel][stage 1 ic1, ic2, stage 2 ic1, ic2][lane]
         bool drive = false;
         for (int j = 0; j < 4; ++j) {
             const int lane = q + j;
-            SvfCoef c = makeSvf(0.0f, 1.4142f), fl = c;
-            pre[j] = post[j] = 1.0f;
-            wet[j] = 0.0f;
-            for (int ch = 0; ch < 2; ++ch)
-                for (int x = 0; x < 4; ++x) s[ch][x][j] = 0.0f;
+            float cf[kC] = {0.0f, kFlat, 1.0f, 1.0f, 0.0f}, ct[kC] = {0.0f, kFlat, 1.0f, 1.0f, 0.0f};
             if (lane < nLanes_) {
                 const Lane& l = lanes_[lane];
-                const Ctl ctl = controls(f, l.pitch, l.m, l.mod);
-                const float g = tanFast(kPi * ctl.hz / sr_);
-                c = makeSvf(g, 1.4142f - 1.36f * ctl.res);   // Q 0.7 .. ~18
-                fl = makeSvf(g, 1.4142f);
-                pre[j] = ctl.pre;
-                post[j] = ctl.post;
-                wet[j] = ctl.wet;
-                drive = drive || ctl.drive > 0.0f;
+                ramp(l, cf, ct);
+                drive = drive || cf[4] > 0.0f || ct[4] > 0.0f;
+                const Svf(&vs)[2][3] = l.v->svf[f];
                 for (int ch = 0; ch < 2; ++ch) {
-                    s[ch][0][j] = l.v->svf[f][ch][0].ic1;
-                    s[ch][1][j] = l.v->svf[f][ch][0].ic2;
-                    s[ch][2][j] = l.v->svf[f][ch][1].ic1;
-                    s[ch][3][j] = l.v->svf[f][ch][1].ic2;
+                    s[ch][0][j] = vs[ch][0].ic1;
+                    s[ch][1][j] = vs[ch][0].ic2;
+                    s[ch][2][j] = vs[ch][1].ic1;
+                    s[ch][3][j] = vs[ch][1].ic2;
                 }
+            } else {
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int x = 0; x < 4; ++x) s[ch][x][j] = 0.0f;
             }
-            k[j] = c.k;
-            a1[j] = c.a1;
-            a2[j] = c.a2;
-            a3[j] = c.a3;
-            fk[j] = fl.k;
-            fa1[j] = fl.a1;
-            fa2[j] = fl.a2;
-            fa3[j] = fl.a3;
+            for (int x = 0; x < kC; ++x) {
+                from[x][j] = cf[x];
+                to[x][j] = ct[x];
+            }
         }
-        const SvfV cv{load4(k), load4(a1), load4(a2), load4(a3)};
-        const SvfV fv{load4(fk), load4(fa1), load4(fa2), load4(fa3)};
         const QuadFn run = quadFor(p.type, dirty);
-        for (int ch = 0; ch < 2; ++ch) {
-            float* bus = (ch ? busR : busL) + q;
-            if (drive) driveQuad(bus, n, DriveV{load4(pre), load4(post), load4(wet)});
-            f4 st[4];
-            for (int x = 0; x < 4; ++x) st[x] = load4(s[ch][x]);
-            run(bus, n, cv, fv, st);
-            for (int x = 0; x < 4; ++x) store4(s[ch][x], st[x]);
-        }
-        for (int j = 0; j < 4 && q + j < nLanes_; ++j) {
-            Voice& v = *lanes_[q + j].v;
+        f4 st[2][4];
+        for (int ch = 0; ch < 2; ++ch)
+            for (int x = 0; x < 4; ++x) st[ch][x] = load4(s[ch][x]);
+        const f4 inv = splat(invSteps), one = splat(1.0f), flat = splat(kFlat);
+        f4 g = load4(from[0]), k = load4(from[1]), pre = load4(from[2]), post = load4(from[3]), wet = load4(from[4]);
+        const f4 dg = (load4(to[0]) - g) * inv, dk = (load4(to[1]) - k) * inv, dpre = (load4(to[2]) - pre) * inv,
+                 dpost = (load4(to[3]) - post) * inv, dwet = (load4(to[4]) - wet) * inv;
+        for (int sc = 0; sc < steps; ++sc) {
+            g += dg;
+            k += dk;
+            SvfV cv, fv;
+            cv.k = k;
+            cv.a1 = recip4(one + g * (g + k));
+            cv.a2 = g * cv.a1;
+            cv.a3 = g * cv.a2;
+            fv.k = flat;
+            fv.a1 = recip4(one + g * (g + flat));
+            fv.a2 = g * fv.a1;
+            fv.a3 = g * fv.a2;
+            DriveV dv;
+            if (drive) {
+                pre += dpre;
+                post += dpost;
+                wet += dwet;
+                dv = DriveV{pre, post, wet};
+            }
+            const int len = std::min(kSubChunk, n - sc * kSubChunk), row = sc * kSubChunk * kMaxVoices;
             for (int ch = 0; ch < 2; ++ch) {
-                v.svf[f][ch][0].ic1 = s[ch][0][j];
-                v.svf[f][ch][0].ic2 = s[ch][1][j];
-                v.svf[f][ch][1].ic1 = s[ch][2][j];
-                v.svf[f][ch][1].ic2 = s[ch][3][j];
+                float* bus = (ch ? busR : busL) + q + row;
+                if (drive) driveQuad(bus, len, dv);
+                run(bus, len, cv, fv, st[ch]);
+            }
+        }
+        for (int ch = 0; ch < 2; ++ch)
+            for (int x = 0; x < 4; ++x) store4(s[ch][x], st[ch][x]);
+        for (int j = 0; j < 4 && q + j < nLanes_; ++j) {
+            Svf(&vs)[2][3] = lanes_[q + j].v->svf[f];
+            for (int ch = 0; ch < 2; ++ch) {
+                vs[ch][0].ic1 = s[ch][0][j];
+                vs[ch][0].ic2 = s[ch][1][j];
+                vs[ch][1].ic1 = s[ch][2][j];
+                vs[ch][1].ic2 = s[ch][3][j];
             }
         }
     }
