@@ -961,6 +961,21 @@ int Synth::activeVoices() const {
     return n;
 }
 
+int Synth::shedTails(int max) {
+    int shed = 0;
+    while (shed < max) {
+        Voice* quiet = nullptr;
+        for (auto& v : voices_)
+            if (v.active && !v.gate && !v.sustained && v.fade <= 0 && v.pendingNote < 0 &&
+                (!quiet || v.env[0].v < quiet->env[0].v))
+                quiet = &v;
+        if (!quiet) break;
+        quiet->fade = kFadeSamples;   // finishVoice fades it, then frees it (nothing waits to start)
+        ++shed;
+    }
+    return shed;
+}
+
 uint32_t Synth::random(uint32_t& state) {   // xorshift32
     state ^= state << 13;
     state ^= state >> 17;

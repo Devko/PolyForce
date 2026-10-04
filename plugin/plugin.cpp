@@ -19,6 +19,7 @@
 #include "presets.h"
 #include "state.h"
 #include "surface.h"
+#include "cpu_guard.h"
 #include "../dsp/tuning.h"
 #include "../dsp/notegen.h"
 #include "../dsp/synth.h"
@@ -105,10 +106,17 @@ struct Plugin {
     int     ppqOffset = 0;   // process(): this sub-block starts this many samples into the host's block
 
     // CPU meter: the audio thread sums its own CPU time against the real-time budget and
-    // publishes twice a second; the status line is formatted on the UI thread.
+    // publishes twice a second; the status line is formatted on the UI thread. The guard
+    // sheds release tails when a block costs too much; the meter counts them.
     double           winUs = 0.0, winBudgetUs = 0.0, winPeak = 0.0;
-    std::atomic<int> shownVoices{0}, shownAvg{0}, shownPeak{0};   // percent
-    int              lastVoices = -1, lastAvg = -1, lastPeak = -1;
+    int              winShed = 0;
+    std::atomic<int> shownVoices{0}, shownAvg{0}, shownPeak{0}, shownShed{0};   // percent; tails shed
+    int              lastVoices = -1, lastAvg = -1, lastPeak = -1, lastShed = -1;
+    CpuGuard         guard;
+    const bool       guardOn = [] {   // PF_CPU_GUARD=0 turns it off (the tests: emulated or sanitized
+        const char* e = std::getenv("PF_CPU_GUARD");   // blocks are slow, and must stay deterministic)
+        return !e || std::strcmp(e, "0") != 0;
+    }();
 
     Plugin() {
         // Loaded tables show in the stepper texts and the browser; a fresh one goes on the
@@ -136,9 +144,14 @@ void copyStr(void* dst, const std::string& s, size_t cap) {
 std::string statusText(const Plugin* p) {
     const std::string busy = p->surface.busyText();
     if (!busy.empty()) return busy;
-    char b[64];
-    std::snprintf(b, sizeof b, "VOICES %d   CPU %d%%   PEAK %d%%", p->shownVoices.load(),
-                  p->shownAvg.load(), p->shownPeak.load());
+    char b[80];
+    const int shed = p->shownShed.load();
+    if (shed > 0)   // the guard faded release tails in the last half second
+        std::snprintf(b, sizeof b, "VOICES %d   CPU %d%%   PEAK %d%%   GUARD %d", p->shownVoices.load(),
+                      p->shownAvg.load(), p->shownPeak.load(), shed);
+    else
+        std::snprintf(b, sizeof b, "VOICES %d   CPU %d%%   PEAK %d%%", p->shownVoices.load(),
+                      p->shownAvg.load(), p->shownPeak.load());
     return b;
 }
 
@@ -277,6 +290,8 @@ void runBlock(Plugin* p, float* L, float* R, int n) {
 
 void meter(Plugin* p, double us, int n) {
     const double budget = static_cast<double>(n) * 1e6 / kSampleRate;
+    if (p->guardOn)
+        if (const int k = p->guard.afterBlock(us, budget)) p->winShed += p->synth.shedTails(k);
     p->winUs += us;
     p->winBudgetUs += budget;
     p->winPeak = std::max(p->winPeak, us / budget);
@@ -284,15 +299,18 @@ void meter(Plugin* p, double us, int n) {
 
     const int avg = static_cast<int>(std::lround(100.0 * p->winUs / p->winBudgetUs));
     const int peak = static_cast<int>(std::lround(100.0 * p->winPeak));
-    const int voices = p->synth.activeVoices();
+    const int voices = p->synth.activeVoices(), shed = p->winShed;
     p->winUs = p->winBudgetUs = p->winPeak = 0.0;
+    p->winShed = 0;
     p->shownAvg.store(avg);
     p->shownPeak.store(peak);
     p->shownVoices.store(voices);
-    if (avg != p->lastAvg || peak != p->lastPeak || voices != p->lastVoices) {
+    p->shownShed.store(shed);
+    if (avg != p->lastAvg || peak != p->lastPeak || voices != p->lastVoices || shed != p->lastShed) {
         p->lastAvg = avg;
         p->lastPeak = peak;
         p->lastVoices = voices;
+        p->lastShed = shed;
         if (p->master) p->master(&p->fx, vst::audioMasterUpdateDisplay, 0, 0, nullptr, 0.0f);
     }
 }

@@ -302,6 +302,7 @@ int main() {
     setenv("PF_TABLE_ROOTS", (fx + "/plugin:" + fx + "/ssd").c_str(), 1);
     setenv("PF_PRESET_ROOTS", (fx + "/presets").c_str(), 1);
     setenv("PF_TUNING_ROOTS", (fx + "/tunings").c_str(), 1);
+    setenv("PF_CPU_GUARD", "0", 1);   // emulated / sanitized blocks are slow: no shedding mid-test
     std::filesystem::create_directories(fx + "/data");
 
     std::printf("== tables\n");

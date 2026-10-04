@@ -161,6 +161,9 @@ public:
 
     void render(float* outL, float* outR, int n);   // overwrites n samples
     int  activeVoices() const;
+    // The CPU guard (plugin/cpu_guard.h): fades out up to `max` voices that are only ringing out
+    // (released, not held by the pedal), quietest first, over the steal fade. Returns how many.
+    int  shedTails(int max);
 
     // What a voice is doing (tests, diagnostics).
     struct VoiceInfo {

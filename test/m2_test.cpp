@@ -2,6 +2,7 @@
 // the same note again, bend ranges, the velocity curve. Mostly on the engine directly.
 #include "host.h"
 #include "../dsp/synth.h"
+#include "../plugin/cpu_guard.h"
 
 #include <set>
 
@@ -49,6 +50,13 @@ struct Rig {
         int n = 0;
         for (int i = 0; i < pf::kMaxVoices; ++i) n += s.voiceInfo(i).active ? 1 : 0;
         return n;
+    }
+    bool sounds(int note) const {
+        for (int i = 0; i < pf::kMaxVoices; ++i) {
+            const auto v = s.voiceInfo(i);
+            if (v.active && v.note == note) return true;
+        }
+        return false;
     }
     float pitchOf(int note) const {
         for (int i = 0; i < pf::kMaxVoices; ++i) {
@@ -265,6 +273,44 @@ void sameNoteAndRanges() {
     CHECK(level[0] < level[1] && level[1] < level[2]);
 }
 
+// The CPU guard: the rule (a lone costly block sheds nothing) and the engine side (only
+// release tails go, quietest first, without a click; held and sustained notes stay).
+void cpuGuard() {
+    {
+        pf::CpuGuard g;
+        CHECK(g.afterBlock(500.0, 1000.0) == 0);    // one block over 40%: a spike
+        CHECK(g.afterBlock(500.0, 1000.0) == 1);    // the next one too: shed
+        CHECK(g.afterBlock(100.0, 1000.0) == 0);
+        CHECK(g.afterBlock(800.0, 1000.0) == 2);    // over 65%: at once
+        CHECK(g.afterBlock(300.0, 1000.0) == 0);
+    }
+    pf::Patch p = plain();
+    p.env[0].r = 4.0f;   // long tails
+    Rig r(p);
+    r.s.noteOn(60, 100);
+    r.s.noteOn(64, 100);
+    r.s.noteOn(67, 100);
+    r.s.noteOn(72, 100);
+    r.run(20);
+    r.s.noteOff(60);
+    r.run(40);           // 60 has been ringing out longest: the quietest tail
+    r.s.noteOff(64);
+    r.s.sustain(true);
+    r.s.noteOff(67);     // held by the pedal: not a tail
+    r.run(4);
+    CHECK(r.s.activeVoices() == 4);
+    CHECK(r.s.shedTails(1) == 1);
+    r.maxJump = 0.0f;
+    r.run(4);            // the 3 ms fade, then the voice is free
+    CHECK(r.s.activeVoices() == 3);
+    CHECK(!r.sounds(60) && r.sounds(64) && r.sounds(67) && r.sounds(72));
+    CHECK(r.maxJump < 0.05f);
+    CHECK(r.s.shedTails(4) == 1);   // only 64 is left to shed
+    r.run(4);
+    CHECK(r.s.activeVoices() == 2 && r.sounds(67) && r.sounds(72));
+    CHECK(r.s.shedTails(4) == 0);
+}
+
 } // namespace
 
 void voiceTests() {
@@ -273,6 +319,7 @@ void voiceTests() {
     monoLegatoDuo();
     glide();
     sameNoteAndRanges();
+    cpuGuard();
 }
 
 } // namespace pft
