@@ -11,14 +11,18 @@ Writes, next to this file:
   build/param_ids.h  everything the C++ is compiled against: parameter ids, kinds, value
                      curves, names, options and defaults (the C++ never reads gen_vst's params.h,
                      so `make test` and the .so build need only Python, not the skin toolchain)
+  build/skin_style.json  the palette, knob looks and primary buttons for skin_polish.py, which
+                     `make skin` runs after the generator
 
 Continuous parameters are declared to MPC as 0..1: the real range and curve (log Hz, log
 seconds, ...) live in param_ids.h, and the plugin formats every value text itself, so the
 knob, its label and the DSP can never disagree.
 
 Before writing anything the layout is checked the way shadow_skin.py would (unknown keys,
-option counts, when=, Q-Link sets) plus geometry (inside the plugin area, no overlaps within
-a page or mode panel), so a broken page fails here instead of on the device.
+option counts, when=, Q-Link sets) plus geometry with shadow_skin's own sizes (inside the plugin
+area, no overlaps within a page or mode panel, nothing in a card's title band, open popup lists
+inside the plugin area, bitmap-font glyphs) and the parameter names MPC shows (short, unique), so
+a broken page fails here instead of on the device.
 
 Run: python3 surface/surface.py   (make surface does this)
 """
@@ -83,8 +87,8 @@ def num(key, name, curve, lo, hi, default, fmt):
 
 def stepper(key, name):
     _add(key, name, "stepper", "int", 0, STEPPER_RANGE, 0, "text")
-    button(key + "_prev", name + " prev")
-    button(key + "_next", name + " next")
+    button(key + "_prev", name + " Prev")
+    button(key + "_next", name + " Next")
 
 
 def button(key, name):
@@ -108,7 +112,7 @@ def popup_flag(of):
 readout("status", "Status")            # index 0 must stay a read-only readout: MPC sets it at load
 num("volume", "Volume", "lin", -60, 6, -6, "db")
 num("voices", "Voices", "int", 1, MAX_VOICES, MAX_VOICES, "count")
-enum("routing", "Routing", ROUTING, "Serial")
+enum("routing", "Filter Routing", ROUTING, "Serial")
 
 OSC_WAVES = ["Table", "Sine", "Triangle", "Saw", "Square", "Pulse", "Noise"]   # dsp/synth.h OscWave
 PHASE_MODES = ["Reset", "Random", "Free"]
@@ -116,51 +120,51 @@ ROUTES = ["F1", "F2", "F1+F2", "Direct"]
 SUB_WAVES = ["Sine", "Triangle", "Saw", "Square"]
 
 for o, (pos, semi, fine, level) in ((1, (0.66, 0, 0, 0.8)), (2, (0.66, 0, 7, 0.6))):
-    enum("o%d_wave" % o, "Osc %d wave" % o, OSC_WAVES, "Table")
+    enum("o%d_wave" % o, "O%d Wave" % o, OSC_WAVES, "Table")
     popup_flag("o%d_wave" % o)
-    stepper("o%d_table" % o, "Osc %d table" % o)
-    num("o%d_pos" % o, "Osc %d position" % o, "lin", 0, 1, pos, "frame%d" % o)
-    num("o%d_oct" % o, "Osc %d octave" % o, "int", -3, 3, 0, "oct")
-    num("o%d_semi" % o, "Osc %d semitone" % o, "int", -12, 12, semi, "semi")
-    num("o%d_fine" % o, "Osc %d fine" % o, "lin", -100, 100, fine, "cent")
-    num("o%d_uni" % o, "Osc %d unison" % o, "int", 1, MAX_UNISON, 1, "count")
-    num("o%d_detune" % o, "Osc %d detune" % o, "lin", 0, 1, 0.3, "detune")
-    num("o%d_width" % o, "Osc %d width" % o, "lin", 0, 1, 0.5, "pct")
-    num("o%d_level" % o, "Osc %d level" % o, "lin", 0, 1, level, "pct")
-    num("o%d_pan" % o, "Osc %d pan" % o, "lin", -1, 1, 0, "pan")
-    num("o%d_phase" % o, "Osc %d phase" % o, "lin", 0, 1, 0, "deg")
-    enum("o%d_phmode" % o, "Osc %d phase mode" % o, PHASE_MODES, "Reset")
-    enum("o%d_route" % o, "Osc %d route" % o, ROUTES, "F1")
-    enum("o%d_sub_wave" % o, "Sub %d wave" % o, SUB_WAVES, "Sine")
-    num("o%d_sub_tune" % o, "Sub %d tune" % o, "int", -36, 12, -12, "semi")
-    num("o%d_sub_level" % o, "Sub %d level" % o, "lin", 0, 1, 0, "pct")
+    stepper("o%d_table" % o, "O%d Table" % o)
+    num("o%d_pos" % o, "O%d Position" % o, "lin", 0, 1, pos, "frame%d" % o)
+    num("o%d_oct" % o, "O%d Octave" % o, "int", -3, 3, 0, "oct")
+    num("o%d_semi" % o, "O%d Semi" % o, "int", -12, 12, semi, "semi")
+    num("o%d_fine" % o, "O%d Fine" % o, "lin", -100, 100, fine, "cent")
+    num("o%d_uni" % o, "O%d Unison" % o, "int", 1, MAX_UNISON, 1, "count")
+    num("o%d_detune" % o, "O%d Detune" % o, "lin", 0, 1, 0.3, "detune")
+    num("o%d_width" % o, "O%d Width" % o, "lin", 0, 1, 0.5, "pct")
+    num("o%d_level" % o, "O%d Level" % o, "lin", 0, 1, level, "pct")
+    num("o%d_pan" % o, "O%d Pan" % o, "lin", -1, 1, 0, "pan")
+    num("o%d_phase" % o, "O%d Phase" % o, "lin", 0, 1, 0, "deg")
+    enum("o%d_phmode" % o, "O%d Phase Mode" % o, PHASE_MODES, "Reset")
+    enum("o%d_route" % o, "O%d Route" % o, ROUTES, "F1")
+    enum("o%d_sub_wave" % o, "Sub%d Wave" % o, SUB_WAVES, "Sine")
+    num("o%d_sub_tune" % o, "Sub%d Tune" % o, "int", -36, 12, -12, "semi")
+    num("o%d_sub_level" % o, "Sub%d Level" % o, "lin", 0, 1, 0, "pct")
 
-num("noise_level", "Noise level", "lin", 0, 1, 0, "pct")
-num("noise_color", "Noise colour", "lin", -1, 1, 0, "bipct")
-enum("noise_route", "Noise route", ROUTES, "F1")
-enum("ui_osc", "Oscillator page", ["OSC 1", "OSC 2", "NOISE"], "OSC 1", ui=True)
+num("noise_level", "Noise Level", "lin", 0, 1, 0, "pct")
+num("noise_color", "Noise Colour", "lin", -1, 1, 0, "bipct")
+enum("noise_route", "Noise Route", ROUTES, "F1")
+enum("ui_osc", "Osc Page", ["OSC 1", "OSC 2", "NOISE"], "OSC 1", ui=True)
 
-enum("engine", "Engine", ENGINES, "Normal")
+enum("engine", "Filter Engine", ENGINES, "Normal")
 for f, (ftype, cut, env) in ((1, ("LP24", 1200, 0.25)), (2, ("Off", 8000, 0.0))):
-    enum("f%d_type" % f, "Filter %d type" % f, FILTER_TYPES, ftype)
+    enum("f%d_type" % f, "F%d Type" % f, FILTER_TYPES, ftype)
     popup_flag("f%d_type" % f)
-    num("f%d_cut" % f, "Filter %d cutoff" % f, "log", 20, 20000, cut, "hz")
-    num("f%d_res" % f, "Filter %d resonance" % f, "lin", 0, 1, 0.25, "pct")
-    num("f%d_env" % f, "Filter %d env 2" % f, "lin", -1, 1, env, "bipct")
-    num("f%d_key" % f, "Filter %d keytrack" % f, "lin", 0, 1, 0.5, "pct")
-    num("f%d_drive" % f, "Filter %d drive" % f, "lin", 0, 1, 0.0, "pct")
+    num("f%d_cut" % f, "F%d Cutoff" % f, "log", 20, 20000, cut, "hz")
+    num("f%d_res" % f, "F%d Reso" % f, "lin", 0, 1, 0.25, "pct")
+    num("f%d_env" % f, "F%d Env 2" % f, "lin", -1, 1, env, "bipct")
+    num("f%d_key" % f, "F%d Keytrack" % f, "lin", 0, 1, 0.5, "pct")
+    num("f%d_drive" % f, "F%d Drive" % f, "lin", 0, 1, 0.0, "pct")
 
 for e, (a, d, s, r) in ((1, (0.003, 0.4, 0.8, 0.3)), (2, (0.001, 0.6, 0.2, 0.5))):
-    num("e%d_a" % e, "Env %d attack" % e, "log", 0.001, 20, a, "time")
-    num("e%d_d" % e, "Env %d decay" % e, "log", 0.001, 20, d, "time")
-    num("e%d_s" % e, "Env %d sustain" % e, "lin", 0, 1, s, "pct")
-    num("e%d_r" % e, "Env %d release" % e, "log", 0.001, 20, r, "time")
+    num("e%d_a" % e, "E%d Attack" % e, "log", 0.001, 20, a, "time")
+    num("e%d_d" % e, "E%d Decay" % e, "log", 0.001, 20, d, "time")
+    num("e%d_s" % e, "E%d Sustain" % e, "lin", 0, 1, s, "pct")
+    num("e%d_r" % e, "E%d Release" % e, "log", 0.001, 20, r, "time")
     if e == 1:
-        num("e1_vel", "Env 1 velocity", "lin", 0, 1, 0.5, "pct")
+        num("e1_vel", "E1 Velocity", "lin", 0, 1, 0.5, "pct")
     else:
-        num("e2_pos", "Env 2 > wave pos", "lin", -1, 1, 0.0, "bipct")
-        num("e2_vel", "Env 2 velocity", "lin", 0, 1, 0.0, "pct")
-        enum("e2_loop", "Env 2 loop", ["Off", "Loop"], "Off")
+        num("e2_pos", "E2 > Pos", "lin", -1, 1, 0.0, "bipct")
+        num("e2_vel", "E2 Velocity", "lin", 0, 1, 0.0, "pct")
+        enum("e2_loop", "E2 Loop", ["Off", "Loop"], "Off")
 
 # --- modulation (Milestone 5): two LFOs, the 12 x 2 matrix, four XY pads ---
 LFO_WAVES = ["Sine", "Triangle", "Saw Up", "Saw Down", "Square", "S&H", "Smooth"]   # dsp/mod.h LfoWave
@@ -180,29 +184,29 @@ MOD_SLOTS = 12
 
 for l in (1, 2):
     p = "l%d_" % l
-    enum(p + "wave", "LFO %d wave" % l, LFO_WAVES, "Sine")
+    enum(p + "wave", "L%d Wave" % l, LFO_WAVES, "Sine")
     popup_flag(p + "wave")
-    enum(p + "sync", "LFO %d sync" % l, ["Free", "Sync"], "Free")
-    num(p + "rate", "LFO %d rate" % l, "log", 0.02, 40, 2.0 if l == 1 else 0.5, "lfohz")
-    enum(p + "div", "LFO %d sync rate" % l, SYNC_DIVS, "1/4")
+    enum(p + "sync", "L%d Sync" % l, ["Free", "Sync"], "Free")
+    num(p + "rate", "L%d Rate" % l, "log", 0.02, 40, 2.0 if l == 1 else 0.5, "lfohz")
+    enum(p + "div", "L%d Sync Rate" % l, SYNC_DIVS, "1/4")
     popup_flag(p + "div")
-    num(p + "phase", "LFO %d phase" % l, "lin", 0, 1, 0, "deg")
-    num(p + "delay", "LFO %d delay" % l, "pow", 0, 10, 0, "time")
-    num(p + "fade", "LFO %d fade in" % l, "pow", 0, 10, 0, "time")
-    enum(p + "trig", "LFO %d trigger" % l, ["Retrig", "Free", "Global"], "Retrig")
-    enum(p + "polar", "LFO %d polarity" % l, ["Bipolar", "Unipolar"], "Bipolar")
-    num(p + "depth", "LFO %d depth" % l, "lin", 0, 1, 1, "pct")
+    num(p + "phase", "L%d Phase" % l, "lin", 0, 1, 0, "deg")
+    num(p + "delay", "L%d Delay" % l, "pow", 0, 10, 0, "time")
+    num(p + "fade", "L%d Fade In" % l, "pow", 0, 10, 0, "time")
+    enum(p + "trig", "L%d Trigger" % l, ["Retrig", "Free", "Global"], "Retrig")
+    enum(p + "polar", "L%d Polarity" % l, ["Bipolar", "Unipolar"], "Bipolar")
+    num(p + "depth", "L%d Depth" % l, "lin", 0, 1, 1, "pct")
 
 for k in range(1, MOD_SLOTS + 1):
     p = "m%d_" % k
-    enum(p + "src", "Mod %d source" % k, MOD_SOURCES, "None")
-    enum(p + "via", "Mod %d via" % k, MOD_SOURCES, "None")
-    enum(p + "mod", "Mod %d modifier" % k, MODIFIERS, "None")
-    num(p + "modamt", "Mod %d modifier amount" % k, "lin", -1, 1, 0, "bipct")
-    enum(p + "t1", "Mod %d target 1" % k, MOD_TARGETS, "Off")   # each amount right after its target
-    num(p + "a1", "Mod %d amount 1" % k, "lin", -1, 1, 0, "modamt")
-    enum(p + "t2", "Mod %d target 2" % k, MOD_TARGETS, "Off")
-    num(p + "a2", "Mod %d amount 2" % k, "lin", -1, 1, 0, "modamt")
+    enum(p + "src", "M%d Source" % k, MOD_SOURCES, "None")
+    enum(p + "via", "M%d Via" % k, MOD_SOURCES, "None")
+    enum(p + "mod", "M%d Modifier" % k, MODIFIERS, "None")
+    num(p + "modamt", "M%d Mod Amt" % k, "lin", -1, 1, 0, "bipct")
+    enum(p + "t1", "M%d Target 1" % k, MOD_TARGETS, "Off")   # each amount right after its target
+    num(p + "a1", "M%d Amt 1" % k, "lin", -1, 1, 0, "modamt")
+    enum(p + "t2", "M%d Target 2" % k, MOD_TARGETS, "Off")
+    num(p + "a2", "M%d Amt 2" % k, "lin", -1, 1, 0, "modamt")
     for key in ("src", "via", "mod", "t1", "t2"):
         popup_flag(p + key)
 
@@ -210,73 +214,73 @@ for k in range(1, MOD_SLOTS + 1):
 ARP_DIRS = ["Up", "Down", "Up/Down", "Down/Up", "Played", "Random", "Chord"]   # dsp/notegen.h ArpDir
 SEQ_STEPS = 16
 SHAPE_STEPS = 8
-enum("seq_mode", "Arp/Seq", ["Off", "Arp", "Seq"], "Off")
-enum("arp_dir", "Arp direction", ARP_DIRS, "Up")
+enum("seq_mode", "Arp/Seq Mode", ["Off", "Arp", "Seq"], "Off")
+enum("arp_dir", "Arp Direction", ARP_DIRS, "Up")
 popup_flag("arp_dir")
-num("arp_oct", "Arp octaves", "int", 1, 4, 1, "count")
-enum("clk_rate", "Arp/Seq rate", SYNC_DIVS, "1/16")
+num("arp_oct", "Arp Octaves", "int", 1, 4, 1, "count")
+enum("clk_rate", "Arp/Seq Rate", SYNC_DIVS, "1/16")
 popup_flag("clk_rate")
-num("clk_gate", "Arp/Seq gate", "lin", 0.05, 1, 0.5, "pct")
-num("clk_swing", "Arp/Seq swing", "lin", 0, 0.5, 0, "pct")
-enum("arp_latch", "Arp latch", ["Off", "Latch"], "Off")
-enum("arp_pattern", "Arp pattern", ["Off", "Steps"], "Off")
-num("seq_steps", "Seq steps", "int", 1, SEQ_STEPS, SEQ_STEPS, "count")
-enum("seq_rec", "Seq record", ["Off", "Rec"], "Off", ui=True)
+num("clk_gate", "Arp/Seq Gate", "lin", 0.05, 1, 0.5, "pct")
+num("clk_swing", "Swing", "lin", 0, 0.5, 0, "pct")
+enum("arp_latch", "Arp Latch", ["Off", "Latch"], "Off")
+enum("arp_pattern", "Arp Pattern", ["Off", "Steps"], "Off")
+num("seq_steps", "Seq Steps", "int", 1, SEQ_STEPS, SEQ_STEPS, "count")
+enum("seq_rec", "Seq Record", ["Off", "Rec"], "Off", ui=True)
 for k in range(1, SEQ_STEPS + 1):
-    num("s%d_note" % k, "Step %d note" % k, "int", -24, 24, 0, "semi")
+    num("s%d_note" % k, "Note %d" % k, "int", -24, 24, 0, "semi")
 for k in range(1, SEQ_STEPS + 1):
-    num("s%d_vel" % k, "Step %d velocity" % k, "int", 0, 127, 100, "count")
+    num("s%d_vel" % k, "Vel %d" % k, "int", 0, 127, 100, "count")
 for k in range(1, SEQ_STEPS + 1):
-    num("s%d_mod" % k, "Step %d mod" % k, "lin", -1, 1, 0, "bipct")
-enum("sh_rate", "Shape rate", SYNC_DIVS, "1/8")
+    num("s%d_mod" % k, "Mod %d" % k, "lin", -1, 1, 0, "bipct")
+enum("sh_rate", "Shape Rate", SYNC_DIVS, "1/8")
 popup_flag("sh_rate")
-num("sh_steps", "Shape steps", "int", 1, SHAPE_STEPS, SHAPE_STEPS, "count")
+num("sh_steps", "Shape Steps", "int", 1, SHAPE_STEPS, SHAPE_STEPS, "count")
 for l in range(1, 5):
-    enum("sh%d_mode" % l, "Shape %d mode" % l, ["Step", "Ramp", "Smooth"], "Step")
+    enum("sh%d_mode" % l, "Shape %d Mode" % l, ["Step", "Ramp", "Smooth"], "Step")
     for k in range(1, SHAPE_STEPS + 1):
-        num("sh%d_%d" % (l, k), "Shape %d step %d" % (l, k), "lin", -1, 1, 0, "bipct")
-enum("ui_seq", "Sequencer page", ["ARP", "STEPS", "SHAPES"], "ARP", ui=True)
+        num("sh%d_%d" % (l, k), "Sh%d Step %d" % (l, k), "lin", -1, 1, 0, "bipct")
+enum("ui_seq", "Seq Page", ["ARP", "STEPS", "SHAPES 1-2", "SHAPES 3-4"], "ARP", ui=True)
 
 for x in range(1, 5):
-    num("xy%d_x" % x, "XY %d X" % x, "lin", 0, 1, 0, "pct")
-    num("xy%d_y" % x, "XY %d Y" % x, "lin", 0, 1, 0, "pct")
-button("xy_auto", "XY auto-assign")
-enum("ui_mod", "Modulation page", ["ENVELOPES", "LFO 1", "LFO 2", "XY"], "ENVELOPES", ui=True)
-enum("ui_mx", "Matrix page", ["1-4", "5-8", "9-12", "MODIFIERS"], "1-4", ui=True)
+    num("xy%d_x" % x, "XY Pad X%d" % x, "lin", 0, 1, 0, "pct")
+    num("xy%d_y" % x, "XY Pad Y%d" % x, "lin", 0, 1, 0, "pct")
+button("xy_auto", "XY Auto-Assign")
+enum("ui_mod", "Mod Page", ["ENVELOPES", "LFOS", "XY"], "ENVELOPES", ui=True)
+enum("ui_mx", "Matrix Page", ["1-4", "5-8", "9-12", "MODIFIERS"], "1-4", ui=True)
 
 # --- voices (Milestone 2) ---
-enum("vmode", "Voice mode", ["Poly", "Duo", "Mono", "Legato"], "Poly")
-enum("steal", "Steal", ["Oldest", "Quietest", "Keep low", "Keep high"], "Oldest")
-enum("same_note", "Same note", ["Retrigger", "New voice"], "Retrigger")
-enum("glide_mode", "Glide", ["Off", "Always", "Legato"], "Off")
-enum("glide_type", "Glide type", ["Time", "Rate"], "Time")
-num("glide", "Glide time", "log", 0.001, 10, 0.08, "time")
-num("bend_up", "Bend up", "int", 0, 24, 2, "semi")
-num("bend_dn", "Bend down", "int", 0, 24, 2, "semi")
-num("vel_curve", "Velocity curve", "lin", -1, 1, 0, "bipct")
+enum("vmode", "Voice Mode", ["Poly", "Duo", "Mono", "Legato"], "Poly")
+enum("steal", "Voice Steal", ["Oldest", "Quietest", "Keep low", "Keep high"], "Oldest")
+enum("same_note", "Same Note", ["Retrigger", "New voice"], "Retrigger")
+enum("glide_mode", "Glide Mode", ["Off", "Always", "Legato"], "Off")
+enum("glide_type", "Glide Type", ["Time", "Rate"], "Time")
+num("glide", "Glide Time", "log", 0.001, 10, 0.08, "time")
+num("bend_up", "Bend Up", "int", 0, 24, 2, "semi")
+num("bend_dn", "Bend Down", "int", 0, 24, 2, "semi")
+num("vel_curve", "Vel Curve", "lin", -1, 1, 0, "bipct")
 
 # --- tuning and presets (Milestone 7) ---
 stepper("tuning", "Tuning")
 stepper("preset", "Preset")
-button("pre_save", "Save preset")
-button("pre_init", "Init patch")
+button("pre_save", "Save Preset")
+button("pre_init", "Init Patch")
 button("pre_rand", "Randomize")
-num("rand_amt", "Randomize amount", "lin", 0, 1, 0.5, "pct")
+num("rand_amt", "Rand Amount", "lin", 0, 1, 0.5, "pct")
 
 # --- the browser: wavetables (docs/M1_DESIGN.md §6.2) and presets ---
-enum("br_target", "Browse for", ["OSC 1", "OSC 2", "PRESETS"], "OSC 1", ui=True)
+enum("br_target", "Browse For", ["OSC 1", "OSC 2", "PRESETS"], "OSC 1", ui=True)
 for i in range(1, BROWSER_CATS + 1):
     tile("cat_%d" % i, "Category %d" % i)
-button("cat_prev", "Categories prev")
-button("cat_next", "Categories next")
+button("cat_prev", "Categories Prev")
+button("cat_next", "Categories Next")
 for i in range(1, BROWSER_ITEMS + 1):
-    tile("tbl_%d" % i, "Table %d" % i)
-button("tbl_prev", "Tables prev")
-button("tbl_next", "Tables next")
-readout("tbl_page", "Tables page")
+    tile("tbl_%d" % i, "Item %d" % i)
+button("tbl_prev", "Items Prev")
+button("tbl_next", "Items Next")
+readout("tbl_page", "Items Page")
 readout("br_now", "Loaded")
 toggle("fav", "Favorite")
-button("rnd", "Random")
+button("rnd", "Random Pick")
 button("copy", "Copy 1 > 2")
 button("swap", "Swap 1 <> 2")
 
@@ -315,292 +319,349 @@ def params_json():
 
 
 # --- touchscreen pages -------------------------------------------------------------------------
-# Plugin area 1280x628 at y = 86..714. Every page: status line on top, two 270 px rows below.
-# A knob (r=30) spans cy-35 .. cy+93 and is 130 px wide; 8 slots per row like the Force's knobs.
-THEME = """style=default
-font_label=fonts/TitilliumWeb-SemiBold.ttf
-title_size=19
-theme_title=7a6a52
-theme_bg=111012
-theme_ink=ece8e1
-theme_ink_dim=c2b9aa
-theme_accent=e8a33d
-theme_accent_hi=f6cf8a
-theme_line=2c2924
-theme_lcd=15120d
-theme_tile_on=3a2c14
-theme_box=1a1815
-theme_btn_bg=24211c
-theme_btn_text=ece8e1
-theme_seg_active=e8a33d
-theme_seg_inactive=1a1815
-theme_seg_active_tx=140e04
-theme_display_ink=f2c879
-"""
-SLOT8 = [110, 261, 412, 563, 714, 865, 1016, 1167]
-ROW_Y = (156, 440)           # frame tops
-ROW_ENUM = 44                # enum centre below the frame top
-ROW_KNOB = 134               # knob centre below the frame top
-R = 30
+# The look: style=td3 cards (rounded, filled) on one flat colour; bg and box are the same, so the opaque
+# image of a control never shows a box behind it. Plugin area 1280x628 at y = 86..714. Every tab: a header
+# row (status line from x=24; the page modes, if any, right-aligned to x=1256), then cards at y=158 and
+# y=440 (h=270) or one full-height card (h=552), x=24 w=1232 or halves at x=24 / 648 (w=608). Nothing
+# may sit in a card's title band (y .. y+44: td3 draws the title rule at y+38). skin_polish.py (run by
+# `make skin` after the generator) redraws the knob strips, the trigger buttons and the stepper arrows.
+PALETTE = {
+    "bg": "15181d", "box": "15181d", "line": "2b323c", "ink": "e8ecf1", "ink_dim": "8e98a6",
+    "ink_faint": "262c35", "accent": "3fd0c0", "accent_hi": "8cf2e6", "lcd": "0b0d11",
+    "seg_inactive": "1d232b", "seg_active": "3fd0c0", "seg_active_tx": "06201c", "tile_on": "10322e",
+    "btn_bg": "252d37", "title": "9aa5b3", "knob_face": "232a33", "knob_ring": "323b46", "knob_dot": "3fd0c0",
+}
+FONT_LABEL = "fonts/TitilliumWeb-SemiBold.ttf"   # font_label=: shadow_skin sizes the buttons with it
+LIVE_FONT = "fonts/TitilliumWeb-SemiBold.ttf"    # the face MPC draws live text in (names, values)
+TITLE_FONT = "fonts/TitilliumWeb-Bold.ttf"       # = SHADOW_TITLE_FONT in the Makefile: card titles, enum
+                                                 # labels and segment, popup-option and button text
+TITLE_SIZE = 17
+THEME = ("style=td3\nfont_label=%s\ntitle_size=%d\n" % (FONT_LABEL, TITLE_SIZE)
+         + "".join("theme_%s=%s\n" % kv for kv in PALETTE.items()))
+TEXT_INK = PALETTE["ink_dim"]   # free bitmap text (column headers, slot numbers, hints)
+
+S8 = [100, 252, 404, 556, 708, 860, 1012, 1164]   # 8 knob slots across a card = one Q-Link bank
+L4, R4 = S8[:4], [724, 876, 1028, 1180]           # 4 slots in the left / right half card
+R1, R2 = 158, 440                                 # card rows (h=270), or R1 with h=552
+
+# Knobs: shadow_skin bakes ONE filmstrip per radius, so the radius picks the look. A bipolar knob (its arc
+# grows from 12 o'clock) is one pixel smaller than a unipolar knob of the same size. This table is the only
+# place that says so: check_layout() holds every knob to it and skin_polish.py draws the strips from it
+# (exported as build/skin_style.json).
+KNOB_SIZES = {"big": 30, "small": 22}
+KNOB_STYLES = {r - b: {"bipolar": bool(b), "track": 4 if r - b >= 28 else 3, "pointer": 3.0 if r - b >= 28 else 2.5}
+               for r in KNOB_SIZES.values() for b in (0, 1)}
+BIPOLAR_EXTRA = ("o1_sub_tune", "o2_sub_tune")    # -36..+12 st, centred on its default an octave down
+PRIMARY_BUTTONS = ("pre_save", "xy_auto")         # drawn in the accent colour by skin_polish.py
+FRAMES = 128                                      # shadow_skin: every filmstrip has 128 frames
+PARAMS = {p["key"]: p for p in P}
 
 
-def knob(cx, cy, label, key, when=None):
-    return 'knob cx=%d cy=%d r=%d label="%s" key=%s%s' % (cx, cy, R, label, key, _when(when))
+def bipolar(key):
+    """A knob whose value runs both ways from the middle (pan, fine, amounts): symmetric range."""
+    p = PARAMS[key]
+    return p["lo"] == -p["hi"] or key in BIPOLAR_EXTRA
 
 
-def _when(when):
-    return " when=%s" % when if when else ""
+def knob_radius(key, size="big"):
+    return KNOB_SIZES[size] - (1 if bipolar(key) else 0)
+
+
+class Layout:
+    """layout.conf lines. mode() tags every widget that follows with when= until the next tab or mode()."""
+
+    def __init__(self):
+        self.lines, self.when = [THEME], None
+
+    def tab(self, name):
+        self.lines.append("[tab %s]" % name)
+        self.when = None
+
+    def mode(self, when):
+        self.when = when
+
+    def add(self, line):
+        self.lines.append(line + (' when="%s"' % self.when if self.when else ""))
+
+    def header(self, modes=None, status_w=None):
+        """The status line from x=24 and the page-mode selector right-aligned to x=1256."""
+        n = len(PARAMS[modes]["options"]) if modes else 0
+        w = status_w or (1232 - n * 124 - 16 if n else 1232)
+        self.readout(24 + w // 2, 121, w, "status")
+        if n:
+            self.hseg(1256 - (n * 124 - 2) // 2, 121, modes, 122)
+
+    def card(self, x, y, w, h, title):
+        self.add('frame x=%d y=%d w=%d h=%d title="%s"' % (x, y, w, h, title))
+
+    def knob(self, cx, cy, key, size="big"):
+        self.add('knob cx=%d cy=%d r=%d label="%s" key=%s' % (cx, cy, knob_radius(key, size), PARAMS[key]["name"], key))
+
+    def hseg(self, cx, cy, key, sw, label=None):
+        self.add('enum_h cx=%d cy=%d sw=%d key=%s%s' % (cx, cy, sw, key, ' label="%s"' % label if label else ""))
+
+    def vseg(self, cx, cy, key, sw=124, label=None):
+        self.add('enum_v cx=%d cy=%d sw=%d key=%s%s' % (cx, cy, sw, key, ' label="%s"' % label if label else ""))
+
+    def popup(self, cx, cy, w, key):
+        self.add('popup cx=%d cy=%d w=%d h=40 key=%s' % (cx, cy, w, key))
+
+    def stepper(self, cx, cy, w, key):
+        self.add('stepper cx=%d cy=%d w=%d h=40 key=%s' % (cx, cy, w, key))
+
+    def readout(self, cx, cy, w, key, h=40):
+        self.add('readout cx=%d cy=%d w=%d h=%d key=%s' % (cx, cy, w, h, key))
+
+    def button(self, cx, cy, label, key):
+        self.add('button cx=%d cy=%d label="%s" key=%s' % (cx, cy, label, key))
+
+    def text(self, cx, top, label):   # bitmap font; top = the top of the glyphs (render_conf_preview.c)
+        self.add('text cx=%d cy=%d label="%s" color=%s' % (cx, top, label, TEXT_INK))
+
+    def slider(self, cx, cy, w, h, cw, key):
+        self.add('slider_v cx=%d cy=%d w=%d h=%d cw=%d label="%s" key=%s' % (cx, cy, w, h, cw, PARAMS[key]["name"], key))
+
+    def toggle(self, cx, cy, key):
+        self.add('toggle cx=%d cy=%d label="%s" key=%s' % (cx, cy, PARAMS[key]["name"], key))
+
+    def tiles(self, x, y, w, cols, rows, th, gap, key):
+        self.add('list x=%d y=%d w=%d cols=%d rows=%d th=%d gap=%d key=%s' % (x, y, w, cols, rows, th, gap, key))
+
+    def qlinks(self, title, keys):
+        """A Q-Link set: MPC shows its title in the tab strip. Sets only remap the Q-Links (the screen stays),
+        so each is named after what it controls and makes sense whatever page mode is showing."""
+        self.lines.append('qlinks "%s" = %s' % (title, ",".join(keys)))
 
 
 def pages():
-    L = [THEME]
-    status = 'readout cx=640 cy=126 w=1212 h=40 key=status'
+    L = Layout()
+    osc8 = ("pos", "oct", "semi", "fine", "uni", "detune", "width", "level")
 
-    # OSC: one oscillator (or the noise source) at a time, picked top right. Row 1: wave,
-    # table and the 8 knobs (Q-Links 1-8); row 2: pan, phase, routing and the sub oscillator.
-    L.append("[tab OSC]")
-    L.append('readout cx=440 cy=126 w=812 h=40 key=status')
-    L.append('enum_h cx=1080 cy=126 sw=110 key=ui_osc')
-    osc_knobs = [("pos", "POSITION"), ("oct", "OCTAVE"), ("semi", "SEMI"), ("fine", "FINE"),
-                 ("uni", "UNISON"), ("detune", "DETUNE"), ("width", "WIDTH"), ("level", "LEVEL")]
-    for o in (1, 2):
-        w = "ui_osc:OSC %d" % o
-        p = "o%d_" % o
-        L.append('frame x=34 y=156 w=1212 h=270 title="OSCILLATOR %d" when="%s"' % (o, w))
-        L.append('popup cx=150 cy=200 w=200 h=44 key=%swave when="%s"' % (p, w))
-        L.append('stepper cx=760 cy=200 w=720 h=44 key=%stable when="%s"' % (p, w))
-        for cx, (k, lab) in zip(SLOT8, osc_knobs):
-            L.append(knob(cx, ROW_Y[0] + ROW_KNOB, lab, p + k, '"%s"' % w))
-        L.append('frame x=34 y=440 w=1212 h=270 title="PAN  PHASE  ROUTE  SUB" when="%s"' % w)
-        L.append(knob(SLOT8[0], ROW_Y[1] + ROW_KNOB, "PAN", p + "pan", '"%s"' % w))
-        L.append(knob(SLOT8[1], ROW_Y[1] + ROW_KNOB, "PHASE", p + "phase", '"%s"' % w))
-        L.append('text cx=400 cy=500 label="PHASE" when="%s"' % w)
-        L.append('enum_v cx=400 cy=578 sw=140 key=%sphmode when="%s"' % (p, w))
-        L.append('text cx=580 cy=500 label="ROUTE" when="%s"' % w)
-        L.append('enum_v cx=580 cy=594 sw=140 key=%sroute when="%s"' % (p, w))
-        L.append('text cx=790 cy=500 label="SUB WAVE" when="%s"' % w)
-        L.append('enum_v cx=790 cy=594 sw=150 key=%ssub_wave when="%s"' % (p, w))
-        L.append(knob(SLOT8[6], ROW_Y[1] + ROW_KNOB, "SUB TUNE", p + "sub_tune", '"%s"' % w))
-        L.append(knob(SLOT8[7], ROW_Y[1] + ROW_KNOB, "SUB LEVEL", p + "sub_level", '"%s"' % w))
-    w = '"ui_osc:NOISE"'
-    L.append('frame x=34 y=156 w=600 h=270 title="NOISE" when=%s' % w)
-    L.append(knob(SLOT8[0], ROW_Y[0] + ROW_KNOB, "LEVEL", "noise_level", w))
-    L.append(knob(SLOT8[1], ROW_Y[0] + ROW_KNOB, "COLOUR", "noise_color", w))
-    L.append('text cx=480 cy=216 label="ROUTE" when=%s' % w)
-    L.append('enum_v cx=480 cy=310 sw=140 key=noise_route when=%s' % w)
-    L.append('frame x=646 y=156 w=600 h=270 title="SUB LEVELS" when=%s' % w)
-    L.append(knob(SLOT8[4] + 2, ROW_Y[0] + ROW_KNOB, "SUB 1", "o1_sub_level", w))
-    L.append(knob(SLOT8[5] + 2, ROW_Y[0] + ROW_KNOB, "SUB 2", "o2_sub_level", w))
-    L.append(knob(SLOT8[6] + 2, ROW_Y[0] + ROW_KNOB, "OSC 1", "o1_level", w))
-    L.append(knob(SLOT8[7] + 2, ROW_Y[0] + ROW_KNOB, "OSC 2", "o2_level", w))
+    # OSC: one oscillator (or noise and the levels) at a time, picked top right.
+    L.tab("OSC")
+    L.header("ui_osc")
     for o in (1, 2):
         p = "o%d_" % o
-        L.append('qlinks "OSC %d" = ' % o + ",".join(p + k for k in (
-            "pos", "oct", "semi", "fine", "uni", "detune", "width", "level",
-            "wave", "table", "pan", "phase", "phmode", "route", "sub_tune", "sub_level")))
-    L.append('qlinks "NOISE" = ' + ",".join(
-        ["noise_level", "noise_color", "noise_route", "o1_sub_level", "o2_sub_level", "o1_level", "o2_level", "volume",
-         "o1_sub_tune", "o2_sub_tune", "o1_sub_wave", "o2_sub_wave", "o1_pos", "o2_pos", "f1_cut", "f2_cut"]))
+        L.mode("ui_osc:OSC %d" % o)
+        L.card(24, R1, 1232, 270, "OSCILLATOR %d" % o)
+        L.popup(144, R1 + 76, 200, p + "wave")
+        L.stepper(750, R1 + 76, 972, p + "table")
+        for cx, k in zip(S8, osc8):
+            L.knob(cx, R1 + 164, p + k)
+        L.card(24, R2, 608, 270, "OUTPUT")
+        L.knob(L4[0], R2 + 126, p + "pan")
+        L.knob(L4[1], R2 + 126, p + "phase")
+        L.vseg(404, R2 + 160, p + "phmode", label="PHASE")
+        L.vseg(556, R2 + 160, p + "route", label="ROUTE")
+        L.card(648, R2, 608, 270, "SUB OSCILLATOR")
+        L.vseg(R4[0], R2 + 160, p + "sub_wave", label="WAVE")
+        L.knob(R4[1] + 20, R2 + 126, p + "sub_tune")
+        L.knob(R4[2] + 40, R2 + 126, p + "sub_level")
+    L.mode("ui_osc:NOISE")
+    L.card(24, R1, 608, 270, "NOISE")
+    L.knob(L4[0], R1 + 126, "noise_level")
+    L.knob(L4[1], R1 + 126, "noise_color")
+    L.vseg(480, R1 + 160, "noise_route", label="ROUTE")
+    L.card(648, R1, 608, 270, "MIX")
+    for cx, k in zip(R4, ("o1_level", "o2_level", "o1_sub_level", "o2_sub_level")):
+        L.knob(cx, R1 + 126, k)
+    for o, x in ((1, 24), (2, 648)):
+        p = "o%d_" % o
+        L.card(x, R2, 608, 270, "SUB %d" % o)
+        L.vseg(x + 100, R2 + 160, p + "sub_wave", label="WAVE")
+        L.knob(x + 290, R2 + 126, p + "sub_tune")
+        L.knob(x + 450, R2 + 126, p + "sub_level")
+    L.qlinks("OSC 1+2", ["o1_" + k for k in osc8] + ["o2_" + k for k in osc8])
+    L.qlinks("OSC WAVES", ["o%d_%s" % (o, k) for o in (1, 2)
+                           for k in ("wave", "table", "pos", "phase", "phmode", "pan", "route", "sub_wave")])
+    L.qlinks("OSC MIX", ["o1_level", "o2_level", "o1_sub_level", "o2_sub_level", "noise_level", "noise_color",
+                         "noise_route", "volume", "o1_sub_tune", "o2_sub_tune", "o1_sub_wave", "o2_sub_wave",
+                         "o1_pan", "o2_pan", "o1_route", "o2_route"])
 
-    # FILTER: type selector + 5 knobs per filter, routing next to the status line
-    flt_knobs = [("cut", "CUTOFF"), ("res", "RESO"), ("env", "ENV 2"), ("key", "KEYTRACK"), ("drive", "DRIVE")]
-    L.append("[tab FILTER]")
-    L.append('readout cx=330 cy=126 w=592 h=40 key=status')
-    L.append('enum_h cx=780 cy=126 sw=120 key=routing')
-    L.append('enum_h cx=1112 cy=126 sw=110 key=engine')
-    for f, top in zip((1, 2), ROW_Y):
-        L.append('frame x=34 y=%d w=1212 h=270 title="FILTER %d"' % (top, f))
-        L.append('popup cx=1040 cy=%d w=220 h=44 key=f%d_type' % (top + ROW_ENUM, f))
-        for cx, (k, lab) in zip(SLOT8, flt_knobs):
-            L.append(knob(cx, top + ROW_KNOB, lab, "f%d_%s" % (f, k)))
-    L.append('qlinks "FILTER" = ' + ",".join(
-        ["f1_cut", "f1_res", "f1_env", "f1_drive", "f2_cut", "f2_res", "f2_env", "f2_drive",
-         "f1_key", "f2_key", "f1_type", "f2_type", "routing", "engine", "e2_pos", "volume"]))
+    # FILTER: type and 5 knobs per filter; routing and engine next to the status line.
+    flt5 = ("cut", "res", "env", "key", "drive")
+    L.tab("FILTER")
+    L.header(status_w=664)
+    L.hseg(817, 121, "routing", 112)
+    L.hseg(1101, 121, "engine", 102)
+    for f, top in ((1, R1), (2, R2)):
+        L.card(24, top, 1232, 270, "FILTER %d" % f)
+        L.popup(164, top + 126, 220, "f%d_type" % f)
+        for cx, k in zip(S8[2:], flt5):
+            L.knob(cx, top + 126, "f%d_%s" % (f, k))
+    L.qlinks("FILTERS", ["f1_" + k for k in flt5 + ("type",)] + ["routing", "engine"]
+             + ["f2_" + k for k in flt5 + ("type",)] + ["e2_a", "e2_d"])
 
-    # MOD: the envelopes, the two LFOs and the XY pads, one panel at a time.
-    L.append("[tab MOD]")
-    L.append('readout cx=420 cy=126 w=772 h=40 key=status')
-    L.append('enum_h cx=1040 cy=126 sw=100 key=ui_mod')
-    w = '"ui_mod:ENVELOPES"'
-    L.append('frame x=34 y=156 w=1212 h=270 title="ENV 1   (AMP)" when=%s' % w)
-    for cx, (k, lab) in zip(SLOT8, [("a", "ATTACK"), ("d", "DECAY"), ("s", "SUSTAIN"), ("r", "RELEASE"), ("vel", "VELOCITY")]):
-        L.append(knob(cx, ROW_Y[0] + ROW_KNOB, lab, "e1_" + k, w))
-    L.append('frame x=34 y=440 w=1212 h=270 title="ENV 2   (MOD)" when=%s' % w)
-    for cx, (k, lab) in zip(SLOT8, [("a", "ATTACK"), ("d", "DECAY"), ("s", "SUSTAIN"), ("r", "RELEASE"),
-                                    ("vel", "VELOCITY"), ("pos", "> WAVE POS")]):
-        L.append(knob(cx, ROW_Y[1] + ROW_KNOB, lab, "e2_" + k, w))
-    L.append('text cx=1100 cy=516 label="LOOP" when=%s' % w)
-    L.append('enum_v cx=1100 cy=568 sw=140 key=e2_loop when=%s' % w)
-    for l in (1, 2):
-        w = '"ui_mod:LFO %d"' % l
+    # MOD: the envelopes, both LFOs or the XY pads.
+    L.tab("MOD")
+    L.header("ui_mod")
+    L.mode("ui_mod:ENVELOPES")
+    adsr = ("a", "d", "s", "r", "vel")
+    for e, top, title in ((1, R1, "AMP ENVELOPE"), (2, R2, "MOD ENVELOPE")):
+        L.card(24, top, 1232, 270, title)
+        for cx, k in zip(S8, adsr):
+            L.knob(cx, top + 126, "e%d_%s" % (e, k))
+    L.knob(S8[5], R2 + 126, "e2_pos")
+    L.vseg(1088, R2 + 160, "e2_loop", sw=140, label="LOOP")
+    L.mode("ui_mod:LFOS")
+    lfo5 = ("rate", "phase", "delay", "fade", "depth")
+    for l, top in ((1, R1), (2, R2)):
         p = "l%d_" % l
-        L.append('frame x=34 y=156 w=1212 h=270 title="LFO %d" when=%s' % (l, w))
-        L.append('popup cx=150 cy=200 w=200 h=44 key=%swave when=%s' % (p, w))
-        L.append('enum_h cx=420 cy=200 sw=100 key=%ssync when=%s' % (p, w))
-        L.append('popup cx=640 cy=200 w=150 h=44 key=%sdiv when=%s' % (p, w))
-        L.append('enum_h cx=920 cy=200 sw=120 key=%spolar when=%s' % (p, w))
-        for cx, (k, lab) in zip(SLOT8, [("rate", "RATE"), ("phase", "PHASE"), ("delay", "DELAY"), ("fade", "FADE IN"),
-                                        ("depth", "DEPTH")]):
-            L.append(knob(cx, ROW_Y[0] + ROW_KNOB, lab, p + k, w))
-        L.append('frame x=34 y=440 w=1212 h=270 title="TRIGGER" when=%s' % w)
-        L.append('enum_h cx=330 cy=500 sw=140 key=%strig when=%s' % (p, w))
-        L.append('text cx=640 cy=600 label="RETRIG: EVERY NOTE  FREE: PER VOICE  GLOBAL: ONE FOR ALL, SYNCED TO THE BAR" when=%s' % w)
-    w = '"ui_mod:XY"'
-    L.append('frame x=34 y=156 w=1212 h=270 title="XY PADS" when=%s' % w)
-    for x in range(1, 5):
-        L.append(knob(SLOT8[2 * x - 2], ROW_Y[0] + ROW_KNOB, "X%d" % x, "xy%d_x" % x, w))
-        L.append(knob(SLOT8[2 * x - 1], ROW_Y[0] + ROW_KNOB, "Y%d" % x, "xy%d_y" % x, w))
-    L.append('frame x=34 y=440 w=1212 h=270 title="ASSIGN" when=%s' % w)
-    L.append('button cx=200 cy=520 label="AUTO-ASSIGN" key=xy_auto when=%s' % w)
-    L.append('text cx=760 cy=520 label="FILLS FREE MATRIX SLOTS: X1/Y1 CUTOFF/RESO, X2/Y2 WAVE POSITIONS ..." when=%s' % w)
-    L.append('qlinks "ENVELOPES" = ' + ",".join(
-        ["e1_a", "e1_d", "e1_s", "e1_r", "e2_a", "e2_d", "e2_s", "e2_r",
-         "e1_vel", "e2_vel", "e2_pos", "e2_loop", "volume", "voices", "f1_env", "f2_env"]))
-    for l in (1, 2):
-        p = "l%d_" % l
-        L.append('qlinks "LFO %d" = ' % l + ",".join(p + k for k in (
-            "rate", "phase", "delay", "fade", "depth", "wave", "sync", "div", "trig", "polar")))
-    L.append('qlinks "XY" = ' + ",".join("xy%d_%s" % (x, a) for x in range(1, 5) for a in "xy"))
+        L.card(24, top, 1232, 270, "LFO %d" % l)
+        L.popup(144, top + 76, 200, p + "wave")
+        L.hseg(380, top + 76, p + "sync", 100)
+        L.popup(574, top + 76, 160, p + "div")
+        L.hseg(800, top + 76, p + "polar", 120)
+        L.hseg(1090, top + 76, p + "trig", 104)
+        for cx, k in zip(S8, lfo5):
+            L.knob(cx, top + 164, p + k)
+    L.mode("ui_mod:XY")
+    xy = ["xy%d_%s" % (x, a) for x in range(1, 5) for a in "xy"]
+    L.card(24, R1, 1232, 270, "XY PADS")
+    for cx, k in zip(S8, xy):
+        L.knob(cx, R1 + 126, k)
+    L.card(24, R2, 1232, 270, "ASSIGN")
+    L.button(164, R2 + 126, "AUTO-ASSIGN", "xy_auto")
+    L.text(700, R2 + 116, "FREE PADS GO TO FREE MATRIX SLOTS")
+    L.qlinks("ENV 1+2", ["e1_" + k for k in adsr] + ["e2_loop", "f1_env", "f2_env"]
+             + ["e2_" + k for k in adsr] + ["e2_pos", "f1_cut", "f2_cut"])
+    L.qlinks("LFO 1+2", ["l%d_%s" % (l, k) for l in (1, 2) for k in lfo5 + ("wave", "sync", "div")])
+    L.qlinks("XY PADS", xy)
 
-    # MATRIX: 12 slots, four per panel (source, via, two targets with amounts); the modifiers
-    # of all 12 on their own panel.
-    L.append("[tab MATRIX]")
-    L.append('readout cx=420 cy=126 w=772 h=40 key=status')
-    L.append('enum_h cx=1040 cy=126 sw=100 key=ui_mx')
-    rows = [230 + 125 * r for r in range(4)]
-    cols = [("src", "SOURCE", 180, 180), ("via", "VIA", 375, 170), ("t1", "TARGET 1", 590, 220),
-            ("a1", "AMOUNT", 785, 0), ("t2", "TARGET 2", 975, 220), ("a2", "AMOUNT", 1170, 0)]
+    # MATRIX: 12 slots, four per page (source, via, two targets with amounts); the 12 modifiers on their own.
+    L.tab("MATRIX")
+    L.header("ui_mx")
+    rows = [268 + 110 * r for r in range(4)]   # 110: a small knob's box is 110 tall (the mock had 108)
     for page, name in enumerate(["1-4", "5-8", "9-12"]):
-        w = '"ui_mx:%s"' % name
-        L.append('frame x=34 y=156 w=1212 h=554 title="SLOTS %s" when=%s' % (name, w))
-        for key, lab, cx, width in cols:
-            L.append('text cx=%d cy=186 label="%s" when=%s' % (cx, lab, w))
+        L.mode("ui_mx:%s" % name)
+        L.card(24, R1, 1232, 552, "MOD SLOTS %s" % name)
+        for label, cx in (("SOURCE", 170), ("VIA", 380), ("TARGET 1", 600), ("AMOUNT", 772), ("TARGET 2", 950),
+                          ("AMOUNT", 1124)):
+            L.text(cx, 202, label)
         for r, cy in enumerate(rows):
             k = page * 4 + r + 1
             p = "m%d_" % k
-            L.append('text cx=58 cy=%d label="%d" when=%s' % (cy, k, w))
-            for key, lab, cx, width in cols:
-                if width:
-                    L.append('popup cx=%d cy=%d w=%d h=40 key=%s%s when=%s' % (cx, cy, width, p, key, w))
-                else:
-                    L.append('knob cx=%d cy=%d r=22 label="%s" key=%s%s when=%s' % (cx, cy, lab, p, key, w))
-        L.append('qlinks "SLOTS %s" = ' % name + ",".join(
-            ["m%d_%s" % (page * 4 + r + 1, a) for r in range(4) for a in ("a1", "a2")] +
-            ["m%d_src" % (page * 4 + r + 1) for r in range(4)] + ["m%d_t1" % (page * 4 + r + 1) for r in range(4)]))
-    w = '"ui_mx:MODIFIERS"'
-    L.append('frame x=34 y=156 w=1212 h=554 title="MODIFIERS" when=%s' % w)
+            L.text(56, cy - 8, str(k))
+            L.popup(170, cy, 190, p + "src")
+            L.popup(380, cy, 190, p + "via")
+            L.popup(600, cy, 200, p + "t1")
+            L.knob(772, cy, p + "a1", "small")
+            L.popup(950, cy, 200, p + "t2")
+            L.knob(1124, cy, p + "a2", "small")
+    L.mode("ui_mx:MODIFIERS")
+    L.card(24, R1, 1232, 552, "MODIFIERS")
     for k in range(1, MOD_SLOTS + 1):
-        c, r = (k - 1) // 4, (k - 1) % 4
-        x0 = 34 + c * 404
-        p = "m%d_" % k
-        L.append('text cx=%d cy=%d label="%d" when=%s' % (x0 + 24, rows[r], k, w))
-        L.append('popup cx=%d cy=%d w=160 h=40 key=%smod when=%s' % (x0 + 130, rows[r], p, w))
-        L.append('knob cx=%d cy=%d r=22 label="AMOUNT" key=%smodamt when=%s' % (x0 + 290, rows[r], p, w))
-    L.append('qlinks "MODIFIERS" = ' + ",".join("m%d_modamt" % k for k in range(1, MOD_SLOTS + 1)))
+        x, cy = 24 + (k - 1) // 4 * 410, rows[(k - 1) % 4]
+        L.text(x + 34, cy - 8, str(k))
+        L.popup(x + 150, cy, 170, "m%d_mod" % k)
+        L.knob(x + 320, cy, "m%d_modamt" % k, "small")
+    slots = range(1, MOD_SLOTS + 1)
+    L.qlinks("MX AMOUNT 1", ["m%d_a1" % k for k in slots])
+    L.qlinks("MX AMOUNT 2", ["m%d_a2" % k for k in slots])
+    L.qlinks("MX MOD AMT", ["m%d_modamt" % k for k in slots])
 
-    # VOICE: how notes become voices (Milestone 2)
-    L.append("[tab VOICE]")
-    L.append(status)
-    L.append('frame x=34 y=156 w=1212 h=270 title="VOICES"')
-    L.append('enum_h cx=420 cy=200 sw=130 key=vmode')
-    L.append(knob(SLOT8[0], ROW_Y[0] + ROW_KNOB, "VOICES", "voices"))
-    L.append(knob(SLOT8[1], ROW_Y[0] + ROW_KNOB, "VEL CURVE", "vel_curve"))
-    L.append(knob(SLOT8[2], ROW_Y[0] + ROW_KNOB, "VOLUME", "volume"))
-    L.append('text cx=780 cy=232 label="STEAL"')
-    L.append('enum_v cx=780 cy=318 sw=170 key=steal')
-    L.append('text cx=1060 cy=232 label="SAME NOTE"')
-    L.append('enum_v cx=1060 cy=286 sw=170 key=same_note')
-    L.append('frame x=34 y=440 w=740 h=270 title="GLIDE + BEND"')
-    L.append(knob(SLOT8[0], ROW_Y[1] + ROW_KNOB, "GLIDE", "glide"))
-    L.append('text cx=262 cy=516 label="GLIDE"')
-    L.append('enum_v cx=262 cy=584 sw=120 key=glide_mode')
-    L.append('text cx=402 cy=516 label="TYPE"')
-    L.append('enum_v cx=402 cy=568 sw=110 key=glide_type')
-    L.append(knob(545, ROW_Y[1] + ROW_KNOB, "BEND UP", "bend_up"))
-    L.append(knob(690, ROW_Y[1] + ROW_KNOB, "BEND DOWN", "bend_dn"))
-    L.append('frame x=786 y=440 w=460 h=270 title="TUNING + PATCH"')
-    L.append('stepper cx=1016 cy=490 w=440 h=40 key=tuning')
-    L.append('stepper cx=1016 cy=540 w=440 h=40 key=preset')
-    L.append('button cx=846 cy=604 label="SAVE" key=pre_save')
-    L.append('button cx=941 cy=604 label="INIT" key=pre_init')
-    L.append('button cx=1050 cy=604 label="RANDOM" key=pre_rand')
-    L.append('knob cx=1178 cy=612 r=22 label="AMOUNT" key=rand_amt')
-    L.append('qlinks "VOICE" = ' + ",".join(
-        ["voices", "vel_curve", "volume", "vmode", "steal", "same_note", "glide_mode", "glide_type",
-         "glide", "bend_up", "bend_dn", "tuning", "preset", "rand_amt", "f1_cut", "f2_cut"]))
+    # BROWSE: categories left, tables or presets right, the loaded item and actions below.
+    L.tab("BROWSE")
+    L.header("br_target")
+    L.card(24, R1, 360, 552, "CATEGORIES")
+    L.tiles(44, 206, 320, 2, 8, 48, 8, "cat")
+    L.button(124, 676, "< PREV", "cat_prev")
+    L.button(304, 676, "NEXT >", "cat_next")
+    for target, title in (("OSC 1", "TABLES"), ("OSC 2", "TABLES"), ("PRESETS", "PRESETS")):
+        L.mode("br_target:%s" % target)   # only the card title changes; the page readout is drawn over the card
+        L.card(400, R1, 856, 474, title)
+        L.readout(828, 596, 240, "tbl_page", h=36)
+    L.mode(None)
+    L.tiles(420, 206, 816, 3, 8, 38, 8, "tbl")
+    L.button(476, 596, "< PREV", "tbl_prev")
+    L.button(1180, 596, "NEXT >", "tbl_next")
+    L.readout(605, 676, 410, "br_now")   # 410, not the mock's 500: the toggle and 3 buttons need 430 px
+    L.toggle(874, 668, "fav")
+    L.button(989, 676, "RND", "rnd")
+    L.button(1094, 676, "1>2", "copy")
+    L.button(1201, 676, "1<>2", "swap")
+    L.qlinks("BROWSE", ["o1_table", "o1_pos", "o1_level", "o1_detune", "o2_table", "o2_pos", "o2_level", "o2_detune",
+                        "preset", "tuning", "f1_cut", "f1_res", "f2_cut", "f2_res", "rand_amt", "volume"])
 
-    # SEQ: arpeggiator / step sequencer settings, the 16 steps, the 4 shape lanes.
-    L.append("[tab SEQ]")
-    L.append('readout cx=420 cy=126 w=772 h=40 key=status')
-    L.append('enum_h cx=1060 cy=126 sw=110 key=ui_seq')
-    w = '"ui_seq:ARP"'
-    L.append('frame x=34 y=156 w=1212 h=270 title="ARP / SEQUENCER" when=%s' % w)
-    L.append('enum_h cx=220 cy=200 sw=110 key=seq_mode when=%s' % w)
-    L.append('popup cx=560 cy=200 w=180 h=44 key=arp_dir when=%s' % w)
-    L.append('popup cx=790 cy=200 w=150 h=44 key=clk_rate when=%s' % w)
-    L.append('enum_h cx=1080 cy=200 sw=110 key=arp_latch when=%s' % w)
-    for cx, (k, lab) in zip(SLOT8, [("arp_oct", "OCTAVES"), ("clk_gate", "GATE"), ("clk_swing", "SWING"),
-                                    ("seq_steps", "STEPS")]):
-        L.append(knob(cx, ROW_Y[0] + ROW_KNOB, lab, k, w))
-    L.append('text cx=780 cy=262 label="ARP PATTERN" when=%s' % w)
-    L.append('enum_v cx=780 cy=314 sw=150 key=arp_pattern when=%s' % w)
-    L.append('text cx=1060 cy=262 label="RECORD STEPS" when=%s' % w)
-    L.append('enum_v cx=1060 cy=314 sw=150 key=seq_rec when=%s' % w)
-    L.append('frame x=34 y=440 w=1212 h=270 title="SHAPE SEQUENCER CLOCK" when=%s' % w)
-    L.append('popup cx=200 cy=500 w=160 h=44 key=sh_rate when=%s' % w)
-    L.append(knob(SLOT8[3], ROW_Y[1] + ROW_KNOB, "SHAPE STEPS", "sh_steps", w))
-    L.append('text cx=840 cy=600 label="SHAPE 1-4 AND SEQ ARE SOURCES IN THE MATRIX" when=%s' % w)
-    w = '"ui_seq:STEPS"'
-    for r, (key, title, cy) in enumerate([("note", "NOTE  (ST FROM THE KEY)", 224), ("vel", "VELOCITY  (0 = REST)", 410),
-                                          ("mod", "MOD  (THE SEQ SOURCE)", 596)]):
-        L.append('frame x=34 y=%d w=1212 h=180 title="%s" when=%s' % (156 + 186 * r, title, w))
-        for k in range(1, SEQ_STEPS + 1):
-            L.append('slider_v cx=%d cy=%d w=18 h=84 cw=72 label="%d" key=s%d_%s when=%s' % (
-                71 + (k - 1) * 74, cy, k, k, key, w))
-    w = '"ui_seq:SHAPES"'
-    for l in range(1, 5):
-        top = 156 + 140 * (l - 1)
-        L.append('frame x=34 y=%d w=1212 h=134 title="SHAPE %d" when=%s' % (top, l, w))
-        L.append('enum_v cx=150 cy=%d sw=150 key=sh%d_mode when=%s' % (top + 78, l, w))
-        for k in range(1, SHAPE_STEPS + 1):
-            L.append('slider_v cx=%d cy=%d w=16 h=50 cw=100 label="%d" key=sh%d_%d when=%s' % (
-                330 + (k - 1) * 112, top + 52, k, l, k, w))
-    L.append('qlinks "ARP" = ' + ",".join(
-        ["arp_oct", "clk_gate", "clk_swing", "seq_steps", "seq_mode", "arp_dir", "clk_rate", "arp_latch",
-         "arp_pattern", "sh_rate", "sh_steps", "volume", "f1_cut", "f1_res", "o1_pos", "o2_pos"]))
-    for key in ("note", "vel", "mod"):
-        L.append('qlinks "STEP %s" = ' % key.upper() + ",".join("s%d_%s" % (k, key) for k in range(1, SEQ_STEPS + 1)))
-    L.append('qlinks "SHAPE 1+2" = ' + ",".join("sh%d_%d" % (l, k) for l in (1, 2) for k in range(1, SHAPE_STEPS + 1)))
-    L.append('qlinks "SHAPE 3+4" = ' + ",".join("sh%d_%d" % (l, k) for l in (3, 4) for k in range(1, SHAPE_STEPS + 1)))
+    # VOICE: how notes become voices; glide; presets and tuning.
+    L.tab("VOICE")
+    L.header()
+    L.card(24, R1, 1232, 270, "VOICES")
+    L.hseg(264, R1 + 96, "vmode", 110, label="MODE")
+    L.hseg(740, R1 + 96, "steal", 116, label="STEAL")
+    L.hseg(1120, R1 + 96, "same_note", 120, label="SAME NOTE")
+    voice6 = ("voices", "volume", "vel_curve", "e1_vel", "bend_up", "bend_dn")
+    for cx, k in zip(S8, voice6):
+        L.knob(cx, R1 + 172, k)
+    L.card(24, R2, 608, 270, "GLIDE")
+    L.vseg(124, R2 + 160, "glide_mode", label="GLIDE")
+    L.vseg(290, R2 + 160, "glide_type", label="TYPE")
+    L.knob(480, R2 + 126, "glide")
+    L.card(648, R2, 608, 270, "PATCH")
+    L.stepper(888, R2 + 76, 440, "preset")
+    L.stepper(888, R2 + 128, 440, "tuning")
+    L.button(730, R2 + 204, "SAVE", "pre_save")
+    L.button(846, R2 + 204, "INIT", "pre_init")
+    L.button(980, R2 + 204, "RANDOM", "pre_rand")
+    L.knob(1186, R2 + 76, "rand_amt", "small")
+    L.qlinks("VOICE", list(voice6) + ["vmode", "steal", "same_note", "glide_mode", "glide_type", "glide",
+                                      "preset", "tuning", "rand_amt"])
 
-    # TABLES: the browser (docs/M1_DESIGN.md §6.2). Categories left, tables right, actions below.
-    L.append("[tab BROWSE]")
-    L.append('readout cx=440 cy=126 w=812 h=40 key=status')
-    L.append('enum_h cx=1080 cy=126 sw=110 key=br_target')
-    L.append('frame x=34 y=156 w=360 h=554 title="CATEGORY"')
-    L.append('list x=46 y=196 w=336 cols=2 rows=8 th=48 gap=8 key=cat')
-    L.append('button cx=130 cy=672 label="< PREV" key=cat_prev')
-    L.append('button cx=298 cy=672 label="NEXT >" key=cat_next')
-    L.append('frame x=406 y=156 w=840 h=470 title="TABLES / PRESETS"')
-    L.append('list x=418 y=196 w=816 cols=3 rows=8 th=42 gap=6 key=tbl')
-    L.append('button cx=500 cy=600 label="< PREV" key=tbl_prev')
-    L.append('readout cx=826 cy=600 w=360 h=34 key=tbl_page')
-    L.append('button cx=1152 cy=600 label="NEXT >" key=tbl_next')
-    L.append('readout cx=650 cy=672 w=470 h=40 key=br_now')
-    L.append('toggle cx=950 cy=664 label="FAV" key=fav')
-    L.append('button cx=1060 cy=672 label="RND" key=rnd')
-    L.append('button cx=1140 cy=672 label="1>2" key=copy')
-    L.append('button cx=1222 cy=672 label="1<>2" key=swap')
-    L.append('qlinks "BROWSE" = ' + ",".join(
-        ["o1_table", "o1_pos", "o1_level", "o1_detune", "o2_table", "o2_pos", "o2_level", "o2_detune",
-         "preset", "tuning", "f1_cut", "f1_res", "f2_cut", "f2_res", "rand_amt", "volume"]))
-    return "\n".join(L) + "\n"
+    # SEQ: arpeggiator / sequencer settings, the 16 steps, the shape lanes two at a time.
+    L.tab("SEQ")
+    L.header("ui_seq")
+    L.mode("ui_seq:ARP")
+    L.card(24, R1, 1232, 270, "ARPEGGIATOR / SEQUENCER")
+    L.hseg(190, R1 + 96, "seq_mode", 96, label="MODE")
+    L.hseg(470, R1 + 96, "arp_latch", 100, label="LATCH")
+    L.hseg(730, R1 + 96, "arp_pattern", 100, label="PATTERN")
+    L.hseg(990, R1 + 96, "seq_rec", 100, label="RECORD")
+    arp4 = ("arp_oct", "clk_gate", "clk_swing", "seq_steps")
+    for cx, k in zip(S8, arp4):
+        L.knob(cx, R1 + 172, k)
+    L.popup(870, R1 + 172, 200, "arp_dir")
+    L.popup(1110, R1 + 172, 200, "clk_rate")
+    L.card(24, R2, 1232, 270, "SHAPE SEQUENCER")
+    L.popup(164, R2 + 126, 200, "sh_rate")
+    L.knob(404, R2 + 126, "sh_steps")
+    L.text(830, R2 + 116, "FOUR LANES OF EIGHT STEPS  SOURCES SHAPE 1-4")
+    L.mode("ui_seq:STEPS")
+    for key, title, top in (("note", "NOTE", 158), ("vel", "VELOCITY", 344), ("mod", "MOD", 530)):
+        L.card(24, top, 1232, 180, title)
+        for k in range(1, SEQ_STEPS + 1):   # h=76 (mock 84): the slider's 56 px of labels fit the 180 px card
+            L.slider(81 + (k - 1) * 74, top + 86, 18, 76, 72, "s%d_%s" % (k, key))
+    for a, name in ((1, "SHAPES 1-2"), (3, "SHAPES 3-4")):
+        L.mode("ui_seq:%s" % name)
+        for l, top in ((a, R1), (a + 1, R2)):
+            L.card(24, top, 1232, 270, "SHAPE %d" % l)
+            L.vseg(110, top + 150, "sh%d_mode" % l, sw=120, label="MODE")
+            for k in range(1, SHAPE_STEPS + 1):
+                L.slider(300 + (k - 1) * 130, top + 126, 24, 120, 110, "sh%d_%d" % (l, k))
+    L.qlinks("ARP/SEQ", list(arp4) + ["seq_mode", "arp_dir", "clk_rate", "arp_latch", "arp_pattern", "sh_rate",
+                                      "sh_steps"] + ["sh%d_mode" % l for l in range(1, 5)])
+    for key, title in (("note", "STEP NOTES"), ("vel", "STEP VELS"), ("mod", "STEP MODS")):
+        L.qlinks(title, ["s%d_%s" % (k, key) for k in range(1, SEQ_STEPS + 1)])
+    for a in (1, 3):
+        L.qlinks("SHAPE %d+%d" % (a, a + 1), ["sh%d_%d" % (l, k) for l in (a, a + 1) for k in range(1, SHAPE_STEPS + 1)])
+    return "\n".join(L.lines) + "\n"
+
+
+def skin_style():
+    """What skin_polish.py needs to redraw the knob strips, buttons and stepper arrows (build/skin_style.json)."""
+    return {"palette": PALETTE, "title_font": TITLE_FONT, "frames": FRAMES,
+            "knobs": {str(r): s for r, s in sorted(KNOB_STYLES.items())}, "primary_buttons": list(PRIMARY_BUTTONS)}
 
 
 # --- layout check (offline, no skin toolchain) ---------------------------------------------------
+# Geometry mirrors third_party/mpc-vst-plugins/tools/shadow_skin.py (component boxes, button_rect,
+# seg_rects, popup_layout) and render_conf_preview.c (the bitmap font of `text`).
 X0, Y0, X1, Y1 = 0, 86, 1280, 714
-KNOB_W, KNOB_UP, KNOB_DOWN = 130, 35, 93
-TOGGLE_W, TOGGLE_UP, TOGGLE_DOWN = 120, 18, 40
+TITLE_BAND = 44              # a card's title band: y .. y+44
+NAME_MAX = 13                # MPC shows a knob/slider's effGetParamName at ~19.5 px in a 130 px box
+POP_ROW, POP_GAP, POP_PAD, POP_GROUP_ROWS = 40, 2, 6, 8
+BITMAP_GLYPHS = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.-/_>%+:#"   # font8x8.h font_chars
+BITMAP_ADVANCE = {" ": 4, "J": 9, "j": 9, ".": 9, "-": 9, ":": 9}   # font_glyph_width(): last lit column + 2; else 10
+INT_KEYS = ("x", "y", "w", "h", "cx", "cy", "r", "sw", "rows", "cols", "th", "gap", "cw")
 
 
 def _widget(line):
@@ -608,50 +669,228 @@ def _widget(line):
     w = {"kind": toks[0]}
     for t in toks[1:]:
         k, _, v = t.partition("=")
-        w[k] = int(v) if k in ("x", "y", "w", "h", "cx", "cy", "r", "sw", "rows", "cols", "th", "gap", "cw") else v
+        w[k] = int(v) if k in INT_KEYS else v
     return w
 
 
-def _rects(w, params):
-    """Touch/drawn rectangles of a widget (x, y, w, h), as shadow_skin.py places them."""
-    k = w["kind"]
-    if k == "knob":   # shadow_skin.py: filmstrip 2r+10 square, name and value labels under it
-        r = w.get("r", R)
-        side = 2 * r + 10
-        height = side // 2 + r + 2 + 20 + 2 + 26 + 6
-        return [(w["cx"] - max(130, side) // 2, w["cy"] - side // 2, max(130, side), height)]
-    if k == "toggle":
-        return [(w["cx"] - TOGGLE_W // 2, w["cy"] - TOGGLE_UP, TOGGLE_W, TOGGLE_UP + TOGGLE_DOWN)]
-    if k == "button":
-        bw = 11 * len(w.get("label", "")) + 36   # flat estimate, wider than the real font
-        return [(w["cx"] - bw // 2, w["cy"] - 20, bw, 39)]
-    if k in ("readout", "stepper", "popup"):
-        return [(w["cx"] - w["w"] // 2, w["cy"] - w["h"] // 2, w["w"], w["h"])]
-    if k == "list":
-        return [(w["x"], w["y"], w["w"], w["rows"] * w["th"] + (w["rows"] - 1) * w["gap"])]
-    if k in ("enum_h", "enum_v"):
-        n = len(params[w["key"]]["options"])
-        if k == "enum_v":
-            sw = w.get("sw") or 135
-            return [(w["cx"] - sw // 2, w["cy"] - (n * 32) // 2, sw, n * 32)]
-        sw = w.get("sw") or 117
-        rows = w.get("rows", 1)
-        per = -(-n // rows)
-        return [(w["cx"] - (per * sw + (per - 1) * 2) // 2, w["cy"] - 16, per * sw + (per - 1) * 2, rows * 35 - 2)]
-    if k in ("slider_v", "slider_h"):
-        cw = w.get("cw") or max(130, w["w"], w["h"])
+def bitmap_width(s, scale):
+    """render_conf_preview.c text_width()."""
+    return int(sum(BITMAP_ADVANCE.get(c, 10) * scale for c in s))
+
+
+_FONTS = {}
+
+
+def _ttf_advances(path):
+    """(unitsPerEm, {char: advance}) from a TrueType font's cmap (format 4) and hmtx tables."""
+    import struct
+    d = open(path, "rb").read()
+    tabs = {}
+    for i in range(struct.unpack(">H", d[4:6])[0]):
+        tag, _, off, ln = struct.unpack(">4sIII", d[12 + 16 * i:28 + 16 * i])
+        tabs[tag.decode("latin-1")] = off
+    upem = struct.unpack(">H", d[tabs["head"] + 18:tabs["head"] + 20])[0]
+    nhm = struct.unpack(">H", d[tabs["hhea"] + 34:tabs["hhea"] + 36])[0]
+    adv = [struct.unpack(">H", d[tabs["hmtx"] + 4 * i:tabs["hmtx"] + 4 * i + 2])[0] for i in range(nhm)]
+    co = tabs["cmap"]
+    for i in range(struct.unpack(">H", d[co + 2:co + 4])[0]):
+        pid, eid, off = struct.unpack(">HHI", d[co + 4 + 8 * i:co + 12 + 8 * i])
+        so = co + off
+        if struct.unpack(">H", d[so:so + 2])[0] != 4 or (pid, eid) not in ((3, 1), (0, 3), (0, 4)):
+            continue
+        n2 = struct.unpack(">H", d[so + 6:so + 8])[0]
+        ends = struct.unpack(">%dH" % (n2 // 2), d[so + 14:so + 14 + n2])
+        starts = struct.unpack(">%dH" % (n2 // 2), d[so + 16 + n2:so + 16 + 2 * n2])
+        deltas = struct.unpack(">%dh" % (n2 // 2), d[so + 16 + 2 * n2:so + 16 + 3 * n2])
+        ro = so + 16 + 3 * n2
+        ranges = struct.unpack(">%dH" % (n2 // 2), d[ro:ro + n2])
+        out = {}
+        for s in range(n2 // 2):
+            for c in range(starts[s], min(ends[s], 0x7e) + 1):
+                if ranges[s]:
+                    gi = ro + 2 * s + ranges[s] + 2 * (c - starts[s])
+                    g = struct.unpack(">H", d[gi:gi + 2])[0]
+                    g = (g + deltas[s]) & 0xFFFF if g else 0
+                else:
+                    g = (c + deltas[s]) & 0xFFFF
+                out[chr(c)] = adv[min(g, nhm - 1)]
+        return upem, out
+    raise SystemExit("%s: no Unicode cmap" % path)
+
+
+def ttf_width(font, px, s):
+    """Advance width of s in a bundled font at px pixels, measured with Pillow as shadow_skin does. Without
+    Pillow (surface.py needs only python3): from the font's own advance table, +1 px (that is within 0.75 px
+    of Pillow for Titillium Web, and errs wide)."""
+    key = (font, px)
+    if key not in _FONTS:
+        path = os.path.join(HERE, font)
+        try:
+            from PIL import ImageFont
+            _FONTS[key] = ImageFont.truetype(path, px).getlength
+        except ImportError:
+            upem, adv = _ttf_advances(path)
+            _FONTS[key] = lambda t: sum(adv.get(c, upem) for c in t) * px / upem + 1.0
+    return _FONTS[key](s)
+
+
+def _top_level(text):
+    """The style keys before the first [tab] (shadow_skin apply_theme)."""
+    top = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("["):
+            break
+        k, eq, v = line.partition("=")
+        if eq and not line.startswith("#"):
+            top[k.strip()] = v.strip()
+    return top
+
+
+class Geometry:
+    """Where shadow_skin puts each widget, for this layout's style keys."""
+
+    def __init__(self, top):
+        self.td3 = top.get("style") == "td3"
+        self.font_label = top.get("font_label")
+        self.ls = float(top.get("label_scale", 1.15))
+
+    def knob(self, w):   # shadow_skin build(): the filmstrip, the Name and Value labels under it
+        r = w["r"]
+        s = 2 * r + 10
+        cw = max(130, s)
+        name_y = s // 2 + r + 2
+        ch = name_y + round(20 * self.ls) + 2 + round(26 * self.ls) + 6
+        return (w["cx"] - cw // 2, w["cy"] - s // 2, cw, ch)
+
+    def slider(self, w):
         sq = max(w["w"], w["h"])
-        return [(w["cx"] - cw // 2, w["cy"] - sq // 2, cw, sq + 56)]
-    return []
+        cw = w.get("cw", max(130, sq))
+        ch = (sq - w["h"]) // 2 + w["h"] + 2 + 20 + 2 + 26 + 6
+        return (w["cx"] - cw // 2, w["cy"] - sq // 2, cw, ch)
+
+    def text_width(self, s):   # shadow_skin text_width(): sizes a button
+        if self.font_label:
+            return int(ttf_width(self.font_label, round(9 * 1.15 * 1.6), s) * 1.2)
+        return int(len(s) * 10 * 1.15 - 1.15)
+
+    def button(self, w):   # shadow_skin button_rect()
+        bw, bh = self.text_width(w["label"]) + 36, 39
+        if self.td3:
+            bw, bh = bw + 24 + 4, 48 + 4
+        return (w["cx"] - bw // 2, w["cy"] - bh // 2, bw, bh)
+
+    @staticmethod
+    def segs(w, n):   # shadow_skin seg_rects()
+        if w["kind"] == "enum_v":
+            sw = w.get("sw") or 135
+            y0 = w["cy"] - (n * 32) // 2
+            return [(w["cx"] - sw // 2, y0 + i * 32, sw, 30) for i in range(n)]
+        sw, rows = w.get("sw") or 117, w.get("rows", 1)
+        per = -(-n // rows)
+        out = []
+        for i in range(n):
+            r, c = divmod(i, per)
+            cnt = min(per, n - r * per)
+            out.append((w["cx"] - (cnt * sw + (cnt - 1) * 2) // 2 + c * (sw + 2), w["cy"] - 16 + r * 35, sw, 33))
+        return out
+
+    @staticmethod
+    def enum_label(w, n):   # the TrueType group label shadow_skin draws centred at (gx, gy), 18 px
+        gy = w["cy"] - 33 // 2 - 22 if w["kind"] == "enum_h" else w["cy"] - (n * 32) // 2 - 24
+        tw = int(ttf_width(TITLE_FONT, 18, w["label"])) + 2
+        return (w["cx"] - tw // 2, gy - 10, tw, 20)
+
+    @staticmethod
+    def text(w):   # render_conf_preview.c draw_text_c(): cx centres, cy is the TOP of the glyphs
+        size = float(w.get("size", 1.5))
+        tw = bitmap_width(w["label"], size)
+        return (w["cx"] - tw // 2, w["cy"], tw + 1, int(9 * size + 0.5))
+
+    @staticmethod
+    def popup_panel(w, n):   # shadow_skin popup_layout(): the open list
+        fx, fy, fw, fh = w["cx"] - w["w"] // 2, w["cy"] - w["h"] // 2, w["w"], w["h"]
+        below, above = Y1 - (fy + fh + 4), fy - 4 - Y0
+        groups = [(t, int(c)) for t, _, c in (g.rpartition(":") for g in w["groups"].split(","))] \
+            if w.get("groups") else None
+        if groups:
+            rows = min(POP_GROUP_ROWS, max(c for _, c in groups))
+            cols = sum(-(-c // rows) for _, c in groups)
+            ph = (rows + 1) * (POP_ROW + POP_GAP) - POP_GAP + 2 * POP_PAD
+        else:
+            for cols in ([int(w["cols"])] if w.get("cols") else range(1, n + 1)):
+                rows = -(-n // cols)
+                ph = rows * (POP_ROW + POP_GAP) - POP_GAP + 2 * POP_PAD
+                if ph <= max(below, above):
+                    break
+        pw = cols * fw + (cols - 1) * POP_GAP + 2 * POP_PAD
+        py = fy + fh + 4 if ph <= below else fy - 4 - ph if ph <= above else Y0
+        return (max(0, min(fx, X1 - pw)), py, pw, ph)
+
+    def rects(self, w, params):
+        """[(x, y, w, h)] of a control, as shadow_skin places it (stepper: arrows and text together)."""
+        k = w["kind"]
+        if k == "knob":
+            return [self.knob(w)]
+        if k in ("slider_v", "slider_h"):
+            return [self.slider(w)]
+        if k == "toggle":
+            return [(w["cx"] - 60, w["cy"] - 18, 120, 58)]
+        if k == "button":
+            return [self.button(w)]
+        if k in ("readout", "stepper", "popup", "menu"):
+            return [(w["cx"] - w["w"] // 2, w["cy"] - w["h"] // 2, w["w"], w["h"])]
+        if k == "list":
+            tw = (w["w"] - (w["cols"] - 1) * w["gap"]) // w["cols"]
+            return [(w["x"] + c * (tw + w["gap"]), w["y"] + r * (w["th"] + w["gap"]), tw, w["th"])
+                    for r in range(w["rows"]) for c in range(w["cols"])]
+        if k in ("enum_h", "enum_v"):
+            return self.segs(w, len(params[w["key"]]["options"]))
+        return []
 
 
 def _overlap(a, b):
     return a[0] < b[0] + b[2] and b[0] < a[0] + a[2] and a[1] < b[1] + b[3] and b[1] < a[1] + a[3]
 
 
+def _inside(r):
+    return r[0] >= X0 and r[1] >= Y0 and r[0] + r[2] <= X1 and r[1] + r[3] <= Y1
+
+
+def _same_screen(m1, m2):
+    return m1 is None or m2 is None or m1 == m2
+
+
+def check_names(layout_tabs, geo, errors):
+    """Parameter names: MPC shows them under knobs and sliders and in its Q-Link overlay, without page context."""
+    seen = {}
+    for p in P:
+        if len(p["name"]) > 24:
+            errors.append("parameter %s: name %r is longer than 24 characters" % (p["key"], p["name"]))
+        if p["name"].lower() in seen:
+            errors.append("parameters %s and %s have the same name %r" % (seen[p["name"].lower()], p["key"], p["name"]))
+        seen[p["name"].lower()] = p["key"]
+    for tab in layout_tabs:
+        for w in tab["widgets"]:
+            if w["kind"] not in ("knob", "slider_v", "slider_h", "toggle") or w.get("key") not in PARAMS:
+                continue
+            name = PARAMS[w["key"]]["name"]
+            if len(name) > NAME_MAX:
+                errors.append("%s: %s %s: name %r is longer than %d characters" % (tab["name"], w["kind"], w["key"], name,
+                                                                                    NAME_MAX))
+            # the live Name label: knob 17 x label_scale px in max(130, 2r+10); slider 17 px in cw; toggle 15 px in 120
+            px, box = ((math.ceil(17 * geo.ls), max(130, 2 * w["r"] + 10)) if w["kind"] == "knob" else
+                       (15, 120) if w["kind"] == "toggle" else (17, w.get("cw") or max(130, w["w"], w["h"])))
+            if ttf_width(LIVE_FONT, px, name) > box - 4:
+                errors.append("%s: %s %s: name %r does not fit its %d px label" % (tab["name"], w["kind"], w["key"], name, box))
+
+
 def check_layout(text):
-    """Raise SystemExit on anything shadow_skin.py would refuse, plus geometry mistakes."""
-    params = {p["key"]: p for p in P}
+    """Raise SystemExit on anything shadow_skin.py would refuse, plus geometry mistakes: outside the plugin
+    area, overlaps on one screen (a page mode with everything shown in every mode), controls or text in a
+    card's title band, open popup lists that leave the plugin area, unknown bitmap glyphs."""
+    params = PARAMS
+    geo = Geometry(_top_level(text))
     errors = []
     tabs = []
     for raw in text.splitlines():
@@ -670,49 +909,102 @@ def check_layout(text):
         tabs[-1]["widgets"].append(_widget(line))
     if len(tabs) > 7:
         errors.append("%d tabs: MPC shows five plus a pager; keep it to seven" % len(tabs))
+    check_names(tabs, geo, errors)
+    errors += ["PRIMARY_BUTTONS: %r is not a button parameter" % k for k in PRIMARY_BUTTONS
+               if PARAMS.get(k, {}).get("kind") != "button"]
+    errors += ["BIPOLAR_EXTRA: %r is not a parameter" % k for k in BIPOLAR_EXTRA if k not in PARAMS]
+    seg_images = {}   # shadow_skin names enum images sh_seg_<key>_<n> for the whole skin: one size per key
     for tab in tabs:
-        placed = []
+        T = tab["name"]
+        frames, placed = [], []   # (rect, title, mode); (rect, what, mode)
         for w in tab["widgets"]:
-            kind = w["kind"]
-            if kind in ("frame", "text", "art"):
+            kind, key, mode = w["kind"], w.get("key"), w.get("when")
+            if mode:
+                mk, _, mo = mode.partition(":")
+                opts = [o.lower() for o in params.get(mk, {}).get("options", [])]
+                if len(opts) < 2 or mo.lower() not in opts:
+                    errors.append("%s: when=%s is not an option of an option parameter" % (T, mode))
+            if kind == "frame":
+                r = (w["x"], w["y"], w["w"], w["h"])
+                if not _inside(r):
+                    errors.append("%s: frame %r at %s leaves the plugin area" % (T, w.get("title"), r))
+                frames.append((r, w.get("title", ""), mode))
                 continue
-            key = w.get("key")
+            if kind == "text":
+                lab = w.get("label", "")
+                bad = sorted(set(c for c in lab if c not in BITMAP_GLYPHS))
+                if not lab or bad:
+                    errors.append("%s: text %r: %s" % (T, lab, "the bitmap font has no %r" % "".join(bad) if bad
+                                                       else "an empty label fails shadow_art"))
+                placed.append((Geometry.text(w), "text %r" % lab, mode))
+                continue
+            if kind == "art":
+                errors.append("%s: art needs the browser renderer" % T)
+                continue
             need = ["%s_%d" % (key, i + 1) for i in range(w["cols"] * w["rows"])] if kind == "list" else [key]
             if kind == "stepper":
                 need += [key + "_prev", key + "_next"]
             if kind == "popup":
                 need.append(key + "__open")
-            for k in need:
-                if k not in params:
-                    errors.append("%s: %s key %r is not a parameter" % (tab["name"], kind, k))
-            if any(k not in params for k in need):
+            missing = [k for k in need if k not in params]
+            for k in missing:
+                errors.append("%s: %s key %r is not a parameter" % (T, kind, k))
+            if missing:
                 continue
-            p = params[key] if kind != "list" else params[need[0]]
+            p = params[need[0]]
             if kind in ("enum_h", "enum_v", "popup") and "options" not in p:
-                errors.append("%s: %s %r is not an option parameter" % (tab["name"], kind, key))
+                errors.append("%s: %s %r is not an option parameter" % (T, kind, key))
+                continue
             if kind == "list" and p["kind"] != "tile":
-                errors.append("%s: list %r tiles must be tile parameters" % (tab["name"], key))
+                errors.append("%s: list %r tiles must be tile parameters" % (T, key))
             if kind == "stepper" and p["kind"] != "stepper":
-                errors.append("%s: stepper %r is not a stepper parameter" % (tab["name"], key))
-            mode = w.get("when")
-            if mode:
-                mk, _, mo = mode.partition(":")
-                opts = [o.lower() for o in params.get(mk, {}).get("options", [])]
-                if len(opts) < 2 or mo.lower() not in opts:
-                    errors.append("%s: when=%s is not an option of an option parameter" % (tab["name"], mode))
-            for r in _rects(w, params):
-                if r[0] < X0 or r[1] < Y0 or r[0] + r[2] > X1 or r[1] + r[3] > Y1:
-                    errors.append("%s: %s %s at %s leaves the plugin area" % (tab["name"], kind, key, r))
-                for other_mode, o_r, o_key in placed:
-                    if (mode is None or other_mode is None or mode == other_mode) and _overlap(r, o_r):
-                        errors.append("%s: %s overlaps %s" % (tab["name"], key, o_key))
-                placed.append((mode, r, key))
+                errors.append("%s: stepper %r is not a stepper parameter" % (T, key))
+            if kind == "button" and not w.get("label"):
+                errors.append("%s: button %r needs a label" % (T, key))
+                continue
+            if kind == "knob":
+                style = KNOB_STYLES.get(w["r"])
+                if not style:
+                    errors.append("%s: knob %s: r=%d has no look in KNOB_STYLES" % (T, key, w["r"]))
+                elif style["bipolar"] != bipolar(key):
+                    errors.append("%s: knob %s: r=%d is a %s look, the parameter is %s" % (
+                        T, key, w["r"], "bipolar" if style["bipolar"] else "unipolar",
+                        "bipolar" if bipolar(key) else "unipolar"))
+            if kind in ("readout", "stepper", "popup") and w["h"] < 36:
+                errors.append("%s: %s %s: h=%d clips its 26 px live text (min 36)" % (T, kind, key, w["h"]))
+            if kind in ("enum_h", "enum_v"):
+                n = len(p["options"])
+                size = (kind, w.get("sw"), n)
+                if seg_images.setdefault(key, size) != size:
+                    errors.append("%s: enum %s is drawn as %s and %s: its segment images are shared" % (
+                        T, key, seg_images[key], size))
+                if w.get("label"):
+                    placed.append((Geometry.enum_label(w, n), "%s label" % key, mode))
+            if kind == "popup":
+                panel = Geometry.popup_panel(w, len(p["options"]))
+                if not _inside(panel):
+                    errors.append("%s: popup %s: its open list %s leaves the plugin area" % (T, key, panel))
+            for r in geo.rects(w, params):
+                placed.append((r, "%s %s" % (kind, key), mode))
+        for i, (r, what, mode) in enumerate(placed):
+            if not _inside(r):
+                errors.append("%s: %s at %s leaves the plugin area" % (T, what, r))
+            for o_r, o_what, o_mode in placed[:i]:
+                if _same_screen(mode, o_mode) and _overlap(r, o_r) and o_what != what:
+                    errors.append("%s: %s overlaps %s" % (T, what, o_what))
+            for f_r, title, f_mode in frames:
+                band = (f_r[0], f_r[1], f_r[2], TITLE_BAND)
+                if _same_screen(mode, f_mode) and _overlap(r, band):
+                    errors.append("%s: %s at %s is in the title band of card %r" % (T, what, r, title))
+        titles = [t for t, _ in tab["qlinks"]]
         for title, keys in tab["qlinks"]:
             if len(keys) > 16:
-                errors.append("%s: qlinks %r has %d keys (max 16)" % (tab["name"], title, len(keys)))
+                errors.append("%s: qlinks %r has %d keys (max 16)" % (T, title, len(keys)))
+            if len(title) > 12 or titles.count(title) > 1:
+                errors.append("%s: qlinks title %r: keep it unique and at most 12 characters (MPC's tab strip)" % (T, title))
             for k in keys:
                 if k not in params:
-                    errors.append("%s: qlinks %r key %r is not a parameter" % (tab["name"], title, k))
+                    errors.append("%s: qlinks %r key %r is not a parameter" % (T, title, k))
     if errors:
         raise SystemExit("layout check failed:\n  " + "\n  ".join(errors))
     return tabs
@@ -882,6 +1174,7 @@ def main():
         ("params.json", json.dumps(params_json(), indent=1)),
         ("layout.conf", layout),
         ("vst.json", json.dumps(VST, indent=1)),
+        (os.path.join("build", "skin_style.json"), json.dumps(skin_style(), indent=1)),
         (os.path.join("build", "factory_presets.h"), presets_header(presets)),
         (os.path.join("build", "param_ids.h"), header()),   # last: make's target, newer than the rest
     ]

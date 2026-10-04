@@ -27,7 +27,7 @@
   },
   {
    "key": "routing",
-   "name": "Routing",
+   "name": "Filter Routing",
    "options": [
     "Serial",
     "Parallel"
@@ -36,7 +36,7 @@
   },
   {
    "key": "o1_wave",
-   "name": "Osc 1 wave",
+   "name": "O1 Wave",
    "options": [
     "Table",
     "Sine",
@@ -50,7 +50,7 @@
   },
   {
    "key": "o1_wave__open",
-   "name": "Osc 1 wave List",
+   "name": "O1 Wave List",
    "options": [
     "Closed",
     "Open"
@@ -61,7 +61,7 @@
   },
   {
    "key": "o1_table",
-   "name": "Osc 1 table",
+   "name": "O1 Table",
    "min": 0,
    "max": 1,
    "display": "string",
@@ -69,7 +69,7 @@
   },
   {
    "key": "o1_table_prev",
-   "name": "Osc 1 table prev",
+   "name": "O1 Table Prev",
    "min": 0,
    "max": 1,
    "momentary": true,
@@ -77,7 +77,7 @@
   },
   {
    "key": "o1_table_next",
-   "name": "Osc 1 table next",
+   "name": "O1 Table Next",
    "min": 0,
    "max": 1,
    "momentary": true,
@@ -85,7 +85,7 @@
   },
   {
    "key": "o1_pos",
-   "name": "Osc 1 position",
+   "name": "O1 Position",
    "min": 0,
    "max": 1,
    "default": 0.66,
@@ -93,7 +93,7 @@
   },
   {
    "key": "o1_oct",
-   "name": "Osc 1 octave",
+   "name": "O1 Octave",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -101,7 +101,7 @@
   },
   {
    "key": "o1_semi",
-   "name": "Osc 1 semitone",
+   "name": "O1 Semi",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -109,7 +109,7 @@
   },
   {
    "key": "o1_fine",
-   "name": "Osc 1 fine",
+   "name": "O1 Fine",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -117,7 +117,7 @@
   },
   {
    "key": "o1_uni",
-   "name": "Osc 1 unison",
+   "name": "O1 Unison",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -125,7 +125,7 @@
   },
   {
    "key": "o1_detune",
-   "name": "Osc 1 detune",
+   "name": "O1 Detune",
    "min": 0,
    "max": 1,
    "default": 0.3,
@@ -133,7 +133,7 @@
   },
   {
    "key": "o1_width",
-   "name": "Osc 1 width",
+   "name": "O1 Width",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -141,7 +141,7 @@
   },
   {
    "key": "o1_level",
-   "name": "Osc 1 level",
+   "name": "O1 Level",
    "min": 0,
    "max": 1,
    "default": 0.8,
@@ -149,7 +149,7 @@
   },
   {
    "key": "o1_pan",
-   "name": "Osc 1 pan",
+   "name": "O1 Pan",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -157,7 +157,7 @@
   },
   {
    "key": "o1_phase",
-   "name": "Osc 1 phase",
+   "name": "O1 Phase",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -165,7 +165,7 @@
   },
   {
    "key": "o1_phmode",
-   "name": "Osc 1 phase mode",
+   "name": "O1 Phase Mode",
    "options": [
     "Reset",
     "Random",
@@ -175,7 +175,7 @@
   },
   {
    "key": "o1_route",
-   "name": "Osc 1 route",
+   "name": "O1 Route",
    "options": [
     "F1",
     "F2",
@@ -186,7 +186,7 @@
   },
   {
    "key": "o1_sub_wave",
-   "name": "Sub 1 wave",
+   "name": "Sub1 Wave",
    "options": [
     "Sine",
     "Triangle",
@@ -197,7 +197,7 @@
   },
   {
    "key": "o1_sub_tune",
-   "name": "Sub 1 tune",
+   "name": "Sub1 Tune",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -205,7 +205,7 @@
   },
   {
    "key": "o1_sub_level",
-   "name": "Sub 1 level",
+   "name": "Sub1 Level",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -213,7 +213,7 @@
   },
   {
    "key": "o2_wave",
-   "name": "Osc 2 wave",
+   "name": "O2 Wave",
    "options": [
     "Table",
     "Sine",
@@ -227,7 +227,7 @@
   },
   {
    "key": "o2_wave__open",
-   "name": "Osc 2 wave List",
+   "name": "O2 Wave List",
    "options": [
     "Closed",
     "Open"
@@ -238,7 +238,7 @@
   },
   {
    "key": "o2_table",
-   "name": "Osc 2 table",
+   "name": "O2 Table",
    "min": 0,
    "max": 1,
    "display": "string",
@@ -246,7 +246,7 @@
   },
   {
    "key": "o2_table_prev",
-   "name": "Osc 2 table prev",
+   "name": "O2 Table Prev",
    "min": 0,
    "max": 1,
    "momentary": true,
@@ -254,7 +254,7 @@
   },
   {
    "key": "o2_table_next",
-   "name": "Osc 2 table next",
+   "name": "O2 Table Next",
    "min": 0,
    "max": 1,
    "momentary": true,
@@ -262,7 +262,7 @@
   },
   {
    "key": "o2_pos",
-   "name": "Osc 2 position",
+   "name": "O2 Position",
    "min": 0,
    "max": 1,
    "default": 0.66,
@@ -270,7 +270,7 @@
   },
   {
    "key": "o2_oct",
-   "name": "Osc 2 octave",
+   "name": "O2 Octave",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -278,7 +278,7 @@
   },
   {
    "key": "o2_semi",
-   "name": "Osc 2 semitone",
+   "name": "O2 Semi",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -286,7 +286,7 @@
   },
   {
    "key": "o2_fine",
-   "name": "Osc 2 fine",
+   "name": "O2 Fine",
    "min": 0,
    "max": 1,
    "default": 0.535,
@@ -294,7 +294,7 @@
   },
   {
    "key": "o2_uni",
-   "name": "Osc 2 unison",
+   "name": "O2 Unison",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -302,7 +302,7 @@
   },
   {
    "key": "o2_detune",
-   "name": "Osc 2 detune",
+   "name": "O2 Detune",
    "min": 0,
    "max": 1,
    "default": 0.3,
@@ -310,7 +310,7 @@
   },
   {
    "key": "o2_width",
-   "name": "Osc 2 width",
+   "name": "O2 Width",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -318,7 +318,7 @@
   },
   {
    "key": "o2_level",
-   "name": "Osc 2 level",
+   "name": "O2 Level",
    "min": 0,
    "max": 1,
    "default": 0.6,
@@ -326,7 +326,7 @@
   },
   {
    "key": "o2_pan",
-   "name": "Osc 2 pan",
+   "name": "O2 Pan",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -334,7 +334,7 @@
   },
   {
    "key": "o2_phase",
-   "name": "Osc 2 phase",
+   "name": "O2 Phase",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -342,7 +342,7 @@
   },
   {
    "key": "o2_phmode",
-   "name": "Osc 2 phase mode",
+   "name": "O2 Phase Mode",
    "options": [
     "Reset",
     "Random",
@@ -352,7 +352,7 @@
   },
   {
    "key": "o2_route",
-   "name": "Osc 2 route",
+   "name": "O2 Route",
    "options": [
     "F1",
     "F2",
@@ -363,7 +363,7 @@
   },
   {
    "key": "o2_sub_wave",
-   "name": "Sub 2 wave",
+   "name": "Sub2 Wave",
    "options": [
     "Sine",
     "Triangle",
@@ -374,7 +374,7 @@
   },
   {
    "key": "o2_sub_tune",
-   "name": "Sub 2 tune",
+   "name": "Sub2 Tune",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -382,7 +382,7 @@
   },
   {
    "key": "o2_sub_level",
-   "name": "Sub 2 level",
+   "name": "Sub2 Level",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -390,7 +390,7 @@
   },
   {
    "key": "noise_level",
-   "name": "Noise level",
+   "name": "Noise Level",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -398,7 +398,7 @@
   },
   {
    "key": "noise_color",
-   "name": "Noise colour",
+   "name": "Noise Colour",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -406,7 +406,7 @@
   },
   {
    "key": "noise_route",
-   "name": "Noise route",
+   "name": "Noise Route",
    "options": [
     "F1",
     "F2",
@@ -417,7 +417,7 @@
   },
   {
    "key": "ui_osc",
-   "name": "Oscillator page",
+   "name": "Osc Page",
    "options": [
     "OSC 1",
     "OSC 2",
@@ -427,7 +427,7 @@
   },
   {
    "key": "engine",
-   "name": "Engine",
+   "name": "Filter Engine",
    "options": [
     "Clean",
     "Normal",
@@ -437,7 +437,7 @@
   },
   {
    "key": "f1_type",
-   "name": "Filter 1 type",
+   "name": "F1 Type",
    "options": [
     "Off",
     "LP12",
@@ -455,7 +455,7 @@
   },
   {
    "key": "f1_type__open",
-   "name": "Filter 1 type List",
+   "name": "F1 Type List",
    "options": [
     "Closed",
     "Open"
@@ -466,7 +466,7 @@
   },
   {
    "key": "f1_cut",
-   "name": "Filter 1 cutoff",
+   "name": "F1 Cutoff",
    "min": 0,
    "max": 1,
    "default": 0.592717,
@@ -474,7 +474,7 @@
   },
   {
    "key": "f1_res",
-   "name": "Filter 1 resonance",
+   "name": "F1 Reso",
    "min": 0,
    "max": 1,
    "default": 0.25,
@@ -482,7 +482,7 @@
   },
   {
    "key": "f1_env",
-   "name": "Filter 1 env 2",
+   "name": "F1 Env 2",
    "min": 0,
    "max": 1,
    "default": 0.625,
@@ -490,7 +490,7 @@
   },
   {
    "key": "f1_key",
-   "name": "Filter 1 keytrack",
+   "name": "F1 Keytrack",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -498,7 +498,7 @@
   },
   {
    "key": "f1_drive",
-   "name": "Filter 1 drive",
+   "name": "F1 Drive",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -506,7 +506,7 @@
   },
   {
    "key": "f2_type",
-   "name": "Filter 2 type",
+   "name": "F2 Type",
    "options": [
     "Off",
     "LP12",
@@ -524,7 +524,7 @@
   },
   {
    "key": "f2_type__open",
-   "name": "Filter 2 type List",
+   "name": "F2 Type List",
    "options": [
     "Closed",
     "Open"
@@ -535,7 +535,7 @@
   },
   {
    "key": "f2_cut",
-   "name": "Filter 2 cutoff",
+   "name": "F2 Cutoff",
    "min": 0,
    "max": 1,
    "default": 0.867353,
@@ -543,7 +543,7 @@
   },
   {
    "key": "f2_res",
-   "name": "Filter 2 resonance",
+   "name": "F2 Reso",
    "min": 0,
    "max": 1,
    "default": 0.25,
@@ -551,7 +551,7 @@
   },
   {
    "key": "f2_env",
-   "name": "Filter 2 env 2",
+   "name": "F2 Env 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -559,7 +559,7 @@
   },
   {
    "key": "f2_key",
-   "name": "Filter 2 keytrack",
+   "name": "F2 Keytrack",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -567,7 +567,7 @@
   },
   {
    "key": "f2_drive",
-   "name": "Filter 2 drive",
+   "name": "F2 Drive",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -575,7 +575,7 @@
   },
   {
    "key": "e1_a",
-   "name": "Env 1 attack",
+   "name": "E1 Attack",
    "min": 0,
    "max": 1,
    "default": 0.110932,
@@ -583,7 +583,7 @@
   },
   {
    "key": "e1_d",
-   "name": "Env 1 decay",
+   "name": "E1 Decay",
    "min": 0,
    "max": 1,
    "default": 0.604985,
@@ -591,7 +591,7 @@
   },
   {
    "key": "e1_s",
-   "name": "Env 1 sustain",
+   "name": "E1 Sustain",
    "min": 0,
    "max": 1,
    "default": 0.8,
@@ -599,7 +599,7 @@
   },
   {
    "key": "e1_r",
-   "name": "Env 1 release",
+   "name": "E1 Release",
    "min": 0,
    "max": 1,
    "default": 0.575937,
@@ -607,7 +607,7 @@
   },
   {
    "key": "e1_vel",
-   "name": "Env 1 velocity",
+   "name": "E1 Velocity",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -615,7 +615,7 @@
   },
   {
    "key": "e2_a",
-   "name": "Env 2 attack",
+   "name": "E2 Attack",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -623,7 +623,7 @@
   },
   {
    "key": "e2_d",
-   "name": "Env 2 decay",
+   "name": "E2 Decay",
    "min": 0,
    "max": 1,
    "default": 0.645927,
@@ -631,7 +631,7 @@
   },
   {
    "key": "e2_s",
-   "name": "Env 2 sustain",
+   "name": "E2 Sustain",
    "min": 0,
    "max": 1,
    "default": 0.2,
@@ -639,7 +639,7 @@
   },
   {
    "key": "e2_r",
-   "name": "Env 2 release",
+   "name": "E2 Release",
    "min": 0,
    "max": 1,
    "default": 0.627517,
@@ -647,7 +647,7 @@
   },
   {
    "key": "e2_pos",
-   "name": "Env 2 > wave pos",
+   "name": "E2 > Pos",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -655,7 +655,7 @@
   },
   {
    "key": "e2_vel",
-   "name": "Env 2 velocity",
+   "name": "E2 Velocity",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -663,7 +663,7 @@
   },
   {
    "key": "e2_loop",
-   "name": "Env 2 loop",
+   "name": "E2 Loop",
    "options": [
     "Off",
     "Loop"
@@ -672,7 +672,7 @@
   },
   {
    "key": "l1_wave",
-   "name": "LFO 1 wave",
+   "name": "L1 Wave",
    "options": [
     "Sine",
     "Triangle",
@@ -686,7 +686,7 @@
   },
   {
    "key": "l1_wave__open",
-   "name": "LFO 1 wave List",
+   "name": "L1 Wave List",
    "options": [
     "Closed",
     "Open"
@@ -697,7 +697,7 @@
   },
   {
    "key": "l1_sync",
-   "name": "LFO 1 sync",
+   "name": "L1 Sync",
    "options": [
     "Free",
     "Sync"
@@ -706,7 +706,7 @@
   },
   {
    "key": "l1_rate",
-   "name": "LFO 1 rate",
+   "name": "L1 Rate",
    "min": 0,
    "max": 1,
    "default": 0.605872,
@@ -714,7 +714,7 @@
   },
   {
    "key": "l1_div",
-   "name": "LFO 1 sync rate",
+   "name": "L1 Sync Rate",
    "options": [
     "8 bars",
     "4 bars",
@@ -738,7 +738,7 @@
   },
   {
    "key": "l1_div__open",
-   "name": "LFO 1 sync rate List",
+   "name": "L1 Sync Rate List",
    "options": [
     "Closed",
     "Open"
@@ -749,7 +749,7 @@
   },
   {
    "key": "l1_phase",
-   "name": "LFO 1 phase",
+   "name": "L1 Phase",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -757,7 +757,7 @@
   },
   {
    "key": "l1_delay",
-   "name": "LFO 1 delay",
+   "name": "L1 Delay",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -765,7 +765,7 @@
   },
   {
    "key": "l1_fade",
-   "name": "LFO 1 fade in",
+   "name": "L1 Fade In",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -773,7 +773,7 @@
   },
   {
    "key": "l1_trig",
-   "name": "LFO 1 trigger",
+   "name": "L1 Trigger",
    "options": [
     "Retrig",
     "Free",
@@ -783,7 +783,7 @@
   },
   {
    "key": "l1_polar",
-   "name": "LFO 1 polarity",
+   "name": "L1 Polarity",
    "options": [
     "Bipolar",
     "Unipolar"
@@ -792,7 +792,7 @@
   },
   {
    "key": "l1_depth",
-   "name": "LFO 1 depth",
+   "name": "L1 Depth",
    "min": 0,
    "max": 1,
    "default": 1.0,
@@ -800,7 +800,7 @@
   },
   {
    "key": "l2_wave",
-   "name": "LFO 2 wave",
+   "name": "L2 Wave",
    "options": [
     "Sine",
     "Triangle",
@@ -814,7 +814,7 @@
   },
   {
    "key": "l2_wave__open",
-   "name": "LFO 2 wave List",
+   "name": "L2 Wave List",
    "options": [
     "Closed",
     "Open"
@@ -825,7 +825,7 @@
   },
   {
    "key": "l2_sync",
-   "name": "LFO 2 sync",
+   "name": "L2 Sync",
    "options": [
     "Free",
     "Sync"
@@ -834,7 +834,7 @@
   },
   {
    "key": "l2_rate",
-   "name": "LFO 2 rate",
+   "name": "L2 Rate",
    "min": 0,
    "max": 1,
    "default": 0.423486,
@@ -842,7 +842,7 @@
   },
   {
    "key": "l2_div",
-   "name": "LFO 2 sync rate",
+   "name": "L2 Sync Rate",
    "options": [
     "8 bars",
     "4 bars",
@@ -866,7 +866,7 @@
   },
   {
    "key": "l2_div__open",
-   "name": "LFO 2 sync rate List",
+   "name": "L2 Sync Rate List",
    "options": [
     "Closed",
     "Open"
@@ -877,7 +877,7 @@
   },
   {
    "key": "l2_phase",
-   "name": "LFO 2 phase",
+   "name": "L2 Phase",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -885,7 +885,7 @@
   },
   {
    "key": "l2_delay",
-   "name": "LFO 2 delay",
+   "name": "L2 Delay",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -893,7 +893,7 @@
   },
   {
    "key": "l2_fade",
-   "name": "LFO 2 fade in",
+   "name": "L2 Fade In",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -901,7 +901,7 @@
   },
   {
    "key": "l2_trig",
-   "name": "LFO 2 trigger",
+   "name": "L2 Trigger",
    "options": [
     "Retrig",
     "Free",
@@ -911,7 +911,7 @@
   },
   {
    "key": "l2_polar",
-   "name": "LFO 2 polarity",
+   "name": "L2 Polarity",
    "options": [
     "Bipolar",
     "Unipolar"
@@ -920,7 +920,7 @@
   },
   {
    "key": "l2_depth",
-   "name": "LFO 2 depth",
+   "name": "L2 Depth",
    "min": 0,
    "max": 1,
    "default": 1.0,
@@ -928,7 +928,7 @@
   },
   {
    "key": "m1_src",
-   "name": "Mod 1 source",
+   "name": "M1 Source",
    "options": [
     "None",
     "Env 1",
@@ -964,7 +964,7 @@
   },
   {
    "key": "m1_via",
-   "name": "Mod 1 via",
+   "name": "M1 Via",
    "options": [
     "None",
     "Env 1",
@@ -1000,7 +1000,7 @@
   },
   {
    "key": "m1_mod",
-   "name": "Mod 1 modifier",
+   "name": "M1 Modifier",
    "options": [
     "None",
     "Curve",
@@ -1013,7 +1013,7 @@
   },
   {
    "key": "m1_modamt",
-   "name": "Mod 1 modifier amount",
+   "name": "M1 Mod Amt",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -1021,7 +1021,7 @@
   },
   {
    "key": "m1_t1",
-   "name": "Mod 1 target 1",
+   "name": "M1 Target 1",
    "options": [
     "Off",
     "Pitch",
@@ -1065,7 +1065,7 @@
   },
   {
    "key": "m1_a1",
-   "name": "Mod 1 amount 1",
+   "name": "M1 Amt 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -1073,7 +1073,7 @@
   },
   {
    "key": "m1_t2",
-   "name": "Mod 1 target 2",
+   "name": "M1 Target 2",
    "options": [
     "Off",
     "Pitch",
@@ -1117,7 +1117,7 @@
   },
   {
    "key": "m1_a2",
-   "name": "Mod 1 amount 2",
+   "name": "M1 Amt 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -1125,7 +1125,7 @@
   },
   {
    "key": "m1_src__open",
-   "name": "Mod 1 source List",
+   "name": "M1 Source List",
    "options": [
     "Closed",
     "Open"
@@ -1136,7 +1136,7 @@
   },
   {
    "key": "m1_via__open",
-   "name": "Mod 1 via List",
+   "name": "M1 Via List",
    "options": [
     "Closed",
     "Open"
@@ -1147,7 +1147,7 @@
   },
   {
    "key": "m1_mod__open",
-   "name": "Mod 1 modifier List",
+   "name": "M1 Modifier List",
    "options": [
     "Closed",
     "Open"
@@ -1158,7 +1158,7 @@
   },
   {
    "key": "m1_t1__open",
-   "name": "Mod 1 target 1 List",
+   "name": "M1 Target 1 List",
    "options": [
     "Closed",
     "Open"
@@ -1169,7 +1169,7 @@
   },
   {
    "key": "m1_t2__open",
-   "name": "Mod 1 target 2 List",
+   "name": "M1 Target 2 List",
    "options": [
     "Closed",
     "Open"
@@ -1180,7 +1180,7 @@
   },
   {
    "key": "m2_src",
-   "name": "Mod 2 source",
+   "name": "M2 Source",
    "options": [
     "None",
     "Env 1",
@@ -1216,7 +1216,7 @@
   },
   {
    "key": "m2_via",
-   "name": "Mod 2 via",
+   "name": "M2 Via",
    "options": [
     "None",
     "Env 1",
@@ -1252,7 +1252,7 @@
   },
   {
    "key": "m2_mod",
-   "name": "Mod 2 modifier",
+   "name": "M2 Modifier",
    "options": [
     "None",
     "Curve",
@@ -1265,7 +1265,7 @@
   },
   {
    "key": "m2_modamt",
-   "name": "Mod 2 modifier amount",
+   "name": "M2 Mod Amt",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -1273,7 +1273,7 @@
   },
   {
    "key": "m2_t1",
-   "name": "Mod 2 target 1",
+   "name": "M2 Target 1",
    "options": [
     "Off",
     "Pitch",
@@ -1317,7 +1317,7 @@
   },
   {
    "key": "m2_a1",
-   "name": "Mod 2 amount 1",
+   "name": "M2 Amt 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -1325,7 +1325,7 @@
   },
   {
    "key": "m2_t2",
-   "name": "Mod 2 target 2",
+   "name": "M2 Target 2",
    "options": [
     "Off",
     "Pitch",
@@ -1369,7 +1369,7 @@
   },
   {
    "key": "m2_a2",
-   "name": "Mod 2 amount 2",
+   "name": "M2 Amt 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -1377,7 +1377,7 @@
   },
   {
    "key": "m2_src__open",
-   "name": "Mod 2 source List",
+   "name": "M2 Source List",
    "options": [
     "Closed",
     "Open"
@@ -1388,7 +1388,7 @@
   },
   {
    "key": "m2_via__open",
-   "name": "Mod 2 via List",
+   "name": "M2 Via List",
    "options": [
     "Closed",
     "Open"
@@ -1399,7 +1399,7 @@
   },
   {
    "key": "m2_mod__open",
-   "name": "Mod 2 modifier List",
+   "name": "M2 Modifier List",
    "options": [
     "Closed",
     "Open"
@@ -1410,7 +1410,7 @@
   },
   {
    "key": "m2_t1__open",
-   "name": "Mod 2 target 1 List",
+   "name": "M2 Target 1 List",
    "options": [
     "Closed",
     "Open"
@@ -1421,7 +1421,7 @@
   },
   {
    "key": "m2_t2__open",
-   "name": "Mod 2 target 2 List",
+   "name": "M2 Target 2 List",
    "options": [
     "Closed",
     "Open"
@@ -1432,7 +1432,7 @@
   },
   {
    "key": "m3_src",
-   "name": "Mod 3 source",
+   "name": "M3 Source",
    "options": [
     "None",
     "Env 1",
@@ -1468,7 +1468,7 @@
   },
   {
    "key": "m3_via",
-   "name": "Mod 3 via",
+   "name": "M3 Via",
    "options": [
     "None",
     "Env 1",
@@ -1504,7 +1504,7 @@
   },
   {
    "key": "m3_mod",
-   "name": "Mod 3 modifier",
+   "name": "M3 Modifier",
    "options": [
     "None",
     "Curve",
@@ -1517,7 +1517,7 @@
   },
   {
    "key": "m3_modamt",
-   "name": "Mod 3 modifier amount",
+   "name": "M3 Mod Amt",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -1525,7 +1525,7 @@
   },
   {
    "key": "m3_t1",
-   "name": "Mod 3 target 1",
+   "name": "M3 Target 1",
    "options": [
     "Off",
     "Pitch",
@@ -1569,7 +1569,7 @@
   },
   {
    "key": "m3_a1",
-   "name": "Mod 3 amount 1",
+   "name": "M3 Amt 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -1577,7 +1577,7 @@
   },
   {
    "key": "m3_t2",
-   "name": "Mod 3 target 2",
+   "name": "M3 Target 2",
    "options": [
     "Off",
     "Pitch",
@@ -1621,7 +1621,7 @@
   },
   {
    "key": "m3_a2",
-   "name": "Mod 3 amount 2",
+   "name": "M3 Amt 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -1629,7 +1629,7 @@
   },
   {
    "key": "m3_src__open",
-   "name": "Mod 3 source List",
+   "name": "M3 Source List",
    "options": [
     "Closed",
     "Open"
@@ -1640,7 +1640,7 @@
   },
   {
    "key": "m3_via__open",
-   "name": "Mod 3 via List",
+   "name": "M3 Via List",
    "options": [
     "Closed",
     "Open"
@@ -1651,7 +1651,7 @@
   },
   {
    "key": "m3_mod__open",
-   "name": "Mod 3 modifier List",
+   "name": "M3 Modifier List",
    "options": [
     "Closed",
     "Open"
@@ -1662,7 +1662,7 @@
   },
   {
    "key": "m3_t1__open",
-   "name": "Mod 3 target 1 List",
+   "name": "M3 Target 1 List",
    "options": [
     "Closed",
     "Open"
@@ -1673,7 +1673,7 @@
   },
   {
    "key": "m3_t2__open",
-   "name": "Mod 3 target 2 List",
+   "name": "M3 Target 2 List",
    "options": [
     "Closed",
     "Open"
@@ -1684,7 +1684,7 @@
   },
   {
    "key": "m4_src",
-   "name": "Mod 4 source",
+   "name": "M4 Source",
    "options": [
     "None",
     "Env 1",
@@ -1720,7 +1720,7 @@
   },
   {
    "key": "m4_via",
-   "name": "Mod 4 via",
+   "name": "M4 Via",
    "options": [
     "None",
     "Env 1",
@@ -1756,7 +1756,7 @@
   },
   {
    "key": "m4_mod",
-   "name": "Mod 4 modifier",
+   "name": "M4 Modifier",
    "options": [
     "None",
     "Curve",
@@ -1769,7 +1769,7 @@
   },
   {
    "key": "m4_modamt",
-   "name": "Mod 4 modifier amount",
+   "name": "M4 Mod Amt",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -1777,7 +1777,7 @@
   },
   {
    "key": "m4_t1",
-   "name": "Mod 4 target 1",
+   "name": "M4 Target 1",
    "options": [
     "Off",
     "Pitch",
@@ -1821,7 +1821,7 @@
   },
   {
    "key": "m4_a1",
-   "name": "Mod 4 amount 1",
+   "name": "M4 Amt 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -1829,7 +1829,7 @@
   },
   {
    "key": "m4_t2",
-   "name": "Mod 4 target 2",
+   "name": "M4 Target 2",
    "options": [
     "Off",
     "Pitch",
@@ -1873,7 +1873,7 @@
   },
   {
    "key": "m4_a2",
-   "name": "Mod 4 amount 2",
+   "name": "M4 Amt 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -1881,7 +1881,7 @@
   },
   {
    "key": "m4_src__open",
-   "name": "Mod 4 source List",
+   "name": "M4 Source List",
    "options": [
     "Closed",
     "Open"
@@ -1892,7 +1892,7 @@
   },
   {
    "key": "m4_via__open",
-   "name": "Mod 4 via List",
+   "name": "M4 Via List",
    "options": [
     "Closed",
     "Open"
@@ -1903,7 +1903,7 @@
   },
   {
    "key": "m4_mod__open",
-   "name": "Mod 4 modifier List",
+   "name": "M4 Modifier List",
    "options": [
     "Closed",
     "Open"
@@ -1914,7 +1914,7 @@
   },
   {
    "key": "m4_t1__open",
-   "name": "Mod 4 target 1 List",
+   "name": "M4 Target 1 List",
    "options": [
     "Closed",
     "Open"
@@ -1925,7 +1925,7 @@
   },
   {
    "key": "m4_t2__open",
-   "name": "Mod 4 target 2 List",
+   "name": "M4 Target 2 List",
    "options": [
     "Closed",
     "Open"
@@ -1936,7 +1936,7 @@
   },
   {
    "key": "m5_src",
-   "name": "Mod 5 source",
+   "name": "M5 Source",
    "options": [
     "None",
     "Env 1",
@@ -1972,7 +1972,7 @@
   },
   {
    "key": "m5_via",
-   "name": "Mod 5 via",
+   "name": "M5 Via",
    "options": [
     "None",
     "Env 1",
@@ -2008,7 +2008,7 @@
   },
   {
    "key": "m5_mod",
-   "name": "Mod 5 modifier",
+   "name": "M5 Modifier",
    "options": [
     "None",
     "Curve",
@@ -2021,7 +2021,7 @@
   },
   {
    "key": "m5_modamt",
-   "name": "Mod 5 modifier amount",
+   "name": "M5 Mod Amt",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -2029,7 +2029,7 @@
   },
   {
    "key": "m5_t1",
-   "name": "Mod 5 target 1",
+   "name": "M5 Target 1",
    "options": [
     "Off",
     "Pitch",
@@ -2073,7 +2073,7 @@
   },
   {
    "key": "m5_a1",
-   "name": "Mod 5 amount 1",
+   "name": "M5 Amt 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -2081,7 +2081,7 @@
   },
   {
    "key": "m5_t2",
-   "name": "Mod 5 target 2",
+   "name": "M5 Target 2",
    "options": [
     "Off",
     "Pitch",
@@ -2125,7 +2125,7 @@
   },
   {
    "key": "m5_a2",
-   "name": "Mod 5 amount 2",
+   "name": "M5 Amt 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -2133,7 +2133,7 @@
   },
   {
    "key": "m5_src__open",
-   "name": "Mod 5 source List",
+   "name": "M5 Source List",
    "options": [
     "Closed",
     "Open"
@@ -2144,7 +2144,7 @@
   },
   {
    "key": "m5_via__open",
-   "name": "Mod 5 via List",
+   "name": "M5 Via List",
    "options": [
     "Closed",
     "Open"
@@ -2155,7 +2155,7 @@
   },
   {
    "key": "m5_mod__open",
-   "name": "Mod 5 modifier List",
+   "name": "M5 Modifier List",
    "options": [
     "Closed",
     "Open"
@@ -2166,7 +2166,7 @@
   },
   {
    "key": "m5_t1__open",
-   "name": "Mod 5 target 1 List",
+   "name": "M5 Target 1 List",
    "options": [
     "Closed",
     "Open"
@@ -2177,7 +2177,7 @@
   },
   {
    "key": "m5_t2__open",
-   "name": "Mod 5 target 2 List",
+   "name": "M5 Target 2 List",
    "options": [
     "Closed",
     "Open"
@@ -2188,7 +2188,7 @@
   },
   {
    "key": "m6_src",
-   "name": "Mod 6 source",
+   "name": "M6 Source",
    "options": [
     "None",
     "Env 1",
@@ -2224,7 +2224,7 @@
   },
   {
    "key": "m6_via",
-   "name": "Mod 6 via",
+   "name": "M6 Via",
    "options": [
     "None",
     "Env 1",
@@ -2260,7 +2260,7 @@
   },
   {
    "key": "m6_mod",
-   "name": "Mod 6 modifier",
+   "name": "M6 Modifier",
    "options": [
     "None",
     "Curve",
@@ -2273,7 +2273,7 @@
   },
   {
    "key": "m6_modamt",
-   "name": "Mod 6 modifier amount",
+   "name": "M6 Mod Amt",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -2281,7 +2281,7 @@
   },
   {
    "key": "m6_t1",
-   "name": "Mod 6 target 1",
+   "name": "M6 Target 1",
    "options": [
     "Off",
     "Pitch",
@@ -2325,7 +2325,7 @@
   },
   {
    "key": "m6_a1",
-   "name": "Mod 6 amount 1",
+   "name": "M6 Amt 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -2333,7 +2333,7 @@
   },
   {
    "key": "m6_t2",
-   "name": "Mod 6 target 2",
+   "name": "M6 Target 2",
    "options": [
     "Off",
     "Pitch",
@@ -2377,7 +2377,7 @@
   },
   {
    "key": "m6_a2",
-   "name": "Mod 6 amount 2",
+   "name": "M6 Amt 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -2385,7 +2385,7 @@
   },
   {
    "key": "m6_src__open",
-   "name": "Mod 6 source List",
+   "name": "M6 Source List",
    "options": [
     "Closed",
     "Open"
@@ -2396,7 +2396,7 @@
   },
   {
    "key": "m6_via__open",
-   "name": "Mod 6 via List",
+   "name": "M6 Via List",
    "options": [
     "Closed",
     "Open"
@@ -2407,7 +2407,7 @@
   },
   {
    "key": "m6_mod__open",
-   "name": "Mod 6 modifier List",
+   "name": "M6 Modifier List",
    "options": [
     "Closed",
     "Open"
@@ -2418,7 +2418,7 @@
   },
   {
    "key": "m6_t1__open",
-   "name": "Mod 6 target 1 List",
+   "name": "M6 Target 1 List",
    "options": [
     "Closed",
     "Open"
@@ -2429,7 +2429,7 @@
   },
   {
    "key": "m6_t2__open",
-   "name": "Mod 6 target 2 List",
+   "name": "M6 Target 2 List",
    "options": [
     "Closed",
     "Open"
@@ -2440,7 +2440,7 @@
   },
   {
    "key": "m7_src",
-   "name": "Mod 7 source",
+   "name": "M7 Source",
    "options": [
     "None",
     "Env 1",
@@ -2476,7 +2476,7 @@
   },
   {
    "key": "m7_via",
-   "name": "Mod 7 via",
+   "name": "M7 Via",
    "options": [
     "None",
     "Env 1",
@@ -2512,7 +2512,7 @@
   },
   {
    "key": "m7_mod",
-   "name": "Mod 7 modifier",
+   "name": "M7 Modifier",
    "options": [
     "None",
     "Curve",
@@ -2525,7 +2525,7 @@
   },
   {
    "key": "m7_modamt",
-   "name": "Mod 7 modifier amount",
+   "name": "M7 Mod Amt",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -2533,7 +2533,7 @@
   },
   {
    "key": "m7_t1",
-   "name": "Mod 7 target 1",
+   "name": "M7 Target 1",
    "options": [
     "Off",
     "Pitch",
@@ -2577,7 +2577,7 @@
   },
   {
    "key": "m7_a1",
-   "name": "Mod 7 amount 1",
+   "name": "M7 Amt 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -2585,7 +2585,7 @@
   },
   {
    "key": "m7_t2",
-   "name": "Mod 7 target 2",
+   "name": "M7 Target 2",
    "options": [
     "Off",
     "Pitch",
@@ -2629,7 +2629,7 @@
   },
   {
    "key": "m7_a2",
-   "name": "Mod 7 amount 2",
+   "name": "M7 Amt 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -2637,7 +2637,7 @@
   },
   {
    "key": "m7_src__open",
-   "name": "Mod 7 source List",
+   "name": "M7 Source List",
    "options": [
     "Closed",
     "Open"
@@ -2648,7 +2648,7 @@
   },
   {
    "key": "m7_via__open",
-   "name": "Mod 7 via List",
+   "name": "M7 Via List",
    "options": [
     "Closed",
     "Open"
@@ -2659,7 +2659,7 @@
   },
   {
    "key": "m7_mod__open",
-   "name": "Mod 7 modifier List",
+   "name": "M7 Modifier List",
    "options": [
     "Closed",
     "Open"
@@ -2670,7 +2670,7 @@
   },
   {
    "key": "m7_t1__open",
-   "name": "Mod 7 target 1 List",
+   "name": "M7 Target 1 List",
    "options": [
     "Closed",
     "Open"
@@ -2681,7 +2681,7 @@
   },
   {
    "key": "m7_t2__open",
-   "name": "Mod 7 target 2 List",
+   "name": "M7 Target 2 List",
    "options": [
     "Closed",
     "Open"
@@ -2692,7 +2692,7 @@
   },
   {
    "key": "m8_src",
-   "name": "Mod 8 source",
+   "name": "M8 Source",
    "options": [
     "None",
     "Env 1",
@@ -2728,7 +2728,7 @@
   },
   {
    "key": "m8_via",
-   "name": "Mod 8 via",
+   "name": "M8 Via",
    "options": [
     "None",
     "Env 1",
@@ -2764,7 +2764,7 @@
   },
   {
    "key": "m8_mod",
-   "name": "Mod 8 modifier",
+   "name": "M8 Modifier",
    "options": [
     "None",
     "Curve",
@@ -2777,7 +2777,7 @@
   },
   {
    "key": "m8_modamt",
-   "name": "Mod 8 modifier amount",
+   "name": "M8 Mod Amt",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -2785,7 +2785,7 @@
   },
   {
    "key": "m8_t1",
-   "name": "Mod 8 target 1",
+   "name": "M8 Target 1",
    "options": [
     "Off",
     "Pitch",
@@ -2829,7 +2829,7 @@
   },
   {
    "key": "m8_a1",
-   "name": "Mod 8 amount 1",
+   "name": "M8 Amt 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -2837,7 +2837,7 @@
   },
   {
    "key": "m8_t2",
-   "name": "Mod 8 target 2",
+   "name": "M8 Target 2",
    "options": [
     "Off",
     "Pitch",
@@ -2881,7 +2881,7 @@
   },
   {
    "key": "m8_a2",
-   "name": "Mod 8 amount 2",
+   "name": "M8 Amt 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -2889,7 +2889,7 @@
   },
   {
    "key": "m8_src__open",
-   "name": "Mod 8 source List",
+   "name": "M8 Source List",
    "options": [
     "Closed",
     "Open"
@@ -2900,7 +2900,7 @@
   },
   {
    "key": "m8_via__open",
-   "name": "Mod 8 via List",
+   "name": "M8 Via List",
    "options": [
     "Closed",
     "Open"
@@ -2911,7 +2911,7 @@
   },
   {
    "key": "m8_mod__open",
-   "name": "Mod 8 modifier List",
+   "name": "M8 Modifier List",
    "options": [
     "Closed",
     "Open"
@@ -2922,7 +2922,7 @@
   },
   {
    "key": "m8_t1__open",
-   "name": "Mod 8 target 1 List",
+   "name": "M8 Target 1 List",
    "options": [
     "Closed",
     "Open"
@@ -2933,7 +2933,7 @@
   },
   {
    "key": "m8_t2__open",
-   "name": "Mod 8 target 2 List",
+   "name": "M8 Target 2 List",
    "options": [
     "Closed",
     "Open"
@@ -2944,7 +2944,7 @@
   },
   {
    "key": "m9_src",
-   "name": "Mod 9 source",
+   "name": "M9 Source",
    "options": [
     "None",
     "Env 1",
@@ -2980,7 +2980,7 @@
   },
   {
    "key": "m9_via",
-   "name": "Mod 9 via",
+   "name": "M9 Via",
    "options": [
     "None",
     "Env 1",
@@ -3016,7 +3016,7 @@
   },
   {
    "key": "m9_mod",
-   "name": "Mod 9 modifier",
+   "name": "M9 Modifier",
    "options": [
     "None",
     "Curve",
@@ -3029,7 +3029,7 @@
   },
   {
    "key": "m9_modamt",
-   "name": "Mod 9 modifier amount",
+   "name": "M9 Mod Amt",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -3037,7 +3037,7 @@
   },
   {
    "key": "m9_t1",
-   "name": "Mod 9 target 1",
+   "name": "M9 Target 1",
    "options": [
     "Off",
     "Pitch",
@@ -3081,7 +3081,7 @@
   },
   {
    "key": "m9_a1",
-   "name": "Mod 9 amount 1",
+   "name": "M9 Amt 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -3089,7 +3089,7 @@
   },
   {
    "key": "m9_t2",
-   "name": "Mod 9 target 2",
+   "name": "M9 Target 2",
    "options": [
     "Off",
     "Pitch",
@@ -3133,7 +3133,7 @@
   },
   {
    "key": "m9_a2",
-   "name": "Mod 9 amount 2",
+   "name": "M9 Amt 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -3141,7 +3141,7 @@
   },
   {
    "key": "m9_src__open",
-   "name": "Mod 9 source List",
+   "name": "M9 Source List",
    "options": [
     "Closed",
     "Open"
@@ -3152,7 +3152,7 @@
   },
   {
    "key": "m9_via__open",
-   "name": "Mod 9 via List",
+   "name": "M9 Via List",
    "options": [
     "Closed",
     "Open"
@@ -3163,7 +3163,7 @@
   },
   {
    "key": "m9_mod__open",
-   "name": "Mod 9 modifier List",
+   "name": "M9 Modifier List",
    "options": [
     "Closed",
     "Open"
@@ -3174,7 +3174,7 @@
   },
   {
    "key": "m9_t1__open",
-   "name": "Mod 9 target 1 List",
+   "name": "M9 Target 1 List",
    "options": [
     "Closed",
     "Open"
@@ -3185,7 +3185,7 @@
   },
   {
    "key": "m9_t2__open",
-   "name": "Mod 9 target 2 List",
+   "name": "M9 Target 2 List",
    "options": [
     "Closed",
     "Open"
@@ -3196,7 +3196,7 @@
   },
   {
    "key": "m10_src",
-   "name": "Mod 10 source",
+   "name": "M10 Source",
    "options": [
     "None",
     "Env 1",
@@ -3232,7 +3232,7 @@
   },
   {
    "key": "m10_via",
-   "name": "Mod 10 via",
+   "name": "M10 Via",
    "options": [
     "None",
     "Env 1",
@@ -3268,7 +3268,7 @@
   },
   {
    "key": "m10_mod",
-   "name": "Mod 10 modifier",
+   "name": "M10 Modifier",
    "options": [
     "None",
     "Curve",
@@ -3281,7 +3281,7 @@
   },
   {
    "key": "m10_modamt",
-   "name": "Mod 10 modifier amount",
+   "name": "M10 Mod Amt",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -3289,7 +3289,7 @@
   },
   {
    "key": "m10_t1",
-   "name": "Mod 10 target 1",
+   "name": "M10 Target 1",
    "options": [
     "Off",
     "Pitch",
@@ -3333,7 +3333,7 @@
   },
   {
    "key": "m10_a1",
-   "name": "Mod 10 amount 1",
+   "name": "M10 Amt 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -3341,7 +3341,7 @@
   },
   {
    "key": "m10_t2",
-   "name": "Mod 10 target 2",
+   "name": "M10 Target 2",
    "options": [
     "Off",
     "Pitch",
@@ -3385,7 +3385,7 @@
   },
   {
    "key": "m10_a2",
-   "name": "Mod 10 amount 2",
+   "name": "M10 Amt 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -3393,7 +3393,7 @@
   },
   {
    "key": "m10_src__open",
-   "name": "Mod 10 source List",
+   "name": "M10 Source List",
    "options": [
     "Closed",
     "Open"
@@ -3404,7 +3404,7 @@
   },
   {
    "key": "m10_via__open",
-   "name": "Mod 10 via List",
+   "name": "M10 Via List",
    "options": [
     "Closed",
     "Open"
@@ -3415,7 +3415,7 @@
   },
   {
    "key": "m10_mod__open",
-   "name": "Mod 10 modifier List",
+   "name": "M10 Modifier List",
    "options": [
     "Closed",
     "Open"
@@ -3426,7 +3426,7 @@
   },
   {
    "key": "m10_t1__open",
-   "name": "Mod 10 target 1 List",
+   "name": "M10 Target 1 List",
    "options": [
     "Closed",
     "Open"
@@ -3437,7 +3437,7 @@
   },
   {
    "key": "m10_t2__open",
-   "name": "Mod 10 target 2 List",
+   "name": "M10 Target 2 List",
    "options": [
     "Closed",
     "Open"
@@ -3448,7 +3448,7 @@
   },
   {
    "key": "m11_src",
-   "name": "Mod 11 source",
+   "name": "M11 Source",
    "options": [
     "None",
     "Env 1",
@@ -3484,7 +3484,7 @@
   },
   {
    "key": "m11_via",
-   "name": "Mod 11 via",
+   "name": "M11 Via",
    "options": [
     "None",
     "Env 1",
@@ -3520,7 +3520,7 @@
   },
   {
    "key": "m11_mod",
-   "name": "Mod 11 modifier",
+   "name": "M11 Modifier",
    "options": [
     "None",
     "Curve",
@@ -3533,7 +3533,7 @@
   },
   {
    "key": "m11_modamt",
-   "name": "Mod 11 modifier amount",
+   "name": "M11 Mod Amt",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -3541,7 +3541,7 @@
   },
   {
    "key": "m11_t1",
-   "name": "Mod 11 target 1",
+   "name": "M11 Target 1",
    "options": [
     "Off",
     "Pitch",
@@ -3585,7 +3585,7 @@
   },
   {
    "key": "m11_a1",
-   "name": "Mod 11 amount 1",
+   "name": "M11 Amt 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -3593,7 +3593,7 @@
   },
   {
    "key": "m11_t2",
-   "name": "Mod 11 target 2",
+   "name": "M11 Target 2",
    "options": [
     "Off",
     "Pitch",
@@ -3637,7 +3637,7 @@
   },
   {
    "key": "m11_a2",
-   "name": "Mod 11 amount 2",
+   "name": "M11 Amt 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -3645,7 +3645,7 @@
   },
   {
    "key": "m11_src__open",
-   "name": "Mod 11 source List",
+   "name": "M11 Source List",
    "options": [
     "Closed",
     "Open"
@@ -3656,7 +3656,7 @@
   },
   {
    "key": "m11_via__open",
-   "name": "Mod 11 via List",
+   "name": "M11 Via List",
    "options": [
     "Closed",
     "Open"
@@ -3667,7 +3667,7 @@
   },
   {
    "key": "m11_mod__open",
-   "name": "Mod 11 modifier List",
+   "name": "M11 Modifier List",
    "options": [
     "Closed",
     "Open"
@@ -3678,7 +3678,7 @@
   },
   {
    "key": "m11_t1__open",
-   "name": "Mod 11 target 1 List",
+   "name": "M11 Target 1 List",
    "options": [
     "Closed",
     "Open"
@@ -3689,7 +3689,7 @@
   },
   {
    "key": "m11_t2__open",
-   "name": "Mod 11 target 2 List",
+   "name": "M11 Target 2 List",
    "options": [
     "Closed",
     "Open"
@@ -3700,7 +3700,7 @@
   },
   {
    "key": "m12_src",
-   "name": "Mod 12 source",
+   "name": "M12 Source",
    "options": [
     "None",
     "Env 1",
@@ -3736,7 +3736,7 @@
   },
   {
    "key": "m12_via",
-   "name": "Mod 12 via",
+   "name": "M12 Via",
    "options": [
     "None",
     "Env 1",
@@ -3772,7 +3772,7 @@
   },
   {
    "key": "m12_mod",
-   "name": "Mod 12 modifier",
+   "name": "M12 Modifier",
    "options": [
     "None",
     "Curve",
@@ -3785,7 +3785,7 @@
   },
   {
    "key": "m12_modamt",
-   "name": "Mod 12 modifier amount",
+   "name": "M12 Mod Amt",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -3793,7 +3793,7 @@
   },
   {
    "key": "m12_t1",
-   "name": "Mod 12 target 1",
+   "name": "M12 Target 1",
    "options": [
     "Off",
     "Pitch",
@@ -3837,7 +3837,7 @@
   },
   {
    "key": "m12_a1",
-   "name": "Mod 12 amount 1",
+   "name": "M12 Amt 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -3845,7 +3845,7 @@
   },
   {
    "key": "m12_t2",
-   "name": "Mod 12 target 2",
+   "name": "M12 Target 2",
    "options": [
     "Off",
     "Pitch",
@@ -3889,7 +3889,7 @@
   },
   {
    "key": "m12_a2",
-   "name": "Mod 12 amount 2",
+   "name": "M12 Amt 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -3897,7 +3897,7 @@
   },
   {
    "key": "m12_src__open",
-   "name": "Mod 12 source List",
+   "name": "M12 Source List",
    "options": [
     "Closed",
     "Open"
@@ -3908,7 +3908,7 @@
   },
   {
    "key": "m12_via__open",
-   "name": "Mod 12 via List",
+   "name": "M12 Via List",
    "options": [
     "Closed",
     "Open"
@@ -3919,7 +3919,7 @@
   },
   {
    "key": "m12_mod__open",
-   "name": "Mod 12 modifier List",
+   "name": "M12 Modifier List",
    "options": [
     "Closed",
     "Open"
@@ -3930,7 +3930,7 @@
   },
   {
    "key": "m12_t1__open",
-   "name": "Mod 12 target 1 List",
+   "name": "M12 Target 1 List",
    "options": [
     "Closed",
     "Open"
@@ -3941,7 +3941,7 @@
   },
   {
    "key": "m12_t2__open",
-   "name": "Mod 12 target 2 List",
+   "name": "M12 Target 2 List",
    "options": [
     "Closed",
     "Open"
@@ -3952,7 +3952,7 @@
   },
   {
    "key": "seq_mode",
-   "name": "Arp/Seq",
+   "name": "Arp/Seq Mode",
    "options": [
     "Off",
     "Arp",
@@ -3962,7 +3962,7 @@
   },
   {
    "key": "arp_dir",
-   "name": "Arp direction",
+   "name": "Arp Direction",
    "options": [
     "Up",
     "Down",
@@ -3976,7 +3976,7 @@
   },
   {
    "key": "arp_dir__open",
-   "name": "Arp direction List",
+   "name": "Arp Direction List",
    "options": [
     "Closed",
     "Open"
@@ -3987,7 +3987,7 @@
   },
   {
    "key": "arp_oct",
-   "name": "Arp octaves",
+   "name": "Arp Octaves",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -3995,7 +3995,7 @@
   },
   {
    "key": "clk_rate",
-   "name": "Arp/Seq rate",
+   "name": "Arp/Seq Rate",
    "options": [
     "8 bars",
     "4 bars",
@@ -4019,7 +4019,7 @@
   },
   {
    "key": "clk_rate__open",
-   "name": "Arp/Seq rate List",
+   "name": "Arp/Seq Rate List",
    "options": [
     "Closed",
     "Open"
@@ -4030,7 +4030,7 @@
   },
   {
    "key": "clk_gate",
-   "name": "Arp/Seq gate",
+   "name": "Arp/Seq Gate",
    "min": 0,
    "max": 1,
    "default": 0.473684,
@@ -4038,7 +4038,7 @@
   },
   {
    "key": "clk_swing",
-   "name": "Arp/Seq swing",
+   "name": "Swing",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -4046,7 +4046,7 @@
   },
   {
    "key": "arp_latch",
-   "name": "Arp latch",
+   "name": "Arp Latch",
    "options": [
     "Off",
     "Latch"
@@ -4055,7 +4055,7 @@
   },
   {
    "key": "arp_pattern",
-   "name": "Arp pattern",
+   "name": "Arp Pattern",
    "options": [
     "Off",
     "Steps"
@@ -4064,7 +4064,7 @@
   },
   {
    "key": "seq_steps",
-   "name": "Seq steps",
+   "name": "Seq Steps",
    "min": 0,
    "max": 1,
    "default": 1.0,
@@ -4072,7 +4072,7 @@
   },
   {
    "key": "seq_rec",
-   "name": "Seq record",
+   "name": "Seq Record",
    "options": [
     "Off",
     "Rec"
@@ -4081,7 +4081,7 @@
   },
   {
    "key": "s1_note",
-   "name": "Step 1 note",
+   "name": "Note 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4089,7 +4089,7 @@
   },
   {
    "key": "s2_note",
-   "name": "Step 2 note",
+   "name": "Note 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4097,7 +4097,7 @@
   },
   {
    "key": "s3_note",
-   "name": "Step 3 note",
+   "name": "Note 3",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4105,7 +4105,7 @@
   },
   {
    "key": "s4_note",
-   "name": "Step 4 note",
+   "name": "Note 4",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4113,7 +4113,7 @@
   },
   {
    "key": "s5_note",
-   "name": "Step 5 note",
+   "name": "Note 5",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4121,7 +4121,7 @@
   },
   {
    "key": "s6_note",
-   "name": "Step 6 note",
+   "name": "Note 6",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4129,7 +4129,7 @@
   },
   {
    "key": "s7_note",
-   "name": "Step 7 note",
+   "name": "Note 7",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4137,7 +4137,7 @@
   },
   {
    "key": "s8_note",
-   "name": "Step 8 note",
+   "name": "Note 8",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4145,7 +4145,7 @@
   },
   {
    "key": "s9_note",
-   "name": "Step 9 note",
+   "name": "Note 9",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4153,7 +4153,7 @@
   },
   {
    "key": "s10_note",
-   "name": "Step 10 note",
+   "name": "Note 10",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4161,7 +4161,7 @@
   },
   {
    "key": "s11_note",
-   "name": "Step 11 note",
+   "name": "Note 11",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4169,7 +4169,7 @@
   },
   {
    "key": "s12_note",
-   "name": "Step 12 note",
+   "name": "Note 12",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4177,7 +4177,7 @@
   },
   {
    "key": "s13_note",
-   "name": "Step 13 note",
+   "name": "Note 13",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4185,7 +4185,7 @@
   },
   {
    "key": "s14_note",
-   "name": "Step 14 note",
+   "name": "Note 14",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4193,7 +4193,7 @@
   },
   {
    "key": "s15_note",
-   "name": "Step 15 note",
+   "name": "Note 15",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4201,7 +4201,7 @@
   },
   {
    "key": "s16_note",
-   "name": "Step 16 note",
+   "name": "Note 16",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4209,7 +4209,7 @@
   },
   {
    "key": "s1_vel",
-   "name": "Step 1 velocity",
+   "name": "Vel 1",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4217,7 +4217,7 @@
   },
   {
    "key": "s2_vel",
-   "name": "Step 2 velocity",
+   "name": "Vel 2",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4225,7 +4225,7 @@
   },
   {
    "key": "s3_vel",
-   "name": "Step 3 velocity",
+   "name": "Vel 3",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4233,7 +4233,7 @@
   },
   {
    "key": "s4_vel",
-   "name": "Step 4 velocity",
+   "name": "Vel 4",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4241,7 +4241,7 @@
   },
   {
    "key": "s5_vel",
-   "name": "Step 5 velocity",
+   "name": "Vel 5",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4249,7 +4249,7 @@
   },
   {
    "key": "s6_vel",
-   "name": "Step 6 velocity",
+   "name": "Vel 6",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4257,7 +4257,7 @@
   },
   {
    "key": "s7_vel",
-   "name": "Step 7 velocity",
+   "name": "Vel 7",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4265,7 +4265,7 @@
   },
   {
    "key": "s8_vel",
-   "name": "Step 8 velocity",
+   "name": "Vel 8",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4273,7 +4273,7 @@
   },
   {
    "key": "s9_vel",
-   "name": "Step 9 velocity",
+   "name": "Vel 9",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4281,7 +4281,7 @@
   },
   {
    "key": "s10_vel",
-   "name": "Step 10 velocity",
+   "name": "Vel 10",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4289,7 +4289,7 @@
   },
   {
    "key": "s11_vel",
-   "name": "Step 11 velocity",
+   "name": "Vel 11",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4297,7 +4297,7 @@
   },
   {
    "key": "s12_vel",
-   "name": "Step 12 velocity",
+   "name": "Vel 12",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4305,7 +4305,7 @@
   },
   {
    "key": "s13_vel",
-   "name": "Step 13 velocity",
+   "name": "Vel 13",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4313,7 +4313,7 @@
   },
   {
    "key": "s14_vel",
-   "name": "Step 14 velocity",
+   "name": "Vel 14",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4321,7 +4321,7 @@
   },
   {
    "key": "s15_vel",
-   "name": "Step 15 velocity",
+   "name": "Vel 15",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4329,7 +4329,7 @@
   },
   {
    "key": "s16_vel",
-   "name": "Step 16 velocity",
+   "name": "Vel 16",
    "min": 0,
    "max": 1,
    "default": 0.787402,
@@ -4337,7 +4337,7 @@
   },
   {
    "key": "s1_mod",
-   "name": "Step 1 mod",
+   "name": "Mod 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4345,7 +4345,7 @@
   },
   {
    "key": "s2_mod",
-   "name": "Step 2 mod",
+   "name": "Mod 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4353,7 +4353,7 @@
   },
   {
    "key": "s3_mod",
-   "name": "Step 3 mod",
+   "name": "Mod 3",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4361,7 +4361,7 @@
   },
   {
    "key": "s4_mod",
-   "name": "Step 4 mod",
+   "name": "Mod 4",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4369,7 +4369,7 @@
   },
   {
    "key": "s5_mod",
-   "name": "Step 5 mod",
+   "name": "Mod 5",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4377,7 +4377,7 @@
   },
   {
    "key": "s6_mod",
-   "name": "Step 6 mod",
+   "name": "Mod 6",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4385,7 +4385,7 @@
   },
   {
    "key": "s7_mod",
-   "name": "Step 7 mod",
+   "name": "Mod 7",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4393,7 +4393,7 @@
   },
   {
    "key": "s8_mod",
-   "name": "Step 8 mod",
+   "name": "Mod 8",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4401,7 +4401,7 @@
   },
   {
    "key": "s9_mod",
-   "name": "Step 9 mod",
+   "name": "Mod 9",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4409,7 +4409,7 @@
   },
   {
    "key": "s10_mod",
-   "name": "Step 10 mod",
+   "name": "Mod 10",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4417,7 +4417,7 @@
   },
   {
    "key": "s11_mod",
-   "name": "Step 11 mod",
+   "name": "Mod 11",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4425,7 +4425,7 @@
   },
   {
    "key": "s12_mod",
-   "name": "Step 12 mod",
+   "name": "Mod 12",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4433,7 +4433,7 @@
   },
   {
    "key": "s13_mod",
-   "name": "Step 13 mod",
+   "name": "Mod 13",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4441,7 +4441,7 @@
   },
   {
    "key": "s14_mod",
-   "name": "Step 14 mod",
+   "name": "Mod 14",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4449,7 +4449,7 @@
   },
   {
    "key": "s15_mod",
-   "name": "Step 15 mod",
+   "name": "Mod 15",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4457,7 +4457,7 @@
   },
   {
    "key": "s16_mod",
-   "name": "Step 16 mod",
+   "name": "Mod 16",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4465,7 +4465,7 @@
   },
   {
    "key": "sh_rate",
-   "name": "Shape rate",
+   "name": "Shape Rate",
    "options": [
     "8 bars",
     "4 bars",
@@ -4489,7 +4489,7 @@
   },
   {
    "key": "sh_rate__open",
-   "name": "Shape rate List",
+   "name": "Shape Rate List",
    "options": [
     "Closed",
     "Open"
@@ -4500,7 +4500,7 @@
   },
   {
    "key": "sh_steps",
-   "name": "Shape steps",
+   "name": "Shape Steps",
    "min": 0,
    "max": 1,
    "default": 1.0,
@@ -4508,7 +4508,7 @@
   },
   {
    "key": "sh1_mode",
-   "name": "Shape 1 mode",
+   "name": "Shape 1 Mode",
    "options": [
     "Step",
     "Ramp",
@@ -4518,7 +4518,7 @@
   },
   {
    "key": "sh1_1",
-   "name": "Shape 1 step 1",
+   "name": "Sh1 Step 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4526,7 +4526,7 @@
   },
   {
    "key": "sh1_2",
-   "name": "Shape 1 step 2",
+   "name": "Sh1 Step 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4534,7 +4534,7 @@
   },
   {
    "key": "sh1_3",
-   "name": "Shape 1 step 3",
+   "name": "Sh1 Step 3",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4542,7 +4542,7 @@
   },
   {
    "key": "sh1_4",
-   "name": "Shape 1 step 4",
+   "name": "Sh1 Step 4",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4550,7 +4550,7 @@
   },
   {
    "key": "sh1_5",
-   "name": "Shape 1 step 5",
+   "name": "Sh1 Step 5",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4558,7 +4558,7 @@
   },
   {
    "key": "sh1_6",
-   "name": "Shape 1 step 6",
+   "name": "Sh1 Step 6",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4566,7 +4566,7 @@
   },
   {
    "key": "sh1_7",
-   "name": "Shape 1 step 7",
+   "name": "Sh1 Step 7",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4574,7 +4574,7 @@
   },
   {
    "key": "sh1_8",
-   "name": "Shape 1 step 8",
+   "name": "Sh1 Step 8",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4582,7 +4582,7 @@
   },
   {
    "key": "sh2_mode",
-   "name": "Shape 2 mode",
+   "name": "Shape 2 Mode",
    "options": [
     "Step",
     "Ramp",
@@ -4592,7 +4592,7 @@
   },
   {
    "key": "sh2_1",
-   "name": "Shape 2 step 1",
+   "name": "Sh2 Step 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4600,7 +4600,7 @@
   },
   {
    "key": "sh2_2",
-   "name": "Shape 2 step 2",
+   "name": "Sh2 Step 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4608,7 +4608,7 @@
   },
   {
    "key": "sh2_3",
-   "name": "Shape 2 step 3",
+   "name": "Sh2 Step 3",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4616,7 +4616,7 @@
   },
   {
    "key": "sh2_4",
-   "name": "Shape 2 step 4",
+   "name": "Sh2 Step 4",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4624,7 +4624,7 @@
   },
   {
    "key": "sh2_5",
-   "name": "Shape 2 step 5",
+   "name": "Sh2 Step 5",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4632,7 +4632,7 @@
   },
   {
    "key": "sh2_6",
-   "name": "Shape 2 step 6",
+   "name": "Sh2 Step 6",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4640,7 +4640,7 @@
   },
   {
    "key": "sh2_7",
-   "name": "Shape 2 step 7",
+   "name": "Sh2 Step 7",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4648,7 +4648,7 @@
   },
   {
    "key": "sh2_8",
-   "name": "Shape 2 step 8",
+   "name": "Sh2 Step 8",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4656,7 +4656,7 @@
   },
   {
    "key": "sh3_mode",
-   "name": "Shape 3 mode",
+   "name": "Shape 3 Mode",
    "options": [
     "Step",
     "Ramp",
@@ -4666,7 +4666,7 @@
   },
   {
    "key": "sh3_1",
-   "name": "Shape 3 step 1",
+   "name": "Sh3 Step 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4674,7 +4674,7 @@
   },
   {
    "key": "sh3_2",
-   "name": "Shape 3 step 2",
+   "name": "Sh3 Step 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4682,7 +4682,7 @@
   },
   {
    "key": "sh3_3",
-   "name": "Shape 3 step 3",
+   "name": "Sh3 Step 3",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4690,7 +4690,7 @@
   },
   {
    "key": "sh3_4",
-   "name": "Shape 3 step 4",
+   "name": "Sh3 Step 4",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4698,7 +4698,7 @@
   },
   {
    "key": "sh3_5",
-   "name": "Shape 3 step 5",
+   "name": "Sh3 Step 5",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4706,7 +4706,7 @@
   },
   {
    "key": "sh3_6",
-   "name": "Shape 3 step 6",
+   "name": "Sh3 Step 6",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4714,7 +4714,7 @@
   },
   {
    "key": "sh3_7",
-   "name": "Shape 3 step 7",
+   "name": "Sh3 Step 7",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4722,7 +4722,7 @@
   },
   {
    "key": "sh3_8",
-   "name": "Shape 3 step 8",
+   "name": "Sh3 Step 8",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4730,7 +4730,7 @@
   },
   {
    "key": "sh4_mode",
-   "name": "Shape 4 mode",
+   "name": "Shape 4 Mode",
    "options": [
     "Step",
     "Ramp",
@@ -4740,7 +4740,7 @@
   },
   {
    "key": "sh4_1",
-   "name": "Shape 4 step 1",
+   "name": "Sh4 Step 1",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4748,7 +4748,7 @@
   },
   {
    "key": "sh4_2",
-   "name": "Shape 4 step 2",
+   "name": "Sh4 Step 2",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4756,7 +4756,7 @@
   },
   {
    "key": "sh4_3",
-   "name": "Shape 4 step 3",
+   "name": "Sh4 Step 3",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4764,7 +4764,7 @@
   },
   {
    "key": "sh4_4",
-   "name": "Shape 4 step 4",
+   "name": "Sh4 Step 4",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4772,7 +4772,7 @@
   },
   {
    "key": "sh4_5",
-   "name": "Shape 4 step 5",
+   "name": "Sh4 Step 5",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4780,7 +4780,7 @@
   },
   {
    "key": "sh4_6",
-   "name": "Shape 4 step 6",
+   "name": "Sh4 Step 6",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4788,7 +4788,7 @@
   },
   {
    "key": "sh4_7",
-   "name": "Shape 4 step 7",
+   "name": "Sh4 Step 7",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4796,7 +4796,7 @@
   },
   {
    "key": "sh4_8",
-   "name": "Shape 4 step 8",
+   "name": "Sh4 Step 8",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4804,17 +4804,18 @@
   },
   {
    "key": "ui_seq",
-   "name": "Sequencer page",
+   "name": "Seq Page",
    "options": [
     "ARP",
     "STEPS",
-    "SHAPES"
+    "SHAPES 1-2",
+    "SHAPES 3-4"
    ],
    "default": "ARP"
   },
   {
    "key": "xy1_x",
-   "name": "XY 1 X",
+   "name": "XY Pad X1",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -4822,7 +4823,7 @@
   },
   {
    "key": "xy1_y",
-   "name": "XY 1 Y",
+   "name": "XY Pad Y1",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -4830,7 +4831,7 @@
   },
   {
    "key": "xy2_x",
-   "name": "XY 2 X",
+   "name": "XY Pad X2",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -4838,7 +4839,7 @@
   },
   {
    "key": "xy2_y",
-   "name": "XY 2 Y",
+   "name": "XY Pad Y2",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -4846,7 +4847,7 @@
   },
   {
    "key": "xy3_x",
-   "name": "XY 3 X",
+   "name": "XY Pad X3",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -4854,7 +4855,7 @@
   },
   {
    "key": "xy3_y",
-   "name": "XY 3 Y",
+   "name": "XY Pad Y3",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -4862,7 +4863,7 @@
   },
   {
    "key": "xy4_x",
-   "name": "XY 4 X",
+   "name": "XY Pad X4",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -4870,7 +4871,7 @@
   },
   {
    "key": "xy4_y",
-   "name": "XY 4 Y",
+   "name": "XY Pad Y4",
    "min": 0,
    "max": 1,
    "default": 0.0,
@@ -4878,7 +4879,7 @@
   },
   {
    "key": "xy_auto",
-   "name": "XY auto-assign",
+   "name": "XY Auto-Assign",
    "min": 0,
    "max": 1,
    "momentary": true,
@@ -4886,18 +4887,17 @@
   },
   {
    "key": "ui_mod",
-   "name": "Modulation page",
+   "name": "Mod Page",
    "options": [
     "ENVELOPES",
-    "LFO 1",
-    "LFO 2",
+    "LFOS",
     "XY"
    ],
    "default": "ENVELOPES"
   },
   {
    "key": "ui_mx",
-   "name": "Matrix page",
+   "name": "Matrix Page",
    "options": [
     "1-4",
     "5-8",
@@ -4908,7 +4908,7 @@
   },
   {
    "key": "vmode",
-   "name": "Voice mode",
+   "name": "Voice Mode",
    "options": [
     "Poly",
     "Duo",
@@ -4919,7 +4919,7 @@
   },
   {
    "key": "steal",
-   "name": "Steal",
+   "name": "Voice Steal",
    "options": [
     "Oldest",
     "Quietest",
@@ -4930,7 +4930,7 @@
   },
   {
    "key": "same_note",
-   "name": "Same note",
+   "name": "Same Note",
    "options": [
     "Retrigger",
     "New voice"
@@ -4939,7 +4939,7 @@
   },
   {
    "key": "glide_mode",
-   "name": "Glide",
+   "name": "Glide Mode",
    "options": [
     "Off",
     "Always",
@@ -4949,7 +4949,7 @@
   },
   {
    "key": "glide_type",
-   "name": "Glide type",
+   "name": "Glide Type",
    "options": [
     "Time",
     "Rate"
@@ -4958,7 +4958,7 @@
   },
   {
    "key": "glide",
-   "name": "Glide time",
+   "name": "Glide Time",
    "min": 0,
    "max": 1,
    "default": 0.475772,
@@ -4966,7 +4966,7 @@
   },
   {
    "key": "bend_up",
-   "name": "Bend up",
+   "name": "Bend Up",
    "min": 0,
    "max": 1,
    "default": 0.083333,
@@ -4974,7 +4974,7 @@
   },
   {
    "key": "bend_dn",
-   "name": "Bend down",
+   "name": "Bend Down",
    "min": 0,
    "max": 1,
    "default": 0.083333,
@@ -4982,7 +4982,7 @@
   },
   {
    "key": "vel_curve",
-   "name": "Velocity curve",
+   "name": "Vel Curve",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -4998,7 +4998,7 @@
   },
   {
    "key": "tuning_prev",
-   "name": "Tuning prev",
+   "name": "Tuning Prev",
    "min": 0,
    "max": 1,
    "momentary": true,
@@ -5006,7 +5006,7 @@
   },
   {
    "key": "tuning_next",
-   "name": "Tuning next",
+   "name": "Tuning Next",
    "min": 0,
    "max": 1,
    "momentary": true,
@@ -5022,7 +5022,7 @@
   },
   {
    "key": "preset_prev",
-   "name": "Preset prev",
+   "name": "Preset Prev",
    "min": 0,
    "max": 1,
    "momentary": true,
@@ -5030,7 +5030,7 @@
   },
   {
    "key": "preset_next",
-   "name": "Preset next",
+   "name": "Preset Next",
    "min": 0,
    "max": 1,
    "momentary": true,
@@ -5038,7 +5038,7 @@
   },
   {
    "key": "pre_save",
-   "name": "Save preset",
+   "name": "Save Preset",
    "min": 0,
    "max": 1,
    "momentary": true,
@@ -5046,7 +5046,7 @@
   },
   {
    "key": "pre_init",
-   "name": "Init patch",
+   "name": "Init Patch",
    "min": 0,
    "max": 1,
    "momentary": true,
@@ -5062,7 +5062,7 @@
   },
   {
    "key": "rand_amt",
-   "name": "Randomize amount",
+   "name": "Rand Amount",
    "min": 0,
    "max": 1,
    "default": 0.5,
@@ -5070,7 +5070,7 @@
   },
   {
    "key": "br_target",
-   "name": "Browse for",
+   "name": "Browse For",
    "options": [
     "OSC 1",
     "OSC 2",
@@ -5240,7 +5240,7 @@
   },
   {
    "key": "cat_prev",
-   "name": "Categories prev",
+   "name": "Categories Prev",
    "min": 0,
    "max": 1,
    "momentary": true,
@@ -5248,7 +5248,7 @@
   },
   {
    "key": "cat_next",
-   "name": "Categories next",
+   "name": "Categories Next",
    "min": 0,
    "max": 1,
    "momentary": true,
@@ -5256,7 +5256,7 @@
   },
   {
    "key": "tbl_1",
-   "name": "Table 1",
+   "name": "Item 1",
    "options": [
     "-",
     "On"
@@ -5266,7 +5266,7 @@
   },
   {
    "key": "tbl_2",
-   "name": "Table 2",
+   "name": "Item 2",
    "options": [
     "-",
     "On"
@@ -5276,7 +5276,7 @@
   },
   {
    "key": "tbl_3",
-   "name": "Table 3",
+   "name": "Item 3",
    "options": [
     "-",
     "On"
@@ -5286,7 +5286,7 @@
   },
   {
    "key": "tbl_4",
-   "name": "Table 4",
+   "name": "Item 4",
    "options": [
     "-",
     "On"
@@ -5296,7 +5296,7 @@
   },
   {
    "key": "tbl_5",
-   "name": "Table 5",
+   "name": "Item 5",
    "options": [
     "-",
     "On"
@@ -5306,7 +5306,7 @@
   },
   {
    "key": "tbl_6",
-   "name": "Table 6",
+   "name": "Item 6",
    "options": [
     "-",
     "On"
@@ -5316,7 +5316,7 @@
   },
   {
    "key": "tbl_7",
-   "name": "Table 7",
+   "name": "Item 7",
    "options": [
     "-",
     "On"
@@ -5326,7 +5326,7 @@
   },
   {
    "key": "tbl_8",
-   "name": "Table 8",
+   "name": "Item 8",
    "options": [
     "-",
     "On"
@@ -5336,7 +5336,7 @@
   },
   {
    "key": "tbl_9",
-   "name": "Table 9",
+   "name": "Item 9",
    "options": [
     "-",
     "On"
@@ -5346,7 +5346,7 @@
   },
   {
    "key": "tbl_10",
-   "name": "Table 10",
+   "name": "Item 10",
    "options": [
     "-",
     "On"
@@ -5356,7 +5356,7 @@
   },
   {
    "key": "tbl_11",
-   "name": "Table 11",
+   "name": "Item 11",
    "options": [
     "-",
     "On"
@@ -5366,7 +5366,7 @@
   },
   {
    "key": "tbl_12",
-   "name": "Table 12",
+   "name": "Item 12",
    "options": [
     "-",
     "On"
@@ -5376,7 +5376,7 @@
   },
   {
    "key": "tbl_13",
-   "name": "Table 13",
+   "name": "Item 13",
    "options": [
     "-",
     "On"
@@ -5386,7 +5386,7 @@
   },
   {
    "key": "tbl_14",
-   "name": "Table 14",
+   "name": "Item 14",
    "options": [
     "-",
     "On"
@@ -5396,7 +5396,7 @@
   },
   {
    "key": "tbl_15",
-   "name": "Table 15",
+   "name": "Item 15",
    "options": [
     "-",
     "On"
@@ -5406,7 +5406,7 @@
   },
   {
    "key": "tbl_16",
-   "name": "Table 16",
+   "name": "Item 16",
    "options": [
     "-",
     "On"
@@ -5416,7 +5416,7 @@
   },
   {
    "key": "tbl_17",
-   "name": "Table 17",
+   "name": "Item 17",
    "options": [
     "-",
     "On"
@@ -5426,7 +5426,7 @@
   },
   {
    "key": "tbl_18",
-   "name": "Table 18",
+   "name": "Item 18",
    "options": [
     "-",
     "On"
@@ -5436,7 +5436,7 @@
   },
   {
    "key": "tbl_19",
-   "name": "Table 19",
+   "name": "Item 19",
    "options": [
     "-",
     "On"
@@ -5446,7 +5446,7 @@
   },
   {
    "key": "tbl_20",
-   "name": "Table 20",
+   "name": "Item 20",
    "options": [
     "-",
     "On"
@@ -5456,7 +5456,7 @@
   },
   {
    "key": "tbl_21",
-   "name": "Table 21",
+   "name": "Item 21",
    "options": [
     "-",
     "On"
@@ -5466,7 +5466,7 @@
   },
   {
    "key": "tbl_22",
-   "name": "Table 22",
+   "name": "Item 22",
    "options": [
     "-",
     "On"
@@ -5476,7 +5476,7 @@
   },
   {
    "key": "tbl_23",
-   "name": "Table 23",
+   "name": "Item 23",
    "options": [
     "-",
     "On"
@@ -5486,7 +5486,7 @@
   },
   {
    "key": "tbl_24",
-   "name": "Table 24",
+   "name": "Item 24",
    "options": [
     "-",
     "On"
@@ -5496,7 +5496,7 @@
   },
   {
    "key": "tbl_prev",
-   "name": "Tables prev",
+   "name": "Items Prev",
    "min": 0,
    "max": 1,
    "momentary": true,
@@ -5504,7 +5504,7 @@
   },
   {
    "key": "tbl_next",
-   "name": "Tables next",
+   "name": "Items Next",
    "min": 0,
    "max": 1,
    "momentary": true,
@@ -5512,7 +5512,7 @@
   },
   {
    "key": "tbl_page",
-   "name": "Tables page",
+   "name": "Items Page",
    "min": 0,
    "max": 0,
    "display": "string",
@@ -5537,7 +5537,7 @@
   },
   {
    "key": "rnd",
-   "name": "Random",
+   "name": "Random Pick",
    "min": 0,
    "max": 1,
    "momentary": true,

@@ -46,12 +46,16 @@ $(GEN): $(SURF)/surface.py presets/Factory $(wildcard presets/Factory/*.pfp)
 	python3 $(SURF)/surface.py
 
 # The skin (TUI.json + PNGs) and the plugin-list entry: sd88me's generator, Pillow and a host gcc.
+# Then surface/skin_polish.py redraws the knob strips, trigger buttons and stepper arrows (same names
+# and sizes) from build/skin_style.json; it checks the skin first and fails the build on a mismatch.
+# SHADOW_TITLE_FONT = TITLE_FONT in surface.py.
 skin: $(SKIN)
 $(SKIN): $(GEN) $(MV)/tools/gen_vst.py $(MV)/tools/shadow_skin.py $(MV)/tools/skin_assets.py $(MV)/tools/shadow_art.c \
-         $(wildcard $(SURF)/fonts/*.ttf)
+         $(SURF)/skin_polish.py $(wildcard $(SURF)/fonts/*.ttf)
 	mkdir -p $(SURF_OUT)
 	gcc -O2 -I$(MV)/tools/vendor/force-shadow/tools -o $(SURF_OUT)/shadow_art $(MV)/tools/shadow_art.c -lm
 	cd $(SURF) && SHADOW_TITLE_FONT=fonts/TitilliumWeb-Bold.ttf $(PY) ../$(MV)/tools/gen_vst.py vst.json
+	$(PY) $(SURF)/skin_polish.py "$(SKIN_DIR)/Plugin Skins" --layout $(SURF)/layout.conf --style $(SURF_OUT)/skin_style.json
 	touch $@
 
 # Skin previews (PNG per page) for checking the layout without a device.
