@@ -41,7 +41,7 @@ constexpr int kMaxMidi = 512;
 constexpr float kSampleRate = 44100.0f;   // MPC OS always runs 44.1 kHz (spec §2.7)
 constexpr int kScratch = 512;
 constexpr const char* kStateMagic = "polyforce ";
-constexpr int kStateVersion = 3;
+constexpr int kStateVersion = 4;
 
 // Denormals (the tails of decaying filters and envelopes) are slow on the VFP unit. Flush
 // them to zero for our block only and hand MPC's worker back its own FP mode.
@@ -137,10 +137,11 @@ float getParameter(AEffect* e, int32_t i) { return self(e)->surface.get(i); }
 void setParameter(AEffect* e, int32_t i, float v) { self(e)->surface.set(i, v); }
 
 // --- state --------------------------------------------------------------------------------
-// "polyforce 3": key=value lines of REAL values (Hz, seconds, voice counts, option index) for
+// "polyforce 4": key=value lines of REAL values (Hz, seconds, voice counts, option index) for
 // every sound parameter, plus the tables by key. Survives parameters being added or reordered
 // AND ranges changing (a 0..1 value would silently move: unison 4 of 1..16 reads back as 2 of
-// 1..8). Version 1 stored 0..1 values; version 2 chose a built-in table by index (o1_wave).
+// 1..8). Version 1 stored 0..1 values; version 2 chose a built-in table by index (o1_wave, now
+// the oscillator's wave mode); version 3 had no per-oscillator routes.
 
 std::string saveState(const Plugin* p) {
     std::string s = std::string(kStateMagic) + std::to_string(kStateVersion) + "\n";
@@ -187,6 +188,10 @@ bool loadState(Plugin* p, const std::string& s) {
                 break;
             }
     }
+    // Before version 4, Parallel meant osc 1 -> F1 and osc 2 -> F2; now every source has its
+    // own route (default F1) and Parallel only stops F1 feeding F2.
+    if (version < 4 && paramValue(P_ROUTING, p->surface.get(P_ROUTING)) > 0.5f && s.find("\no2_route=") == std::string::npos)
+        p->surface.setValue(P_O2_ROUTE, paramNorm(P_O2_ROUTE, RT_F2));
     for (int o = 0; o < 2; ++o) p->surface.setTable(o, tables[o], true);
     p->surface.refresh();
     return true;

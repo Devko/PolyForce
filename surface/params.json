@@ -35,6 +35,31 @@
    "default": "Serial"
   },
   {
+   "key": "o1_wave",
+   "name": "Osc 1 wave",
+   "options": [
+    "Table",
+    "Sine",
+    "Triangle",
+    "Saw",
+    "Square",
+    "Pulse",
+    "Noise"
+   ],
+   "default": "Table"
+  },
+  {
+   "key": "o1_wave__open",
+   "name": "Osc 1 wave List",
+   "options": [
+    "Closed",
+    "Open"
+   ],
+   "default": "Closed",
+   "popup_of": "o1_wave",
+   "type": "enum"
+  },
+  {
    "key": "o1_table",
    "name": "Osc 1 table",
    "min": 0,
@@ -123,6 +148,95 @@
    "display": "string"
   },
   {
+   "key": "o1_pan",
+   "name": "Osc 1 pan",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_phase",
+   "name": "Osc 1 phase",
+   "min": 0,
+   "max": 1,
+   "default": 0.0,
+   "display": "string"
+  },
+  {
+   "key": "o1_phmode",
+   "name": "Osc 1 phase mode",
+   "options": [
+    "Reset",
+    "Random",
+    "Free"
+   ],
+   "default": "Reset"
+  },
+  {
+   "key": "o1_route",
+   "name": "Osc 1 route",
+   "options": [
+    "F1",
+    "F2",
+    "F1+F2",
+    "Direct"
+   ],
+   "default": "F1"
+  },
+  {
+   "key": "o1_sub_wave",
+   "name": "Sub 1 wave",
+   "options": [
+    "Sine",
+    "Triangle",
+    "Saw",
+    "Square"
+   ],
+   "default": "Sine"
+  },
+  {
+   "key": "o1_sub_tune",
+   "name": "Sub 1 tune",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_sub_level",
+   "name": "Sub 1 level",
+   "min": 0,
+   "max": 1,
+   "default": 0.0,
+   "display": "string"
+  },
+  {
+   "key": "o2_wave",
+   "name": "Osc 2 wave",
+   "options": [
+    "Table",
+    "Sine",
+    "Triangle",
+    "Saw",
+    "Square",
+    "Pulse",
+    "Noise"
+   ],
+   "default": "Table"
+  },
+  {
+   "key": "o2_wave__open",
+   "name": "Osc 2 wave List",
+   "options": [
+    "Closed",
+    "Open"
+   ],
+   "default": "Closed",
+   "popup_of": "o2_wave",
+   "type": "enum"
+  },
+  {
    "key": "o2_table",
    "name": "Osc 2 table",
    "min": 0,
@@ -209,6 +323,107 @@
    "max": 1,
    "default": 0.6,
    "display": "string"
+  },
+  {
+   "key": "o2_pan",
+   "name": "Osc 2 pan",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_phase",
+   "name": "Osc 2 phase",
+   "min": 0,
+   "max": 1,
+   "default": 0.0,
+   "display": "string"
+  },
+  {
+   "key": "o2_phmode",
+   "name": "Osc 2 phase mode",
+   "options": [
+    "Reset",
+    "Random",
+    "Free"
+   ],
+   "default": "Reset"
+  },
+  {
+   "key": "o2_route",
+   "name": "Osc 2 route",
+   "options": [
+    "F1",
+    "F2",
+    "F1+F2",
+    "Direct"
+   ],
+   "default": "F1"
+  },
+  {
+   "key": "o2_sub_wave",
+   "name": "Sub 2 wave",
+   "options": [
+    "Sine",
+    "Triangle",
+    "Saw",
+    "Square"
+   ],
+   "default": "Sine"
+  },
+  {
+   "key": "o2_sub_tune",
+   "name": "Sub 2 tune",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_sub_level",
+   "name": "Sub 2 level",
+   "min": 0,
+   "max": 1,
+   "default": 0.0,
+   "display": "string"
+  },
+  {
+   "key": "noise_level",
+   "name": "Noise level",
+   "min": 0,
+   "max": 1,
+   "default": 0.0,
+   "display": "string"
+  },
+  {
+   "key": "noise_color",
+   "name": "Noise colour",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "noise_route",
+   "name": "Noise route",
+   "options": [
+    "F1",
+    "F2",
+    "F1+F2",
+    "Direct"
+   ],
+   "default": "F1"
+  },
+  {
+   "key": "ui_osc",
+   "name": "Oscillator page",
+   "options": [
+    "OSC 1",
+    "OSC 2",
+    "NOISE"
+   ],
+   "default": "OSC 1"
   },
   {
    "key": "f1_type",

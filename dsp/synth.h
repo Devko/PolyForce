@@ -23,15 +23,36 @@ enum VoiceMode : int { VM_POLY, VM_DUO, VM_MONO, VM_LEGATO };
 enum StealMode : int { ST_OLDEST, ST_QUIETEST, ST_KEEP_LOW, ST_KEEP_HIGH };
 enum GlideMode : int { GL_OFF, GL_ALWAYS, GL_LEGATO };
 
+// What an oscillator plays: the chosen wavetable, or a classic shape (Pulse: position = width).
+enum OscWave : int { OW_TABLE, OW_SINE, OW_TRIANGLE, OW_SAW, OW_SQUARE, OW_PULSE, OW_NOISE };
+// Where a new note's oscillators start: the phase knob (unison spread around it), anywhere
+// (random), or wherever the voice's oscillators happen to be (free running).
+enum PhaseMode : int { PH_RESET, PH_RANDOM, PH_FREE };
+// Which filter a source feeds. Both: into F1 and F2 alike. Direct: past both filters.
+enum Route : int { RT_F1, RT_F2, RT_BOTH, RT_DIRECT };
+
 struct OscPatch {
-    int   wave = 0;        // index into builtinTables()
-    const Wavetable* table = nullptr;   // an imported table instead (must outlive its use)
-    float pos = 0.66f;     // wavetable position 0..1
+    int   wave = OW_TABLE;
+    const Wavetable* table = nullptr;   // the wavetable (must outlive its use); null = built-in Classic
+    float pos = 0.66f;     // wavetable position 0..1; Pulse: width 50% -> 3%; Noise: colour
     float pitch = 0.0f;    // semitones: octave * 12 + semi + fine / 100
     int   unison = 1;      // 1..kMaxUnison
     float detune = 0.3f;   // 0..1 (spread = 100 * detune^2 cents, outermost voices)
     float width = 0.5f;    // stereo spread of the unison voices, 0..1
     float level = 0.8f;    // 0..1
+    float pan = 0.0f;      // -1..1
+    float phase = 0.0f;    // 0..1 of a cycle (Reset)
+    int   phaseMode = PH_RESET;
+    int   route = RT_F1;
+    int   subWave = CW_SINE;   // Sine, Triangle, Saw, Square (follows the oscillator's pitch)
+    float subTune = -12.0f;    // semitones from the oscillator
+    float subLevel = 0.0f;     // 0..1
+};
+
+struct NoisePatch {
+    float level = 0.0f;    // 0..1
+    float color = 0.0f;    // -1 dark .. 0 white .. +1 bright
+    int   route = RT_F1;
 };
 
 struct FilterPatch {
@@ -58,8 +79,9 @@ struct Patch {
     float glideTime = 0.1f;      // seconds
     float bendUp = 2.0f, bendDown = 2.0f;   // semitones at full pitch bend
     float velCurve = 0.0f;       // -1 (hard) .. 0 (linear) .. +1 (soft): velocity^(4^-curve)
-    bool  parallel = false;      // false: osc1+osc2 -> F1 -> F2; true: osc1 -> F1, osc2 -> F2
+    bool  parallel = false;      // false: F1's output feeds F2; true: F1 and F2 side by side
     OscPatch osc[2];
+    NoisePatch noise;
     FilterPatch flt[2];
     EnvPatch env[2];
     float velSens = 0.5f;        // env 1 velocity sensitivity 0..1
@@ -118,19 +140,31 @@ private:
         int      fade = 0;            // samples of fade-out left (stealing)
         Env      env[2];
         uint32_t phase[2][kMaxUnison] = {};
+        uint32_t subPhase[2] = {};
+        uint32_t noiseRng = 1;
+        float    noiseLp[2] = {};          // noise colour filter state, per channel
+        float    oscNoiseLp[2][2] = {};    // an oscillator set to Noise: its colour filter, [osc][ch]
         Svf      svf[2][2][2];        // [filter][channel][stage]
     };
     struct Held { int note; int vel; };
 
     // Per-oscillator values shared by all voices, rebuilt only when their inputs change.
     struct OscState {
-        const Wavetable* table = nullptr;
+        const Wavetable* table = nullptr;   // what it plays (null: noise)
         int   n = 1;
         float ratio[kMaxUnison] = {};   // detune frequency ratio per unison voice
+        float spread[kMaxUnison] = {};  // -1..1 position of each unison voice in the stack
         float gl[kMaxUnison] = {}, gr[kMaxUnison] = {};   // pan * level * 1/sqrt(n)
         float maxRatio = 1.0f;
         int   keyUnison = -1;
-        float keyDetune = -1, keyWidth = -1, keyLevel = -1;
+        float keyDetune = -1, keyWidth = -1, keyLevel = -1, keyPan = -2;
+    };
+    // Per-voice modulation for one chunk, in the units the render code uses.
+    struct Mods {
+        float pitch[2] = {};      // semitones per oscillator
+        float pos[2] = {};        // added to the position
+        float level[2] = {1, 1};  // oscillator level factor
+        float cutoff[2] = {};     // semitones per filter
     };
 
     void updateOsc(int o, const OscPatch& p);
@@ -147,8 +181,11 @@ private:
     void dropKey(int note);
     int  voiceLimit() const;
     void renderVoice(Voice& v, float* outL, float* outR, int n);
-    void renderOsc(Voice& v, int o, float pitch, float mod, float* L, float* R, int n) const;
-    void filter(Voice& v, int f, float pitch, float mod, float* L, float* R, int n) const;
+    void renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, float* R, int n) const;
+    void renderSub(Voice& v, int o, float pitch, float* L, float* R, int n) const;
+    void renderNoise(uint32_t& rng, float* lp, float color, float gain, float* L, float* R, int n) const;
+    void filter(Voice& v, int f, float pitch, const Mods& m, float mod, float* L, float* R, int n) const;
+    void resetPhases(Voice& v);
     uint32_t random();
 
     float    sr_;

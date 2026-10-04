@@ -152,5 +152,6 @@ void loaderTests();
 void browserTests();
 void steppingTests();
 void voiceTests();        // m2_test.cpp
+void oscillatorTests();   // m3_test.cpp
 
 } // namespace pft

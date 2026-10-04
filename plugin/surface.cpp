@@ -315,9 +315,22 @@ std::string Surface::display(int i) const {
 }
 
 std::string Surface::frameText(int osc, float n) const {
+    char b[32];
+    const int waveParam = osc == 0 ? P_O1_WAVE : P_O2_WAVE;
+    const int wave = static_cast<int>(std::lround(want_[waveParam].load() * (PARAM_INFO[waveParam].nopts - 1)));
+    if (wave == OW_PULSE) {   // the pulse table's frames run from 50% to 3% width
+        std::snprintf(b, sizeof b, "WIDTH %.0f%%", 50.0f - 47.0f * clamp01(n));
+        return b;
+    }
+    if (wave == OW_NOISE) {
+        const float c = 2.0f * clamp01(n) - 1.0f;
+        if (std::fabs(c) < 0.01f) return "WHITE";
+        std::snprintf(b, sizeof b, "%s %.0f%%", c < 0.0f ? "DARK" : "BRIGHT", std::fabs(c) * 100.0f);
+        return b;
+    }
+    if (wave != OW_TABLE) return "-";   // one-frame shapes: nothing to scan
     const Loader::View v = loader_.view(osc);
     const int frames = std::max(1, v.info);
-    char b[32];
     std::snprintf(b, sizeof b, "FRAME %d / %d", 1 + static_cast<int>(std::lround(clamp01(n) * (frames - 1))), frames);
     return b;
 }

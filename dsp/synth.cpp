@@ -83,7 +83,9 @@ inline float highpass(Svf& s, const SvfCoef& c, float x) {
 
 Synth::Synth(float sampleRate) : sr_(sampleRate) {
     builtinTables();   // build the shared tables now (UI thread), never on the audio thread
+    classicTable(0);
     setPatch(Patch{});
+    fresh_ = true;     // the first real patch snaps its smoothers (no sweep from the defaults)
 }
 
 void Synth::setPatch(const Patch& p) {
@@ -106,26 +108,37 @@ void Synth::setPatch(const Patch& p) {
 
 void Synth::updateOsc(int o, const OscPatch& p) {
     OscState& s = osc_[o];
-    const auto& tables = builtinTables();
-    s.table = p.table && p.table->frames > 0
-                  ? p.table
-                  : &tables[static_cast<size_t>(std::clamp(p.wave, 0, static_cast<int>(tables.size()) - 1))];
+    switch (p.wave) {
+        case OW_SINE: s.table = &classicTable(CW_SINE); break;
+        case OW_TRIANGLE: s.table = &classicTable(CW_TRIANGLE); break;
+        case OW_SAW: s.table = &classicTable(CW_SAW); break;
+        case OW_SQUARE: s.table = &classicTable(CW_SQUARE); break;
+        case OW_PULSE: s.table = &classicTable(CW_PULSE); break;
+        case OW_NOISE: s.table = nullptr; break;
+        default: s.table = p.table && p.table->frames > 0 ? p.table : &builtinTables()[0]; break;
+    }
 
     const int n = std::clamp(p.unison, 1, kMaxUnison);
-    if (n == s.keyUnison && p.detune == s.keyDetune && p.width == s.keyWidth && p.level == s.keyLevel) return;
+    if (n == s.keyUnison && p.detune == s.keyDetune && p.width == s.keyWidth && p.level == s.keyLevel &&
+        p.pan == s.keyPan)
+        return;
     s.keyUnison = n;
     s.keyDetune = p.detune;
     s.keyWidth = p.width;
     s.keyLevel = p.level;
+    s.keyPan = p.pan;
 
     // Unison voice u sits at d in [-1, 1]: detuned by d * spread and panned by d * width,
-    // lowest voice left, highest right. 1/sqrt(n) keeps the loudness roughly constant.
+    // lowest voice left, highest right, the whole stack shifted by the pan. 1/sqrt(n) keeps
+    // the loudness roughly constant.
     const float cents = 100.0f * p.detune * p.detune;
     const float gain = p.level / std::sqrt(static_cast<float>(n));
     for (int u = 0; u < n; ++u) {
         const float d = n > 1 ? 2.0f * static_cast<float>(u) / static_cast<float>(n - 1) - 1.0f : 0.0f;
+        s.spread[u] = d;
         s.ratio[u] = std::exp2(d * cents / 1200.0f);
-        const float angle = (clampf(p.width, 0.0f, 1.0f) * d + 1.0f) * kPi * 0.25f;   // equal-power pan
+        const float place = clampf(clampf(p.width, 0.0f, 1.0f) * d + clampf(p.pan, -1.0f, 1.0f), -1.0f, 1.0f);
+        const float angle = (place + 1.0f) * kPi * 0.25f;   // equal-power pan
         s.gl[u] = std::cos(angle) * 1.41421356f * gain;
         s.gr[u] = std::sin(angle) * 1.41421356f * gain;
     }
@@ -306,11 +319,31 @@ void Synth::start(Voice& v, int note, int velocity, bool retrigger) {
         for (auto& f : v.svf)
             for (auto& ch : f)
                 for (auto& st : ch) st = Svf{};
-        // Unison voices start at random phases (a phase-aligned stack flanges); a single
-        // voice starts at 0 so its attack is the same every time.
-        for (int o = 0; o < 2; ++o)
-            for (int u = 0; u < kMaxUnison; ++u) v.phase[o][u] = osc_[o].n > 1 ? random() : 0u;
+        resetPhases(v);
     }
+}
+
+// A fresh note's oscillator phases. Reset: the phase knob, unison voices spread around it by
+// the golden ratio (a phase-aligned stack flanges; this one is the same on every note).
+// Random: anywhere. Free: wherever the voice left them.
+void Synth::resetPhases(Voice& v) {
+    constexpr double kGolden = 0.6180339887498949;
+    for (int o = 0; o < 2; ++o) {
+        const OscPatch& p = patch_.osc[o];
+        if (p.phaseMode == PH_FREE) continue;
+        const double base = clampf(p.phase, 0.0f, 1.0f);
+        for (int u = 0; u < kMaxUnison; ++u) {
+            if (p.phaseMode == PH_RANDOM) {
+                v.phase[o][u] = random();
+            } else {
+                double ph = base + kGolden * u;
+                ph -= std::floor(ph);
+                v.phase[o][u] = static_cast<uint32_t>(ph * 4294967296.0);
+            }
+        }
+        v.subPhase[o] = p.phaseMode == PH_RANDOM ? random() : static_cast<uint32_t>(base * 4294967296.0);
+    }
+    v.noiseRng = random() | 1u;
 }
 
 void Synth::noteOff(int note) {
@@ -453,24 +486,54 @@ void Synth::renderVoice(Voice& v, float* outL, float* outR, int n) {
     }
     const float pitch = v.pitch + (bend_ >= 0.0f ? bend_ * patch_.bendUp : bend_ * patch_.bendDown);
 
-    float l[2][kChunk] = {}, r[2][kChunk] = {};
-    for (int o = 0; o < 2; ++o)
-        if (patch_.osc[o].level > 0.0f) renderOsc(v, o, pitch, mod, l[o], r[o], n);
+    Mods m;
+    for (int o = 0; o < 2; ++o) m.pos[o] = mod * patch_.env2Pos;
 
-    if (!patch_.parallel) {   // osc1 + osc2 -> F1 -> F2
-        for (int i = 0; i < n; ++i) {
-            l[0][i] += l[1][i];
-            r[0][i] += r[1][i];
+    // Three buses: into filter 1, into filter 2, and past both.
+    float b1[2][kChunk] = {}, b2[2][kChunk] = {}, bd[2][kChunk] = {};
+    float tl[kChunk], tr[kChunk];
+    auto send = [&](int route, const float* l, const float* r) {
+        float (*to[2])[kChunk] = {nullptr, nullptr};
+        switch (route) {
+            case RT_F2: to[0] = b2; break;
+            case RT_BOTH: to[0] = b1; to[1] = b2; break;
+            case RT_DIRECT: to[0] = bd; break;
+            default: to[0] = b1; break;
         }
-        filter(v, 0, pitch, mod, l[0], r[0], n);
-        filter(v, 1, pitch, mod, l[0], r[0], n);
-    } else {                  // osc1 -> F1, osc2 -> F2
-        filter(v, 0, pitch, mod, l[0], r[0], n);
-        filter(v, 1, pitch, mod, l[1], r[1], n);
+        for (auto* b : to)
+            if (b)
+                for (int i = 0; i < n; ++i) {
+                    b[0][i] += l[i];
+                    b[1][i] += r[i];
+                }
+    };
+    for (int o = 0; o < 2; ++o) {
+        const OscPatch& p = patch_.osc[o];
+        const bool osc = p.level > 0.0f, sub = p.subLevel > 0.0f;
+        if (!osc && !sub) continue;
+        std::fill(tl, tl + n, 0.0f);
+        std::fill(tr, tr + n, 0.0f);
+        if (osc) renderOsc(v, o, pitch, m, tl, tr, n);
+        if (sub) renderSub(v, o, pitch, tl, tr, n);
+        send(p.route, tl, tr);
+    }
+    if (patch_.noise.level > 0.0f) {
+        std::fill(tl, tl + n, 0.0f);
+        std::fill(tr, tr + n, 0.0f);
+        renderNoise(v.noiseRng, v.noiseLp, patch_.noise.color, 0.5f * patch_.noise.level, tl, tr, n);
+        send(patch_.noise.route, tl, tr);
+    }
+
+    filter(v, 0, pitch, m, mod, b1[0], b1[1], n);
+    if (!patch_.parallel)   // serial: filter 1 feeds filter 2
         for (int i = 0; i < n; ++i) {
-            l[0][i] += l[1][i];
-            r[0][i] += r[1][i];
+            b2[0][i] += b1[0][i];
+            b2[1][i] += b1[1][i];
         }
+    filter(v, 1, pitch, m, mod, b2[0], b2[1], n);
+    for (int i = 0; i < n; ++i) {
+        tl[i] = b2[0][i] + bd[0][i] + (patch_.parallel ? b1[0][i] : 0.0f);
+        tr[i] = b2[1][i] + bd[1][i] + (patch_.parallel ? b1[1][i] : 0.0f);
     }
 
     const float vg = v.velGain;
@@ -478,8 +541,8 @@ void Synth::renderVoice(Voice& v, float* outL, float* outR, int n) {
         constexpr float kInv = 1.0f / static_cast<float>(kFadeSamples);
         for (int i = 0; i < n; ++i) {
             const float a = tick(v.env[0], envc_[0]) * vg * static_cast<float>(std::max(v.fade - i, 0)) * kInv;
-            outL[i] += l[0][i] * a;
-            outR[i] += r[0][i] * a;
+            outL[i] += tl[i] * a;
+            outR[i] += tr[i] * a;
         }
         v.fade -= n;
         if (v.fade <= 0) {
@@ -491,30 +554,36 @@ void Synth::renderVoice(Voice& v, float* outL, float* outR, int n) {
     }
     for (int i = 0; i < n; ++i) {
         const float a = tick(v.env[0], envc_[0]) * vg;
-        outL[i] += l[0][i] * a;
-        outR[i] += r[0][i] * a;
+        outL[i] += tl[i] * a;
+        outR[i] += tr[i] * a;
     }
     if (v.env[0].stage == Idle) v.active = false;
 }
 
-// The hot loop. Phase is a 32-bit fixed-point fraction of a cycle: the top 11 bits index
-// the 2048-sample frame, the low 21 bits are the interpolation fraction, and wrap-around
+// The hot loop. Phase is a 32-bit fixed-point fraction of a cycle: the top bits index the
+// level's frame (its own length), the rest are the interpolation fraction, and wrap-around
 // is free integer overflow (no floor(), no branch).
-void Synth::renderOsc(Voice& v, int o, float pitch, float mod, float* L, float* R, int n) const {
+void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, float* R, int n) const {
     const OscState& s = osc_[o];
     const OscPatch& p = patch_.osc[o];
+    if (!s.table) {   // Noise: the position knob is its colour, unison doesn't apply
+        const float level = p.level * m.level[o];
+        renderNoise(v.noiseRng, v.oscNoiseLp[o], 2.0f * clampf(p.pos + m.pos[o], 0.0f, 1.0f) - 1.0f, 0.5f * level, L, R, n);
+        return;
+    }
     const Wavetable& t = *s.table;
 
-    const float pos = clampf(p.pos + mod * patch_.env2Pos, 0.0f, 1.0f);
+    const float pos = clampf(p.pos + m.pos[o], 0.0f, 1.0f);
     const float fpos = pos * static_cast<float>(t.frames - 1);
     const int fa = std::min(static_cast<int>(fpos), std::max(t.frames - 2, 0));
     const int fb = std::min(fa + 1, t.frames - 1);
     const float morph = fpos - static_cast<float>(fa);
 
-    const float inc = std::min(noteHz(pitch + p.pitch) / sr_, 0.45f);   // cycles per sample
-    const int mip = mipFor(inc * s.maxRatio);                            // the stack's highest voice decides
+    const float inc = std::min(noteHz(pitch + p.pitch + m.pitch[o]) / sr_, 0.45f);   // cycles per sample
+    const int mip = mipFor(inc * s.maxRatio);                                       // the stack's highest voice decides
     const float* A = t.get(fa, mip);
     const float* B = t.get(fb, mip);
+    const float lv = m.level[o];
 
     // This level's own length: the top `bits` of the phase index it, the rest interpolate.
     const int shift = 32 - kMipBits[mip];
@@ -523,7 +592,7 @@ void Synth::renderOsc(Voice& v, int o, float pitch, float mod, float* L, float* 
     for (int u = 0; u < s.n; ++u) {
         uint32_t ph = v.phase[o][u];
         const uint32_t dph = static_cast<uint32_t>(inc * s.ratio[u] * 4294967296.0f);
-        const float gl = s.gl[u], gr = s.gr[u];
+        const float gl = s.gl[u] * lv, gr = s.gr[u] * lv;
         for (int i = 0; i < n; ++i) {
             const uint32_t idx = ph >> shift;
             const float fr = static_cast<float>(ph & mask) * kFrac;
@@ -538,12 +607,69 @@ void Synth::renderOsc(Voice& v, int o, float pitch, float mod, float* L, float* 
     }
 }
 
-void Synth::filter(Voice& v, int f, float pitch, float mod, float* L, float* R, int n) const {
+// The sub oscillator: one classic-shape voice under the oscillator, panned with it.
+void Synth::renderSub(Voice& v, int o, float pitch, float* L, float* R, int n) const {
+    const OscPatch& p = patch_.osc[o];
+    const Wavetable& t = classicTable(std::clamp(p.subWave, 0, static_cast<int>(CW_SQUARE)));
+    const float inc = std::min(noteHz(pitch + p.pitch + p.subTune) / sr_, 0.45f);
+    const int mip = mipFor(inc);
+    const float* A = t.get(0, mip);
+    const int shift = 32 - kMipBits[mip];
+    const uint32_t mask = (1u << shift) - 1;
+    const float kFrac = 1.0f / static_cast<float>(1u << shift);
+    const float angle = (clampf(p.pan, -1.0f, 1.0f) + 1.0f) * kPi * 0.25f;
+    const float gl = std::cos(angle) * 1.41421356f * p.subLevel, gr = std::sin(angle) * 1.41421356f * p.subLevel;
+    uint32_t ph = v.subPhase[o];
+    const uint32_t dph = static_cast<uint32_t>(inc * 4294967296.0f);
+    for (int i = 0; i < n; ++i) {
+        const uint32_t idx = ph >> shift;
+        const float fr = static_cast<float>(ph & mask) * kFrac;
+        const float x = A[idx] + fr * (A[idx + 1] - A[idx]);
+        L[i] += x * gl;
+        R[i] += x * gr;
+        ph += dph;
+    }
+    v.subPhase[o] = ph;
+}
+
+// Stereo noise with a colour tilt. Dark: a one-pole lowpass closing from white down to
+// ~100 Hz. Bright: white plus up to 1.5x its own highpassed part (an upward tilt). Both
+// continuous through white at 0, and scaled by the exact RMS of the filter on white noise
+// so the colour knob changes the tone, not the level.
+void Synth::renderNoise(uint32_t& rng, float* lp, float color, float gain, float* L, float* R, int n) const {
+    color = clampf(color, -1.0f, 1.0f);
+    constexpr float kB = 0.3f;   // the bright side's fixed lowpass (~2 kHz)
+    float a, k, var;
+    if (color <= 0.0f) {
+        a = 1.0f - 0.985f * -color;
+        k = 0.0f;
+        var = a / (2.0f - a);
+    } else {
+        a = kB;
+        k = 1.5f * color;
+        var = (1.0f + k) * (1.0f + k) + k * k * kB / (2.0f - kB) - 2.0f * k * (1.0f + k) * kB;
+    }
+    const float g = gain * std::min(1.0f / std::sqrt(std::max(var, 1e-6f)), 6.0f);
+    constexpr float kScale = 1.7320508f / 2147483648.0f;   // uniform -1..1 has RMS 1/sqrt(3): make it 1
+    for (int i = 0; i < n; ++i) {
+        for (int ch = 0; ch < 2; ++ch) {
+            rng ^= rng << 13;
+            rng ^= rng >> 17;
+            rng ^= rng << 5;
+            const float w = static_cast<float>(static_cast<int32_t>(rng)) * kScale;
+            lp[ch] += (w - lp[ch]) * a;
+            const float x = color <= 0.0f ? lp[ch] : (1.0f + k) * w - k * lp[ch];
+            (ch ? R : L)[i] += x * g;
+        }
+    }
+}
+
+void Synth::filter(Voice& v, int f, float pitch, const Mods& m, float mod, float* L, float* R, int n) const {
     const FilterPatch& p = patch_.flt[f];
     if (p.type == F_OFF) return;
 
-    // Coefficients once per chunk: cutoff (smoothed) + env 2 + keytrack, all in semitones.
-    const float semi = cutSemi_[f] + p.env * mod * kEnvOctaves * 12.0f + p.key * (pitch - 60.0f);
+    // Coefficients once per chunk: cutoff (smoothed) + env 2 + keytrack + modulation, in semitones.
+    const float semi = cutSemi_[f] + p.env * mod * kEnvOctaves * 12.0f + p.key * (pitch - 60.0f) + m.cutoff[f];
     const float hz = clampf(noteHz(semi), 16.0f, 0.45f * sr_);
     const float g = std::tan(kPi * hz / sr_);
     const SvfCoef c = makeSvf(g, 1.4142f - 1.36f * clampf(p.res, 0.0f, 1.0f));   // Q 0.7 .. ~18

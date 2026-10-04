@@ -315,6 +315,8 @@ int main() {
     testPolyphony();
     std::printf("== voices\n");
     voiceTests();
+    std::printf("== oscillators\n");
+    oscillatorTests();
     std::printf("== sustain pedal\n");
     testSustainPedal();
     std::printf("== stress\n");

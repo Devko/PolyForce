@@ -9,7 +9,8 @@ namespace pf {
 static_assert(kParamMaxVoices == kMaxVoices && kParamMaxUnison == kMaxUnison,
               "surface.py MAX_VOICES/MAX_UNISON must match dsp/synth.h kMaxVoices/kMaxUnison");
 // patchFromParams walks oscillator 2 / filter 2 / envelope 2 at a fixed offset from 1.
-static_assert(P_O2_LEVEL - P_O2_TABLE == P_O1_LEVEL - P_O1_TABLE, "oscillator params out of order");
+static_assert(P_O2_SUB_LEVEL - P_O2_WAVE == P_O1_SUB_LEVEL - P_O1_WAVE, "oscillator params out of order");
+static_assert(P_O2_TABLE - P_O1_TABLE == P_O2_WAVE - P_O1_WAVE, "oscillator params out of order");
 static_assert(P_F2_DRIVE - P_F2_TYPE == P_F1_DRIVE - P_F1_TYPE, "filter params out of order");
 static_assert(P_E2_R - P_E2_A == P_E1_R - P_E1_A, "envelope params out of order");
 
@@ -73,6 +74,11 @@ std::string paramDisplay(int id, float n) {
             std::snprintf(b, sizeof b, "%.1f dB", v);
             break;
         case Fmt::Detune: std::snprintf(b, sizeof b, "%.1f ct", 100.0f * v * v); break;
+        case Fmt::Pan:
+            if (std::fabs(v) < 0.005f) return "C";
+            std::snprintf(b, sizeof b, "%c%.0f", v < 0.0f ? 'L' : 'R', std::fabs(v) * 100.0f);
+            break;
+        case Fmt::Degrees: std::snprintf(b, sizeof b, "%.0f deg", v * 360.0f); break;
         default: return {};
     }
     return b;
@@ -85,7 +91,7 @@ Patch patchFromParams(const float* norm) {
     p.voices = static_cast<int>(V(P_VOICES));
     p.parallel = V(P_ROUTING) > 0.5f;
     for (int o = 0; o < 2; ++o) {
-        const int d = o * (P_O2_TABLE - P_O1_TABLE);
+        const int d = o * (P_O2_WAVE - P_O1_WAVE);
         OscPatch& x = p.osc[o];
         x.pos = V(P_O1_POS + d);
         x.pitch = 12.0f * V(P_O1_OCT + d) + V(P_O1_SEMI + d) + V(P_O1_FINE + d) / 100.0f;
@@ -93,7 +99,18 @@ Patch patchFromParams(const float* norm) {
         x.detune = V(P_O1_DETUNE + d);
         x.width = V(P_O1_WIDTH + d);
         x.level = V(P_O1_LEVEL + d);
+        x.wave = static_cast<int>(V(P_O1_WAVE + d));
+        x.pan = V(P_O1_PAN + d);
+        x.phase = V(P_O1_PHASE + d);
+        x.phaseMode = static_cast<int>(V(P_O1_PHMODE + d));
+        x.route = static_cast<int>(V(P_O1_ROUTE + d));
+        x.subWave = static_cast<int>(V(P_O1_SUB_WAVE + d));
+        x.subTune = V(P_O1_SUB_TUNE + d);
+        x.subLevel = V(P_O1_SUB_LEVEL + d);
     }
+    p.noise.level = V(P_NOISE_LEVEL);
+    p.noise.color = V(P_NOISE_COLOR);
+    p.noise.route = static_cast<int>(V(P_NOISE_ROUTE));
     for (int f = 0; f < 2; ++f) {
         const int d = f * (P_F2_TYPE - P_F1_TYPE);
         FilterPatch& x = p.flt[f];

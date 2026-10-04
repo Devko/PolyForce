@@ -109,7 +109,14 @@ num("volume", "Volume", "lin", -60, 6, -6, "db")
 num("voices", "Voices", "int", 1, MAX_VOICES, MAX_VOICES, "count")
 enum("routing", "Routing", ROUTING, "Serial")
 
+OSC_WAVES = ["Table", "Sine", "Triangle", "Saw", "Square", "Pulse", "Noise"]   # dsp/synth.h OscWave
+PHASE_MODES = ["Reset", "Random", "Free"]
+ROUTES = ["F1", "F2", "F1+F2", "Direct"]
+SUB_WAVES = ["Sine", "Triangle", "Saw", "Square"]
+
 for o, (pos, semi, fine, level) in ((1, (0.66, 0, 0, 0.8)), (2, (0.66, 0, 7, 0.6))):
+    enum("o%d_wave" % o, "Osc %d wave" % o, OSC_WAVES, "Table")
+    popup_flag("o%d_wave" % o)
     stepper("o%d_table" % o, "Osc %d table" % o)
     num("o%d_pos" % o, "Osc %d position" % o, "lin", 0, 1, pos, "frame%d" % o)
     num("o%d_oct" % o, "Osc %d octave" % o, "int", -3, 3, 0, "oct")
@@ -119,6 +126,18 @@ for o, (pos, semi, fine, level) in ((1, (0.66, 0, 0, 0.8)), (2, (0.66, 0, 7, 0.6
     num("o%d_detune" % o, "Osc %d detune" % o, "lin", 0, 1, 0.3, "detune")
     num("o%d_width" % o, "Osc %d width" % o, "lin", 0, 1, 0.5, "pct")
     num("o%d_level" % o, "Osc %d level" % o, "lin", 0, 1, level, "pct")
+    num("o%d_pan" % o, "Osc %d pan" % o, "lin", -1, 1, 0, "pan")
+    num("o%d_phase" % o, "Osc %d phase" % o, "lin", 0, 1, 0, "deg")
+    enum("o%d_phmode" % o, "Osc %d phase mode" % o, PHASE_MODES, "Reset")
+    enum("o%d_route" % o, "Osc %d route" % o, ROUTES, "F1")
+    enum("o%d_sub_wave" % o, "Sub %d wave" % o, SUB_WAVES, "Sine")
+    num("o%d_sub_tune" % o, "Sub %d tune" % o, "int", -36, 12, -12, "semi")
+    num("o%d_sub_level" % o, "Sub %d level" % o, "lin", 0, 1, 0, "pct")
+
+num("noise_level", "Noise level", "lin", 0, 1, 0, "pct")
+num("noise_color", "Noise colour", "lin", -1, 1, 0, "bipct")
+enum("noise_route", "Noise route", ROUTES, "F1")
+enum("ui_osc", "Oscillator page", ["OSC 1", "OSC 2", "NOISE"], "OSC 1", ui=True)
 
 for f, (ftype, cut, env) in ((1, ("LP24", 1200, 0.25)), (2, ("Off", 8000, 0.0))):
     enum("f%d_type" % f, "Filter %d type" % f, FILTER_TYPES, ftype)
@@ -242,22 +261,51 @@ def pages():
     L = [THEME]
     status = 'readout cx=640 cy=126 w=1212 h=40 key=status'
 
-    # OSC: table stepper + 8 knobs per oscillator, knobs left-to-right = Q-Links 1-8 / 9-16
+    # OSC: one oscillator (or the noise source) at a time, picked top right. Row 1: wave,
+    # table and the 8 knobs (Q-Links 1-8); row 2: pan, phase, routing and the sub oscillator.
+    L.append("[tab OSC]")
+    L.append('readout cx=440 cy=126 w=812 h=40 key=status')
+    L.append('enum_h cx=1080 cy=126 sw=110 key=ui_osc')
     osc_knobs = [("pos", "POSITION"), ("oct", "OCTAVE"), ("semi", "SEMI"), ("fine", "FINE"),
                  ("uni", "UNISON"), ("detune", "DETUNE"), ("width", "WIDTH"), ("level", "LEVEL")]
-    L.append("[tab OSC]")
-    L.append(status)
-    q = []
-    for o, top in zip((1, 2), ROW_Y):
-        L.append('frame x=34 y=%d w=1212 h=270 title="OSCILLATOR %d"' % (top, o))
-        L.append('stepper cx=740 cy=%d w=760 h=44 key=o%d_table' % (top + ROW_ENUM, o))
+    for o in (1, 2):
+        w = "ui_osc:OSC %d" % o
+        p = "o%d_" % o
+        L.append('frame x=34 y=156 w=1212 h=270 title="OSCILLATOR %d" when="%s"' % (o, w))
+        L.append('popup cx=150 cy=200 w=200 h=44 key=%swave when="%s"' % (p, w))
+        L.append('stepper cx=760 cy=200 w=720 h=44 key=%stable when="%s"' % (p, w))
         for cx, (k, lab) in zip(SLOT8, osc_knobs):
-            L.append(knob(cx, top + ROW_KNOB, lab, "o%d_%s" % (o, k)))
-            q.append("o%d_%s" % (o, k))
-    L.append('qlinks "OSC" = ' + ",".join(q))
-    L.append('qlinks "TABLES" = ' + ",".join(
-        ["o1_table", "o1_pos", "o1_level", "o1_detune", "o2_table", "o2_pos", "o2_level", "o2_detune",
-         "f1_cut", "f1_res", "f1_env", "e2_pos", "f2_cut", "f2_res", "f2_env", "volume"]))
+            L.append(knob(cx, ROW_Y[0] + ROW_KNOB, lab, p + k, '"%s"' % w))
+        L.append('frame x=34 y=440 w=1212 h=270 title="PAN  PHASE  ROUTE  SUB" when="%s"' % w)
+        L.append(knob(SLOT8[0], ROW_Y[1] + ROW_KNOB, "PAN", p + "pan", '"%s"' % w))
+        L.append(knob(SLOT8[1], ROW_Y[1] + ROW_KNOB, "PHASE", p + "phase", '"%s"' % w))
+        L.append('text cx=400 cy=500 label="PHASE" when="%s"' % w)
+        L.append('enum_v cx=400 cy=578 sw=140 key=%sphmode when="%s"' % (p, w))
+        L.append('text cx=580 cy=500 label="ROUTE" when="%s"' % w)
+        L.append('enum_v cx=580 cy=594 sw=140 key=%sroute when="%s"' % (p, w))
+        L.append('text cx=790 cy=500 label="SUB WAVE" when="%s"' % w)
+        L.append('enum_v cx=790 cy=594 sw=150 key=%ssub_wave when="%s"' % (p, w))
+        L.append(knob(SLOT8[6], ROW_Y[1] + ROW_KNOB, "SUB TUNE", p + "sub_tune", '"%s"' % w))
+        L.append(knob(SLOT8[7], ROW_Y[1] + ROW_KNOB, "SUB LEVEL", p + "sub_level", '"%s"' % w))
+    w = '"ui_osc:NOISE"'
+    L.append('frame x=34 y=156 w=600 h=270 title="NOISE" when=%s' % w)
+    L.append(knob(SLOT8[0], ROW_Y[0] + ROW_KNOB, "LEVEL", "noise_level", w))
+    L.append(knob(SLOT8[1], ROW_Y[0] + ROW_KNOB, "COLOUR", "noise_color", w))
+    L.append('text cx=480 cy=216 label="ROUTE" when=%s' % w)
+    L.append('enum_v cx=480 cy=310 sw=140 key=noise_route when=%s' % w)
+    L.append('frame x=646 y=156 w=600 h=270 title="SUB LEVELS" when=%s' % w)
+    L.append(knob(SLOT8[4] + 2, ROW_Y[0] + ROW_KNOB, "SUB 1", "o1_sub_level", w))
+    L.append(knob(SLOT8[5] + 2, ROW_Y[0] + ROW_KNOB, "SUB 2", "o2_sub_level", w))
+    L.append(knob(SLOT8[6] + 2, ROW_Y[0] + ROW_KNOB, "OSC 1", "o1_level", w))
+    L.append(knob(SLOT8[7] + 2, ROW_Y[0] + ROW_KNOB, "OSC 2", "o2_level", w))
+    for o in (1, 2):
+        p = "o%d_" % o
+        L.append('qlinks "OSC %d" = ' % o + ",".join(p + k for k in (
+            "pos", "oct", "semi", "fine", "uni", "detune", "width", "level",
+            "wave", "table", "pan", "phase", "phmode", "route", "sub_tune", "sub_level")))
+    L.append('qlinks "NOISE" = ' + ",".join(
+        ["noise_level", "noise_color", "noise_route", "o1_sub_level", "o2_sub_level", "o1_level", "o2_level", "volume",
+         "o1_sub_tune", "o2_sub_tune", "o1_sub_wave", "o2_sub_wave", "o1_pos", "o2_pos", "f1_cut", "f2_cut"]))
 
     # FILTER: type selector + 5 knobs per filter, routing next to the status line
     flt_knobs = [("cut", "CUTOFF"), ("res", "RESO"), ("env", "ENV 2"), ("key", "KEYTRACK"), ("drive", "DRIVE")]
@@ -458,7 +506,7 @@ def check_layout(text):
 CURVE = {"readout": "Readout", "enum": "Enum", "lin": "Lin", "log": "Log", "int": "Int", "pow": "Pow"}
 FMT = {"none": "None", "enum": "Enum", "pct": "Percent", "bipct": "Bipolar", "hz": "Hz", "time": "Time",
        "semi": "Semi", "cent": "Cent", "oct": "Oct", "count": "Count", "db": "Db", "detune": "Detune",
-       "text": "Text", "frame1": "Frame1", "frame2": "Frame2"}
+       "text": "Text", "frame1": "Frame1", "frame2": "Frame2", "pan": "Pan", "deg": "Degrees"}
 KIND = {"synth": "Synth", "ui": "Ui", "readout": "Readout", "stepper": "Stepper", "button": "Button",
         "tile": "Tile", "toggle": "Toggle", "popup": "Popup"}
 
@@ -494,7 +542,7 @@ enum ParamId : int {
 
 enum class Curve : unsigned char { Readout, Enum, Lin, Log, Int, Pow };
 enum class Fmt : unsigned char { None, Enum, Percent, Bipolar, Hz, Time, Semi, Cent, Oct, Count, Db, Detune, Text,
-                                 Frame1, Frame2 };
+                                 Frame1, Frame2, Pan, Degrees };
 // Who owns the value and what a set does: see surface.py "kind".
 enum class Kind : unsigned char { Synth, Ui, Readout, Stepper, Button, Tile, Toggle, Popup };
 
