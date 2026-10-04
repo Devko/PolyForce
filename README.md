@@ -74,6 +74,35 @@ qemu; a proxy for the device, which `make bench-device` measures for real):
 The output matches the scalar engine to 2e-6 (x86) and 1.8e-4 (ARM, reciprocal estimates and
 fused multiply-adds) relative RMS over 132 test scenes.
 
+## Interface
+
+The touchscreen pages are defined in `surface/surface.py` (`pages()`), after the approved design.
+
+- **Look:** `style=td3` rounded cards on one flat ground (`#15181d`, the same colour as the card
+  fill, so no control shows a box behind it), a teal accent (`#3fd0c0`), Titillium Web. Every tab
+  has a header row (the status line and, on tabs with page modes, the mode selector on the right)
+  over cards in two rows of 270 px or one of 552 px. Tabs: OSC, FILTER, MOD, MATRIX, BROWSE (MPC's
+  first five), VOICE, SEQ.
+- **Knobs** have a value arc from the minimum, or from 12 o'clock for bipolar parameters (pan,
+  fine, amounts, ...). The generator draws one filmstrip per knob radius, so the radius picks the
+  look (30, bipolar 29; small 22, bipolar 21): `KNOB_STYLES` in `surface.py` is the one place for it.
+- **Names:** MPC shows a parameter's own name under its knob or slider and in its Q-Link overlay
+  (not the layout's `label=`), so names are short and unique: at most 13 characters for knobs,
+  sliders and toggles, and they must fit the label.
+- **Q-Link sets** (their titles show in MPC's tab strip) only remap the Q-Links, the screen stays;
+  each is named after what it controls.
+- **Checks:** before writing anything `surface.py` checks the layout with the generator's own
+  sizes (knob, slider and button boxes, enum labels, open popup lists), keeps controls and text out
+  of the card title bands and bitmap text to the glyphs that font has.
+- **Post-build polish:** `make skin` runs sd88me's `gen_vst.py` and then `surface/skin_polish.py`,
+  which redraws the knob filmstrips (arc knobs), the trigger buttons (rounded, full size, real
+  label; SAVE and AUTO-ASSIGN in the accent) and the stepper arrows (the generator cuts those of a
+  stepper inside a page mode from the wrong image), keeping every file name and size. It checks the
+  skin against `layout.conf` and `build/skin_style.json` first and fails the build on any mismatch.
+  `python3 surface/skin_polish.py --selftest` runs it on a fabricated skin.
+- `make skin` and `make preview` render the real skin and page previews; they build and run the
+  vendored generator, so run them on the user's machine.
+
 ## Layout
 
 ```
@@ -81,6 +110,7 @@ surface/surface.py     THE source of the parameter list and the touchscreen page
                        params.json, layout.conf, vst.json, build/param_ids.h (ids, value curves,
                        limits) and build/factory_presets.h (presets/Factory embedded); checks the
                        layout and every factory preset before writing anything
+surface/skin_polish.py redraws knob strips, buttons and stepper arrows after the generator (make skin)
 dsp/wavetable.*        band-limited tables: 11 mip levels (2048 samples down to 256) per frame,
                        FFT-built two frames at a time; 4 built-ins; Serum WAV loader
 dsp/synth.*            the engine: voices, oscillators (uint32 phase), sub, noise, Simper SVF,

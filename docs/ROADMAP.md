@@ -113,8 +113,12 @@ Design record: [M1_DESIGN.md](M1_DESIGN.md).
 - ✅ Save preset: `<first preset root>/User/User NNN.pfp` (there is no text entry)
 - ✅ Init patch, Randomize with an amount (volume and voicing untouched, attacks kept playable)
 - ✅ Microtuning from `.tun` and `.scl` files (tuning stepper, saved with project and preset)
-- ⬜ Skin render and page check on the user's machine (`make preview`), then the device:
-  install, play every page, `make bench-device` (also `BENCH_ARGS="-m 1 …"`)
+- ✅ Interface redesign: rounded cards on one dark ground, a teal accent, arc knobs (bipolar
+  from the centre), short parameter names for MPC's labels, BROWSE in the first five tabs, both
+  LFOs on one page, two shape lanes per page; `surface/skin_polish.py` redraws knobs, buttons and
+  stepper arrows after the generator (README, "Interface")
+- ⬜ Skin render and page check on the user's machine (`make skin`, `make preview`; the first
+  real run of skin_polish.py), then the device: install, play every page, `make bench-device`
 - ⬜ First release v0.1: parameter list frozen (append-only from then on), catalog-style package
 
 ---
