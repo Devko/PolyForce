@@ -12,7 +12,7 @@ the first release. Effects are left to MPC's own insert effects.
 
 ## Status (2026-10-04): Milestones 1–7 built, not yet on the device
 
-Everything below passes the ASan/UBSan suite (753 checks) on x86 and the same suite
+Everything below passes the ASan/UBSan suite (774 checks) on x86 and the same suite
 cross-compiled for the Force under qemu. A full code review after Milestone 7 fixed about 60
 issues (voice stealing, envelope modulation, sequencer clock jumps, crash safety around files,
 browser state, packaging); each fix has a regression check in `test/review_test.cpp`. The skin and the device bench still have to be run on the user's machine
@@ -39,12 +39,13 @@ browser state, packaging); each fix has a regression check in `test/review_test.
   MPC's transport
 - **Patch:** 21 factory presets, a preset browser, numbered user presets, Init, Randomize with
   an amount · microtuning from `.tun` and `.scl`
-- Status line with live voice count, CPU and loading state; sustain pedal (holds the keys in
+- Status line with live voice count, CPU and loading state; a CPU guard that fades release
+  tails when an instance runs over budget; sustain pedal (holds the keys in
   Arp/Seq mode), CC 120/123, mod wheel, breath, expression, channel and poly aftertouch
 
 CPU on the Force (p99, % of the 2.9 ms block, 2 oscillators, LP24+drive → LP12), measured on
 v0.0.2, before the NEON pass; to be re-measured with this build (`make bench-device` runs the
-plain cases and a busy mod matrix):
+plain cases, a busy mod matrix, and where the time goes with a large table):
 
 | Voices | ×1 unison | ×4 | ×8 |
 |---|---|---|---|
@@ -53,8 +54,9 @@ plain cases and a busy mod matrix):
 
 ### The NEON pass
 
-The engine renders each 16-sample chunk in four passes over the sounding voices: prepare
-(modulation, envelopes, oscillators into per-voice buses), filter 1, filter 2, output. The
+The engine renders each control chunk (16 samples then, 32 now) in passes over the sounding
+voices: control (matrix, mod envelope, pitch), sources (oscillators, subs, noise into per-voice
+buses), filter 1, filter 2, output. The
 buses hold the voices side by side per sample, so the state-variable filters run **four voices
 per NEON vector** (`dsp/simd.h`: GCC vector types, NEON on the Force, SSE on x86, so the tests run
 the same code). The wavetable oscillators and subs read four samples per step with 64-bit pair
@@ -73,6 +75,48 @@ qemu; a proxy for the device, which `make bench-device` measures for real):
 
 The output matches the scalar engine to 2e-6 (x86) and 1.8e-4 (ARM, reciprocal estimates and
 fused multiply-adds) relative RMS over 132 test scenes.
+
+### The second pass: control rate, matrix, PGO
+
+- **32-sample control rate with glides.** The matrix, the envelopes' control outputs, filter
+  coefficients and wave position are computed every 32 samples instead of 16, and every value
+  glides in across the chunk it applies to instead of stepping: oscillator level × pan, morph,
+  sub, noise and the voice gain per sample; the state-variable filters' g, k and drive every 16
+  samples (the old update rate, now interpolated; coefficients rebuilt per step, so the filter
+  stays stable); comb delay and feedback per sample; the vowel formants every 16 samples. A
+  40 Hz LFO on level, volume or pan now moves the output no faster than the waveform itself
+  (`test/m5_test.cpp`; the old engine fails that check). Time constants stay referenced to 16
+  samples, so envelopes, smoothing and drift keep their timing.
+- **Matrix:** slots resolved once per patch, shared sources once per chunk, polynomial LFO sine.
+- **Profile-guided build** (`make arm-plugin`, when `qemu-arm` is installed): an instrumented
+  copy plays 132 patches under qemu (`tools/pgo_train.cpp`), then the .so is compiled with that
+  profile. `PGO=0` builds without.
+
+| Case (ARM instructions per block) | NEON pass | + control rate, matrix | + PGO |
+|---|---|---|---|
+| 1 voice | 56.8 k | 52.1 k (−8%) | 47.7 k (−16%) |
+| 8 voices × 1 | 232 k | 193 k (−17%) | 178 k (−23%) |
+| 8 voices × 8 unison, busy matrix | 567 k | 518 k (−9%) | 505 k (−11%) |
+
+At 8 × 8 the oscillators are 70% of the block. Whether they wait on memory (a 256-frame table
+is 9 MB, the Force's L2 about 1 MB) is what the stage bench answers on the device:
+`make bench-device WAVETABLES=<folder>` runs a profiling build (`polyforce_stages.so`) that
+reports each pass's time per block, then plays the same voices with the positions swept on the
+built-in Classic table and on a 256-frame table. If the sources time grows clearly with the
+large table, 16-bit tables (half the memory traffic) are the next step; if not, they would
+only cost precision.
+
+**CPU guard:** after each block the plugin compares its own CPU time with the block's real-time
+budget. Two blocks in a row over 40%, or one over 65%, and the engine fades out the quietest
+voice that is only ringing out (two over 65%), with the 3 ms steal fade. Held and
+pedal-sustained notes are never touched, and a single costly block sheds nothing. The status
+line shows `GUARD n` while it acts. `PF_CPU_GUARD=0` turns it off (the test suite does).
+
+Looked at and left out: precomputed float frame pairs for the oscillator reads (about one
+instruction in eleven saved for twice the table memory, while the open question is memory
+traffic); a second core for voices (MPC already runs instances on its audio workers in
+parallel, and handing voices to another thread inside a 2.9 ms block risks dropouts that can't
+be tested without the device).
 
 ## Interface
 
@@ -114,14 +158,16 @@ surface/skin_polish.py redraws knob strips, buttons and stepper arrows after the
 dsp/wavetable.*        band-limited tables: 11 mip levels (2048 samples down to 256) per frame,
                        FFT-built two frames at a time; 4 built-ins; Serum WAV loader
 dsp/synth.*            the engine: voices, oscillators (uint32 phase), sub, noise, Simper SVF,
-                       comb and vowel filters, ADSRs, LFOs, the mod matrix; 16-sample control rate,
-                       four voices per vector in the filters
+                       comb and vowel filters, ADSRs, LFOs, the mod matrix; 32-sample control rate
+                       with per-chunk glides, four voices per vector in the filters
 dsp/simd.h             four-float vectors (NEON on the Force, SSE on x86)
+dsp/stages.h           per-pass timers for the profiling build (-DPF_STAGE_TIMING)
 dsp/mod.h              LFO shapes, sync divisions, mod sources, targets and modifiers
 dsp/notegen.*          arpeggiator, step sequencer and shape sequencer on a beat clock
 dsp/tuning.*           .tun / .scl parsing, 128-note pitch tables
 plugin/plugin.cpp      VST2 glue: MIDI with sample offsets, transport, chunk state, denormal
                        flush, CPU meter
+plugin/cpu_guard.h     when to shed release tails (the block's CPU time against its budget)
 plugin/surface.*       the touchscreen side: parameter values, steppers, browser, push-backs to
                        MPC (audioMasterAutomate / UpdateDisplay from processReplacing only)
 plugin/patch_map.*     0..1 <-> real values, display text, params -> Patch / SeqPatch
@@ -135,7 +181,9 @@ presets/Factory/       factory presets (NN_Name.pfp: NN orders them, "_" shows a
 test/                  the whole plugin through its VST2 entry points, ASan/UBSan, one file per
                        milestone plus review_test.cpp (host.h = a fake MPC host)
 test/tables_sweep.cpp  every WAV in a folder: load, check, play, timing and memory
-tools/bench.cpp        CPU bench: dlopen()s the .so like MPC, times every block
+tools/bench.cpp        CPU bench: dlopen()s the .so like MPC, times every block; per-pass times from
+                       the profiling build; -t: a large table against one that fits the cache
+tools/pgo_train.cpp    the profile-guided build's trainer (runs under qemu-arm)
 third_party/mpc-vst-plugins/   sd88me's MIT skin generator + installer (marked RackForce patches)
 ```
 
@@ -143,7 +191,7 @@ third_party/mpc-vst-plugins/   sd88me's MIT skin generator + installer (marked R
 
 Needs g++ 13, `arm-linux-gnueabihf-g++` 13, GNU make ≥ 4.3, python3; for the skin and the
 package also Pillow at `~/.venvs/rackforce/bin/python` (shared with RackForcePlugin); for
-`test-arm` `qemu-user`.
+`test-arm` and the profile-guided device build `qemu-user`.
 
 ```bash
 wsl -e make -C /mnt/d/DEV/mockba/PolyForce test
@@ -156,9 +204,10 @@ wsl -e make -C /mnt/d/DEV/mockba/PolyForce test
 | `test` | ASan/UBSan suite; uses `$(WAVETABLES)` (default `../wavetables`) for the import check |
 | `test-arm` | the same suite built for the Force's CPU, run under `qemu-arm` |
 | `test-tables` | load + play every WAV under `$(WAVETABLES)` |
-| `bench` | x86 bench, only proves the bench works |
-| `arm-plugin` | `build/arm/polyforce.so` for the Force |
-| `bench-device FORCE=root@<ip>` | copies .so + bench + one 256-frame table to `/tmp`, runs on core 1, deletes them |
+| `bench` | x86 bench, only proves the bench and the profiling build work |
+| `arm-plugin` | `build/arm/polyforce.so` for the Force; profile-guided when `qemu-arm` is installed (`PGO=0`: plain) |
+| `arm-bench-stages` | `build/arm/polyforce_stages.so`: the profiling build pfbench reads per-pass times from (never shipped) |
+| `bench-device FORCE=root@<ip>` | copies both .so files, the bench and one 256-frame table from `$(WAVETABLES)` to `/tmp`, runs on core 1, deletes them |
 | `plugin-package` | `dist/PolyForce-<ver>-mpc-armv7.zip` with sd88me's installer; a reinstall keeps the user's Wavetables, Presets, Tunings and favorites/recent lists |
 | `plugin-install FORCE=root@<ip>` | **run by the user**: stops MPC, edits `MPC.settings`, restarts MPC |
 

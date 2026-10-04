@@ -18,7 +18,7 @@ These numbers and limits decide most of the design below.
 | Fact | Consequence |
 |---|---|
 | 2902 µs per 128-frame block, per instance; catalog PASS = p99 ≤ 15% | Every milestone ends with `make bench-device`; 8 voices × 8 unison must stay ≤ 15% |
-| Measured 2026-10-04: 8 voices × 8 unison × 2 osc = 15.2%; filters ≈ 55% of a voice's cost | Filters are the optimisation target, not oscillators |
+| Measured 2026-10-04: 8 voices × 8 unison × 2 osc = 15.2%; filters ≈ 55% of a voice's cost | Filters were the first target (NEON, four voices per vector); since then the oscillators are ~70% at 8 × 8 (ARM instruction counts) |
 | 256-frame table import on the Force: 582 ms, 22 MB | Loading must be off the audio thread; memory per table must shrink |
 | Skins: static PNGs only, no text entry, no drawn waveforms | No wavetable display, no scopes, no drag-and-drop; text + knobs + tiles |
 | `list` tiles and `stepper` text can change at runtime (dynamic name/display) | File names, folders, frame numbers can be shown as text |
@@ -74,7 +74,7 @@ Design record: [M1_DESIGN.md](M1_DESIGN.md).
 - ✅ Noise source with a continuous colour (dark … white … bright), loudness-compensated
 - 💤 Wavetable scripting (Hive's `.uhm`): as an offline desktop tool that writes WAVs, if ever
 
-## Milestone 4 — filters and engine modes ✅ (NEON ⬜)
+## Milestone 4 — filters and engine modes ✅
 
 - ✅ Comb+ / Comb− (feedback comb, cutoff = pitch) and Vowel (3 formants, cutoff morphs A-E-I-O-U)
 - ✅ Engines Clean (no drift, linear) · Normal · Dirty (analog drift, saturation inside the
@@ -133,6 +133,28 @@ change stopped the arp or fired hundreds of steps; a huge `*.wav` or a throw on 
 could end MPC; `make plugin-install` deleted the user's tables, presets and favorites; preset
 loads could reach the audio thread half applied. Layout findings (popup lists past the screen
 edge, controls in frame title bands, knob names) go into the interface redesign.
+
+---
+
+## Performance, second pass ✅ (2026-10-04)
+
+ARM instructions per block against the NEON pass: 1 voice −16%, 8 voices −23%, 8 × 8 with a
+busy matrix −11% (README, "The second pass").
+
+- ✅ 32-sample control rate; every control value glides across its chunk (no zipper from the
+  coarser rate; a regression check holds a 40 Hz LFO on level, volume and pan to the waveform's
+  own slope)
+- ✅ Cheaper matrix and LFOs: slots resolved per patch, shared sources per chunk, polynomial sine
+- ✅ Profile-guided device build, trained under qemu-arm (`PGO=0` for the plain one)
+- ✅ pfbench: per-pass times from a profiling build, a large table against one that fits the cache
+- ✅ CPU guard: sheds the quietest release tails when an instance runs over budget; never held notes
+- 🔜 Device: `make bench-device WAVETABLES=<folder>`, add the row to the bench record, read the
+  large-table result
+- ⬜ 16-bit tables (half the memory traffic), only if the large table clearly costs more in the
+  sources pass on the device
+- 💤 Precomputed float frame pairs: about one instruction in eleven for twice the table memory
+- 💤 Voices on a second core: MPC already spreads instances over its audio workers; a voice
+  thread inside a 2.9 ms block risks dropouts that can't be tested without the device
 
 ---
 
