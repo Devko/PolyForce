@@ -36,7 +36,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # the Force (2026-10-04); 16 x 16 was 45%.
 MAX_VOICES = 8
 MAX_UNISON = 8
-FILTER_TYPES = ["Off", "LP12", "LP24", "BP", "HP12", "HP24", "Notch", "Peak"]
+FILTER_TYPES = ["Off", "LP12", "LP24", "BP", "HP12", "HP24", "Notch", "Peak", "Comb+", "Comb-", "Vowel"]   # dsp FilterType
+ENGINES = ["Clean", "Normal", "Dirty"]
 ROUTING = ["Serial", "Parallel"]
 STEPPER_RANGE = 1023        # a table stepper's VST range: 0..1023 items (stepItem moves 1 per event)
 BROWSER_CATS = 16           # category tiles on the browser page (2 x 8)
@@ -139,8 +140,10 @@ num("noise_color", "Noise colour", "lin", -1, 1, 0, "bipct")
 enum("noise_route", "Noise route", ROUTES, "F1")
 enum("ui_osc", "Oscillator page", ["OSC 1", "OSC 2", "NOISE"], "OSC 1", ui=True)
 
+enum("engine", "Engine", ENGINES, "Normal")
 for f, (ftype, cut, env) in ((1, ("LP24", 1200, 0.25)), (2, ("Off", 8000, 0.0))):
     enum("f%d_type" % f, "Filter %d type" % f, FILTER_TYPES, ftype)
+    popup_flag("f%d_type" % f)
     num("f%d_cut" % f, "Filter %d cutoff" % f, "log", 20, 20000, cut, "hz")
     num("f%d_res" % f, "Filter %d resonance" % f, "lin", 0, 1, 0.25, "pct")
     num("f%d_env" % f, "Filter %d env 2" % f, "lin", -1, 1, env, "bipct")
@@ -310,16 +313,17 @@ def pages():
     # FILTER: type selector + 5 knobs per filter, routing next to the status line
     flt_knobs = [("cut", "CUTOFF"), ("res", "RESO"), ("env", "ENV 2"), ("key", "KEYTRACK"), ("drive", "DRIVE")]
     L.append("[tab FILTER]")
-    L.append('readout cx=440 cy=126 w=812 h=40 key=status')
-    L.append('enum_h cx=1080 cy=126 sw=150 key=routing')
+    L.append('readout cx=330 cy=126 w=592 h=40 key=status')
+    L.append('enum_h cx=780 cy=126 sw=120 key=routing')
+    L.append('enum_h cx=1112 cy=126 sw=110 key=engine')
     for f, top in zip((1, 2), ROW_Y):
         L.append('frame x=34 y=%d w=1212 h=270 title="FILTER %d"' % (top, f))
-        L.append('enum_h cx=740 cy=%d sw=112 key=f%d_type' % (top + ROW_ENUM, f))
+        L.append('popup cx=1040 cy=%d w=220 h=44 key=f%d_type' % (top + ROW_ENUM, f))
         for cx, (k, lab) in zip(SLOT8, flt_knobs):
             L.append(knob(cx, top + ROW_KNOB, lab, "f%d_%s" % (f, k)))
     L.append('qlinks "FILTER" = ' + ",".join(
         ["f1_cut", "f1_res", "f1_env", "f1_drive", "f2_cut", "f2_res", "f2_env", "f2_drive",
-         "f1_key", "f2_key", "e2_a", "e2_d", "e2_s", "e2_r", "e2_pos", "volume"]))
+         "f1_key", "f2_key", "f1_type", "f2_type", "routing", "engine", "e2_pos", "volume"]))
 
     # ENV: amp + mod envelopes, output knobs on the right
     L.append("[tab ENV]")

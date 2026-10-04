@@ -426,6 +426,16 @@
    "default": "OSC 1"
   },
   {
+   "key": "engine",
+   "name": "Engine",
+   "options": [
+    "Clean",
+    "Normal",
+    "Dirty"
+   ],
+   "default": "Normal"
+  },
+  {
    "key": "f1_type",
    "name": "Filter 1 type",
    "options": [
@@ -436,9 +446,23 @@
     "HP12",
     "HP24",
     "Notch",
-    "Peak"
+    "Peak",
+    "Comb+",
+    "Comb-",
+    "Vowel"
    ],
    "default": "LP24"
+  },
+  {
+   "key": "f1_type__open",
+   "name": "Filter 1 type List",
+   "options": [
+    "Closed",
+    "Open"
+   ],
+   "default": "Closed",
+   "popup_of": "f1_type",
+   "type": "enum"
   },
   {
    "key": "f1_cut",
@@ -491,9 +515,23 @@
     "HP12",
     "HP24",
     "Notch",
-    "Peak"
+    "Peak",
+    "Comb+",
+    "Comb-",
+    "Vowel"
    ],
    "default": "Off"
+  },
+  {
+   "key": "f2_type__open",
+   "name": "Filter 2 type List",
+   "options": [
+    "Closed",
+    "Open"
+   ],
+   "default": "Closed",
+   "popup_of": "f2_type",
+   "type": "enum"
   },
   {
    "key": "f2_cut",

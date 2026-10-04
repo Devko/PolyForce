@@ -67,16 +67,53 @@ inline void svf(Svf& s, const SvfCoef& c, float v0, float& v1, float& v2) {
     s.ic2 = 2.0f * v2 - s.ic2;
 }
 
-inline float lowpass(Svf& s, const SvfCoef& c, float x) {
+// Dirty: the same step with the band (resonant) state saturated inside the loop, so loud
+// resonance compresses and growls instead of ringing clean.
+inline void svfSat(Svf& s, const SvfCoef& c, float v0, float& v1, float& v2) {
+    const float v3 = v0 - s.ic2;
+    v1 = c.a1 * s.ic1 + c.a2 * v3;
+    v2 = s.ic2 + c.a2 * s.ic1 + c.a3 * v3;
+    s.ic1 = softclip(2.0f * v1 - s.ic1);
+    s.ic2 = 2.0f * v2 - s.ic2;
+}
+
+template <bool Dirty> inline void step(Svf& s, const SvfCoef& c, float v0, float& v1, float& v2) {
+    if (Dirty) svfSat(s, c, v0, v1, v2);
+    else svf(s, c, v0, v1, v2);
+}
+
+template <bool Dirty> inline float lowpass(Svf& s, const SvfCoef& c, float x) {
     float b, l;
-    svf(s, c, x, b, l);
+    step<Dirty>(s, c, x, b, l);
     return l;
 }
 
-inline float highpass(Svf& s, const SvfCoef& c, float x) {
+template <bool Dirty> inline float highpass(Svf& s, const SvfCoef& c, float x) {
     float b, l;
-    svf(s, c, x, b, l);
+    step<Dirty>(s, c, x, b, l);
     return x - c.k * b - l;
+}
+
+// The state-variable filter types over one chunk of one channel.
+template <bool Dirty>
+void svfBlock(int type, Svf& s1, Svf& s2, const SvfCoef& c, const SvfCoef& flat, float* x, int n) {
+    float b, l;
+    switch (type) {
+        case F_LP12: for (int i = 0; i < n; ++i) x[i] = lowpass<Dirty>(s1, c, x[i]); break;
+        case F_LP24: for (int i = 0; i < n; ++i) x[i] = lowpass<false>(s2, flat, lowpass<Dirty>(s1, c, x[i])); break;
+        case F_HP12: for (int i = 0; i < n; ++i) x[i] = highpass<Dirty>(s1, c, x[i]); break;
+        case F_HP24: for (int i = 0; i < n; ++i) x[i] = highpass<false>(s2, flat, highpass<Dirty>(s1, c, x[i])); break;
+        case F_BP:   // scaled by k: unity gain at the centre whatever the resonance
+            for (int i = 0; i < n; ++i) { step<Dirty>(s1, c, x[i], b, l); x[i] = c.k * b; }
+            break;
+        case F_NOTCH:
+            for (int i = 0; i < n; ++i) { step<Dirty>(s1, c, x[i], b, l); x[i] -= c.k * b; }
+            break;
+        case F_PEAK:   // low - high
+            for (int i = 0; i < n; ++i) { step<Dirty>(s1, c, x[i], b, l); x[i] = 2.0f * l - x[i] + c.k * b; }
+            break;
+        default: break;
+    }
 }
 
 } // namespace
@@ -84,6 +121,8 @@ inline float highpass(Svf& s, const SvfCoef& c, float x) {
 Synth::Synth(float sampleRate) : sr_(sampleRate) {
     builtinTables();   // build the shared tables now (UI thread), never on the audio thread
     classicTable(0);
+    combMem_.assign(static_cast<size_t>(kMaxVoices) * 2 * 2 * kCombLen, 0.0f);
+    for (int i = 0; i < kMaxVoices; ++i) voices_[i].comb = &combMem_[static_cast<size_t>(i) * 2 * 2 * kCombLen];
     setPatch(Patch{});
     fresh_ = true;     // the first real patch snaps its smoothers (no sweep from the defaults)
 }
@@ -319,6 +358,9 @@ void Synth::start(Voice& v, int note, int velocity, bool retrigger) {
         for (auto& f : v.svf)
             for (auto& ch : f)
                 for (auto& st : ch) st = Svf{};
+        if (patch_.flt[0].type >= F_COMB_PLUS || patch_.flt[1].type >= F_COMB_PLUS)
+            std::fill(v.comb, v.comb + 2 * 2 * kCombLen, 0.0f);   // only combs read their past
+        v.drift = 0.0f;
         resetPhases(v);
     }
 }
@@ -484,7 +526,13 @@ void Synth::renderVoice(Voice& v, float* outL, float* outR, int n) {
             v.pitch += target > v.pitch ? step : -step;
         }
     }
-    const float pitch = v.pitch + (bend_ >= 0.0f ? bend_ * patch_.bendUp : bend_ * patch_.bendDown);
+    float pitch = v.pitch + (bend_ >= 0.0f ? bend_ * patch_.bendUp : bend_ * patch_.bendDown);
+    if (patch_.engine != EN_CLEAN) {   // analog drift: a slow random walk, a few cents
+        const float range = patch_.engine == EN_DIRTY ? 6.0f : 2.5f;
+        const float r = static_cast<float>(static_cast<int32_t>(random())) * (1.0f / 2147483648.0f);
+        v.drift = clampf(v.drift * 0.9995f + r * 0.08f * range, -range, range);
+        pitch += v.drift * 0.01f;
+    }
 
     Mods m;
     for (int o = 0; o < 2; ++o) m.pos[o] = mod * patch_.env2Pos;
@@ -664,6 +712,15 @@ void Synth::renderNoise(uint32_t& rng, float* lp, float color, float gain, float
     }
 }
 
+// The formants of five vowels (Hz, an adult voice), morphed by the cutoff: A E I O U.
+namespace {
+constexpr float kVowels[5][3] = {
+    {730.0f, 1090.0f, 2440.0f}, {530.0f, 1840.0f, 2480.0f}, {270.0f, 2290.0f, 3010.0f},
+    {570.0f, 840.0f, 2410.0f},  {300.0f, 870.0f, 2240.0f},
+};
+constexpr float kFormantGain[3] = {1.0f, 0.63f, 0.4f};
+}
+
 void Synth::filter(Voice& v, int f, float pitch, const Mods& m, float mod, float* L, float* R, int n) const {
     const FilterPatch& p = patch_.flt[f];
     if (p.type == F_OFF) return;
@@ -671,38 +728,78 @@ void Synth::filter(Voice& v, int f, float pitch, const Mods& m, float mod, float
     // Coefficients once per chunk: cutoff (smoothed) + env 2 + keytrack + modulation, in semitones.
     const float semi = cutSemi_[f] + p.env * mod * kEnvOctaves * 12.0f + p.key * (pitch - 60.0f) + m.cutoff[f];
     const float hz = clampf(noteHz(semi), 16.0f, 0.45f * sr_);
-    const float g = std::tan(kPi * hz / sr_);
-    const SvfCoef c = makeSvf(g, 1.4142f - 1.36f * clampf(p.res, 0.0f, 1.0f));   // Q 0.7 .. ~18
-    const SvfCoef flat = makeSvf(g, 1.4142f);   // second stage of the 24 dB types: no extra peak
-
+    const float res = clampf(p.res, 0.0f, 1.0f);
     const float drive = clampf(p.drive, 0.0f, 1.0f);
     const float pre = 1.0f + 15.0f * drive * drive;
     const float post = 1.0f / softclip(pre);   // small signals keep ~unity gain
+    const bool dirty = patch_.engine == EN_DIRTY;
+
+    if (p.type == F_COMB_PLUS || p.type == F_COMB_MINUS) {
+        // A feedback comb tuned to the cutoff (keytrack 100% = the note's pitch): metallic
+        // resonances, plucked-string tones. Comb- (inverted feedback) sounds an octave lower
+        // and hollow. Resonance = feedback.
+        const float delay = clampf(sr_ / hz, 2.0f, static_cast<float>(kCombLen - 2));
+        const float fb = (0.25f + 0.72f * res) * (p.type == F_COMB_MINUS ? -1.0f : 1.0f);
+        const float out = 1.0f - 0.55f * std::fabs(fb);
+        const int d0 = static_cast<int>(delay);
+        const float frac = delay - static_cast<float>(d0);
+        constexpr int kMask = kCombLen - 1;
+        for (int ch = 0; ch < 2; ++ch) {
+            float* x = ch ? R : L;
+            float* line = v.comb + (static_cast<size_t>(f) * 2 + static_cast<size_t>(ch)) * kCombLen;
+            int w = v.combPos;
+            for (int i = 0; i < n; ++i) {
+                const float in = drive > 0.0f ? softclip(x[i] * pre) * post : x[i];
+                const float a = line[(w - d0) & kMask], b = line[(w - d0 - 1) & kMask];
+                float y = in + fb * (a + frac * (b - a));
+                if (dirty) y = softclip(y);
+                line[w] = y;
+                w = (w + 1) & kMask;
+                x[i] = y * out;
+            }
+        }
+        if (f == 1 || patch_.flt[1].type < F_COMB_PLUS)   // both filters share the write position
+            v.combPos = (v.combPos + n) & (kCombLen - 1);
+        return;
+    }
+
+    if (p.type == F_VOWEL) {
+        // Three formant bandpasses; the cutoff (with its env/keytrack/modulation) walks A-E-I-O-U
+        // across 20 Hz .. 20 kHz; resonance sharpens the formants.
+        const float t = clampf(std::log2(hz / 20.0f) / 9.966f, 0.0f, 1.0f) * 4.0f;
+        const int i0 = std::min(static_cast<int>(t), 3);
+        const float u = t - static_cast<float>(i0);
+        const float k = 0.9f - 0.8f * res;
+        SvfCoef fc[3];
+        for (int j = 0; j < 3; ++j) {
+            const float fhz = kVowels[i0][j] + u * (kVowels[i0 + 1][j] - kVowels[i0][j]);
+            fc[j] = makeSvf(std::tan(kPi * std::min(fhz, 0.45f * sr_) / sr_), k);
+        }
+        for (int ch = 0; ch < 2; ++ch) {
+            float* x = ch ? R : L;
+            for (int i = 0; i < n; ++i) {
+                const float in = drive > 0.0f ? softclip(x[i] * pre) * post : x[i];
+                float y = 0.0f, b, l;
+                for (int j = 0; j < 3; ++j) {
+                    svf(v.svf[f][ch][j], fc[j], in, b, l);
+                    y += kFormantGain[j] * k * b;
+                }
+                x[i] = 1.6f * y;
+            }
+        }
+        return;
+    }
+
+    const float g = std::tan(kPi * hz / sr_);
+    const SvfCoef c = makeSvf(g, 1.4142f - 1.36f * res);   // Q 0.7 .. ~18
+    const SvfCoef flat = makeSvf(g, 1.4142f);   // second stage of the 24 dB types: no extra peak
 
     for (int ch = 0; ch < 2; ++ch) {
         float* x = ch ? R : L;
-        Svf& s1 = v.svf[f][ch][0];
-        Svf& s2 = v.svf[f][ch][1];
         if (drive > 0.0f)
             for (int i = 0; i < n; ++i) x[i] = softclip(x[i] * pre) * post;
-
-        float b, l;
-        switch (p.type) {
-            case F_LP12: for (int i = 0; i < n; ++i) x[i] = lowpass(s1, c, x[i]); break;
-            case F_LP24: for (int i = 0; i < n; ++i) x[i] = lowpass(s2, flat, lowpass(s1, c, x[i])); break;
-            case F_HP12: for (int i = 0; i < n; ++i) x[i] = highpass(s1, c, x[i]); break;
-            case F_HP24: for (int i = 0; i < n; ++i) x[i] = highpass(s2, flat, highpass(s1, c, x[i])); break;
-            case F_BP:   // scaled by k: unity gain at the centre whatever the resonance
-                for (int i = 0; i < n; ++i) { svf(s1, c, x[i], b, l); x[i] = c.k * b; }
-                break;
-            case F_NOTCH:
-                for (int i = 0; i < n; ++i) { svf(s1, c, x[i], b, l); x[i] -= c.k * b; }
-                break;
-            case F_PEAK:   // low - high
-                for (int i = 0; i < n; ++i) { svf(s1, c, x[i], b, l); x[i] = 2.0f * l - x[i] + c.k * b; }
-                break;
-            default: break;
-        }
+        if (dirty) svfBlock<true>(p.type, v.svf[f][ch][0], v.svf[f][ch][1], c, flat, x, n);
+        else svfBlock<false>(p.type, v.svf[f][ch][0], v.svf[f][ch][1], c, flat, x, n);
     }
 }
 

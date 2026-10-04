@@ -317,6 +317,8 @@ int main() {
     voiceTests();
     std::printf("== oscillators\n");
     oscillatorTests();
+    std::printf("== filters + engines\n");
+    filterTests();
     std::printf("== sustain pedal\n");
     testSustainPedal();
     std::printf("== stress\n");

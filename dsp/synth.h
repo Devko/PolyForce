@@ -8,6 +8,7 @@
 #include "wavetable.h"
 
 #include <cstdint>
+#include <vector>
 
 namespace pf {
 
@@ -17,7 +18,12 @@ constexpr int kMaxVoices = 8;
 constexpr int kMaxUnison = 8;
 constexpr int kChunk = 16;   // control rate: filter coefficients, mod envelope, wave position
 
-enum FilterType : int { F_OFF, F_LP12, F_LP24, F_BP, F_HP12, F_HP24, F_NOTCH, F_PEAK };
+enum FilterType : int { F_OFF, F_LP12, F_LP24, F_BP, F_HP12, F_HP24, F_NOTCH, F_PEAK, F_COMB_PLUS, F_COMB_MINUS,
+                        F_VOWEL };
+constexpr int kNumFilterModes = 11;
+// Clean: linear filters, steady pitch. Normal: a slow analog pitch drift per voice. Dirty: more
+// drift and saturation inside the filter loop (resonance that growls and compresses).
+enum EngineMode : int { EN_CLEAN, EN_NORMAL, EN_DIRTY };
 enum VoiceMode : int { VM_POLY, VM_DUO, VM_MONO, VM_LEGATO };
 // Who gives up its voice when all are busy (Patch::voices of them).
 enum StealMode : int { ST_OLDEST, ST_QUIETEST, ST_KEEP_LOW, ST_KEEP_HIGH };
@@ -79,6 +85,7 @@ struct Patch {
     float glideTime = 0.1f;      // seconds
     float bendUp = 2.0f, bendDown = 2.0f;   // semitones at full pitch bend
     float velCurve = 0.0f;       // -1 (hard) .. 0 (linear) .. +1 (soft): velocity^(4^-curve)
+    int   engine = EN_NORMAL;
     bool  parallel = false;      // false: F1's output feeds F2; true: F1 and F2 side by side
     OscPatch osc[2];
     NoisePatch noise;
@@ -144,8 +151,12 @@ private:
         uint32_t noiseRng = 1;
         float    noiseLp[2] = {};          // noise colour filter state, per channel
         float    oscNoiseLp[2][2] = {};    // an oscillator set to Noise: its colour filter, [osc][ch]
-        Svf      svf[2][2][2];        // [filter][channel][stage]
+        Svf      svf[2][2][3];        // [filter][channel][stage] (Vowel: 3 formants)
+        float*   comb = nullptr;      // [filter][channel][kCombLen] delay lines (Synth-owned)
+        int      combPos = 0;
+        float    drift = 0.0f;        // cents, a slow random walk (Normal / Dirty)
     };
+    static constexpr int kCombLen = 4096;   // comb delay: down to 44100 / 4096 = 10.8 Hz
     struct Held { int note; int vel; };
 
     // Per-oscillator values shared by all voices, rebuilt only when their inputs change.
@@ -204,6 +215,7 @@ private:
     float    vol_ = 0.0f;            // smoothed master gain
     float    volTarget_ = 0.0f;
     bool     fresh_ = true;          // first setPatch: snap smoothers instead of gliding
+    std::vector<float> combMem_;     // every voice's comb delay lines, allocated once
 };
 
 } // namespace pf

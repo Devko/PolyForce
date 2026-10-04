@@ -12,6 +12,7 @@ static_assert(kParamMaxVoices == kMaxVoices && kParamMaxUnison == kMaxUnison,
 static_assert(P_O2_SUB_LEVEL - P_O2_WAVE == P_O1_SUB_LEVEL - P_O1_WAVE, "oscillator params out of order");
 static_assert(P_O2_TABLE - P_O1_TABLE == P_O2_WAVE - P_O1_WAVE, "oscillator params out of order");
 static_assert(P_F2_DRIVE - P_F2_TYPE == P_F1_DRIVE - P_F1_TYPE, "filter params out of order");
+static_assert(kNumFilterTypes == kNumFilterModes, "surface.py FILTER_TYPES must match dsp FilterType");
 static_assert(P_E2_R - P_E2_A == P_E1_R - P_E1_A, "envelope params out of order");
 
 float paramValue(int id, float n) {
@@ -137,6 +138,7 @@ Patch patchFromParams(const float* norm) {
     p.bendUp = V(P_BEND_UP);
     p.bendDown = V(P_BEND_DN);
     p.velCurve = V(P_VEL_CURVE);
+    p.engine = static_cast<int>(V(P_ENGINE));
     p.velSens = V(P_E1_VEL);
     p.env2Pos = V(P_E2_POS);
     return p;
