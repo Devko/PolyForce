@@ -26,8 +26,10 @@ INC      := -I$(SURF_OUT) -Iplugin
 
 # -funsafe-math-optimizations: without it GCC won't use NEON for float vectors on ARMv7
 # (NEON flushes denormals, so it isn't IEEE-exact). Not -ffast-math: keep isfinite() honest.
+# -fno-tree-loop-distribute-patterns: the engine clears its small per-chunk buffers with vector
+# stores on purpose; GCC would turn those loops back into (much slower) memset calls.
 ARM_OPT  := -O3 -march=armv7-a -mtune=cortex-a17 -mfpu=neon-vfpv4 -mfloat-abi=hard \
-            -funsafe-math-optimizations -fno-math-errno
+            -funsafe-math-optimizations -fno-math-errno -fno-tree-loop-distribute-patterns
 ARM_SO   := $(BUILD)/arm/polyforce.so
 ARM_BENCH := $(BUILD)/arm/pfbench
 
@@ -93,7 +95,7 @@ bench: $(BUILD)/polyforce.so $(BUILD)/pfbench
 	$(BUILD)/pfbench $(BUILD)/polyforce.so -s 1 -c -1
 
 $(BUILD)/polyforce.so: $(SRC) $(HDR) $(GEN) | $(BUILD)
-	$(CXX) -std=c++17 -O3 -fPIC -fvisibility=hidden -Wall -Wextra -pthread $(INC) -shared -Wl,--no-undefined $(SRC) -o $@
+	$(CXX) -std=c++17 -O3 -fno-tree-loop-distribute-patterns -fPIC -fvisibility=hidden -Wall -Wextra -pthread $(INC) -shared -Wl,--no-undefined $(SRC) -o $@
 
 $(BUILD)/pfbench: tools/bench.cpp dsp/wavetable.cpp $(HDR) $(GEN) | $(BUILD)
 	$(CXX) -std=c++17 -O2 -Wall -Wextra $(INC) $< dsp/wavetable.cpp -ldl -o $@

@@ -115,6 +115,7 @@ private:
     std::atomic<bool>     release_[P_COUNT];
     std::atomic<uint32_t> textGen_{0};
     std::atomic<uint32_t> batchSeq_{0};    // odd while a batch is being written (a seqlock)
+    std::atomic<uint32_t> changes_{0};     // bumped by every write to want_ / shown_ (notify's cue)
     std::atomic<int>      batchDepth_{0};
 
     // Browser state + text cache (refresh writes, the UI thread reads).
@@ -130,7 +131,15 @@ private:
     std::vector<int>         catTiles_;        // which category each category tile holds
     uint32_t                 rng_ = 0x2545F491u;
 
+    // Every write of a value MPC should see goes through here.
+    void put(int i, float v) {
+        want_[i].store(v, std::memory_order_relaxed);
+        changes_.fetch_add(1, std::memory_order_release);
+    }
+
     // Audio-thread state.
+    uint32_t scanned_ = 0xffffffffu;   // changes_ at the last complete notify pass
+    bool     scanPending_ = true;
     uint32_t textSeen_ = 0;
     int      cursor_ = 0;
     int      sinceText_ = 0;

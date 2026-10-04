@@ -127,7 +127,10 @@ struct Patch {
 // Envelope: analog-style one-pole segments (attack aims at 1.2 and stops at 1.0).
 enum EnvStage : uint8_t { Idle, Attack, Decay, Release };
 struct Env { EnvStage stage = Idle; float v = 0.0f; };
-struct EnvCoef { float att = 0, dec = 0, rel = 0, sus = 0; };   // per-sample one-pole steps
+struct EnvCoef {
+    float att = 0, dec = 0, rel = 0, sus = 0;   // per-sample one-pole steps
+    float attN = 1, decN = 1, relN = 1;         // what is left after a whole chunk: (1 - step)^kChunk
+};
 
 // Trapezoidal (zero-delay feedback) state-variable filter, A. Simper / Cytomic.
 struct Svf { float ic1 = 0.0f, ic2 = 0.0f; };
@@ -189,6 +192,7 @@ private:
         int      glideLeft = 0;       // samples still to go, 0 = arrived
         int      pendingNote = -1;    // a stolen voice: the note it starts after its fade
         int      pendingVel = 0;
+        uint32_t rng = 1;             // this voice's random numbers (note values, LFO cycles, drift, phases)
         bool     pendingUp = false;   // ...and its key already went up during the fade
         int      releaseIn = 0;       // samples until such a note releases (it still sounds briefly)
         int      fade = 0;            // samples of fade-out left (stealing)
@@ -228,6 +232,7 @@ private:
         float ratio[kMaxUnison] = {};   // detune frequency ratio per unison voice
         float spread[kMaxUnison] = {};  // -1..1 position of each unison voice in the stack
         float gl[kMaxUnison] = {}, gr[kMaxUnison] = {};   // pan * 1/sqrt(n) (level applied per voice)
+        float subGl = 1.0f, subGr = 1.0f;   // the sub oscillator: the oscillator's pan (equal power)
         float maxRatio = 1.0f;
         float cents = 0.0f;             // detune spread of the outermost voices
         int   keyUnison = -1;
@@ -266,16 +271,31 @@ private:
         const int n = note < 0 ? 0 : (note > 127 ? 127 : note);
         return patch_.tuning ? patch_.tuning[n] : static_cast<float>(n);
     }
-    void renderVoice(Voice& v, float* outL, float* outR, int n);
+    // One chunk, in four passes over the sounding voices ("lanes", packed in voice order):
+    // prepare (modulation, envelopes, oscillators into the buses), filter 1 for all lanes,
+    // filter 2 for all lanes, then each voice's output stage. The filters run four lanes at a
+    // time (dsp/simd.h).
+    struct Lane {
+        Voice* v;
+        float  pitch, mod;   // sounding pitch, mod envelope (as the filters and oscillators saw them)
+        int    buses;        // which buses it sent to: 1 = into F1, 2 = into F2, 4 = past both
+        Mods   m;
+    };
+    void prepareVoice(Voice& v, int lane, int n);
+    void finishVoice(const Lane& l, int lane, float* outL, float* outR, int n);
+    void filterLanes(int f, float* busL, float* busR, int n);
     void renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, float* R, int n) const;
     void renderSub(Voice& v, int o, float pitch, float level, float* L, float* R, int n) const;
     void renderNoise(uint32_t& rng, float* lp, float color, float gain, float* L, float* R, int n) const;
-    void filter(Voice& v, int f, float pitch, const Mods& m, float mod, float* L, float* R, int n) const;
+    struct Ctl { float hz, res, drive, pre, post, wet; };
+    Ctl controls(int f, float pitch, const Mods& m, float mod) const;
+    // Comb and vowel, one voice at a time (contiguous channel buffers).
+    void filterOne(Voice& v, int f, float pitch, const Mods& m, float mod, float* L, float* R, int n) const;
     void resetPhases(Voice& v);
-    uint32_t random();
-    float lfoStep(LfoState& st, const LfoPatch& p, float rateMul, int n, bool locked);
+    static uint32_t random(uint32_t& state);   // xorshift32
+    static float randomBipolar(uint32_t& state);
+    float lfoStep(LfoState& st, const LfoPatch& p, float rateMul, int n, bool locked, uint32_t& rng);
     void modulate(Voice& v, float env2, int n, Mods& m);
-    float randomBipolar();
 
     float    sr_;
     Patch    patch_;
@@ -289,12 +309,18 @@ private:
     float    lastPitch_ = 60.0f;      // the last note started: where a poly glide comes from
     bool     havePitch_ = false;      // ...once there was one (tunings make negative pitches)
     uint32_t clock_ = 0;
-    uint32_t rng_ = 0x9e3779b9u;
+    uint32_t rng_ = 0x9e3779b9u;     // the shared (Global) LFOs' random numbers
     float    cutSemi_[2] = {};       // smoothed cutoff (MIDI-note scale), per filter
     float    vol_ = 0.0f;            // smoothed master gain
     float    volTarget_ = 0.0f;
     bool     fresh_ = true;          // first setPatch: snap smoothers instead of gliding
     std::vector<float> combMem_;     // every voice's comb delay lines, allocated once
+
+    // Per-chunk scratch: bus_[b][ch][i * kMaxVoices + lane], b = into F1, into F2, past both.
+    // Lanes side by side per sample: a filter loads four voices' samples as one vector.
+    alignas(16) float bus_[3][2][kChunk * kMaxVoices];
+    Lane lanes_[kMaxVoices];
+    int  nLanes_ = 0;
 
     // modulation
     LfoState glfo_[2];               // Global-trigger LFOs, shared by every voice

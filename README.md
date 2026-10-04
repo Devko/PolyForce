@@ -43,13 +43,36 @@ browser state, packaging); each fix has a regression check in `test/review_test.
   Arp/Seq mode), CC 120/123, mod wheel, breath, expression, channel and poly aftertouch
 
 CPU on the Force (p99, % of the 2.9 ms block, 2 oscillators, LP24+drive → LP12), measured on
-v0.0.2; to be re-measured with this build (`make bench-device`, also with `BENCH_ARGS="-m 1"`
-for a busy mod matrix):
+v0.0.2, before the NEON pass; to be re-measured with this build (`make bench-device` runs the
+plain cases and a busy mod matrix):
 
 | Voices | ×1 unison | ×4 | ×8 |
 |---|---|---|---|
 | 4 | 4.3 | 5.8 | 7.8 |
 | 8 | 8.2 | 11.4 | 15.2 |
+
+### The NEON pass
+
+The engine renders each 16-sample chunk in four passes over the sounding voices: prepare
+(modulation, envelopes, oscillators into per-voice buses), filter 1, filter 2, output. The
+buses hold the voices side by side per sample, so the state-variable filters run **four voices
+per NEON vector** (`dsp/simd.h`: GCC vector types, NEON on the Force, SSE on x86, so the tests run
+the same code). The wavetable oscillators and subs read four samples per step with 64-bit pair
+loads and an unzip. Pitch, cutoff and pan use short polynomials instead of libm, the envelopes
+run without a per-sample switch, and the plugin only rebuilds the patch and scans the
+parameters for MPC when something changed.
+
+Measured as ARM instructions per 128-frame block (the same `-O3 -mcpu` build, counted under
+qemu; a proxy for the device, which `make bench-device` measures for real):
+
+| Case | Before | After |
+|---|---|---|
+| 1 voice | 91.5 k | 56.8 k (−38%) |
+| 8 voices × 1 | 439 k | 232 k (−47%) |
+| 8 voices × 8 unison, busy matrix | 999 k | 567 k (−43%) |
+
+The output matches the scalar engine to 2e-6 (x86) and 1.8e-4 (ARM, reciprocal estimates and
+fused multiply-adds) relative RMS over 132 test scenes.
 
 ## Layout
 
@@ -61,7 +84,9 @@ surface/surface.py     THE source of the parameter list and the touchscreen page
 dsp/wavetable.*        band-limited tables: 11 mip levels (2048 samples down to 256) per frame,
                        FFT-built two frames at a time; 4 built-ins; Serum WAV loader
 dsp/synth.*            the engine: voices, oscillators (uint32 phase), sub, noise, Simper SVF,
-                       comb and vowel filters, ADSRs, LFOs, the mod matrix; 16-sample control rate
+                       comb and vowel filters, ADSRs, LFOs, the mod matrix; 16-sample control rate,
+                       four voices per vector in the filters
+dsp/simd.h             four-float vectors (NEON on the Force, SSE on x86)
 dsp/mod.h              LFO shapes, sync divisions, mod sources, targets and modifiers
 dsp/notegen.*          arpeggiator, step sequencer and shape sequencer on a beat clock
 dsp/tuning.*           .tun / .scl parsing, 128-note pitch tables

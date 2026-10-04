@@ -95,6 +95,9 @@ struct Plugin {
 
     // audio thread only
     float   snapshot[P_COUNT] = {};
+    bool    havePatch = false;   // patch / seq below are built from snapshot
+    Patch   patch;
+    SeqPatch seq;
     RawMidi midi[kMaxMidi] = {};
     int     nMidi = 0;
     float   scratch[2][kScratch] = {};
@@ -204,12 +207,26 @@ void renderTo(Plugin* p, float* L, float* R, int& pos, int to) {
 }
 
 void runBlock(Plugin* p, float* L, float* R, int n) {
-    p->surface.snapshot(p->snapshot);   // mid-preset: keeps the previous values
-    Patch patch = patchFromParams(p->snapshot);
-    for (int o = 0; o < 2; ++o)   // read once per block: valid until blockDone() below
-        patch.osc[o].table = static_cast<const Wavetable*>(p->loader.live(o));
-    if (const auto* tuning = static_cast<const Tuning*>(p->loader.live(2))) patch.tuning = tuning->pitch;
-    p->synth.setPatch(patch);
+    // The sound only changes when a parameter or a loaded table does: then rebuild the patch
+    // (436 value conversions) and hand it to the engine; else keep both as they are.
+    float fresh[P_COUNT];
+    bool changed = false;
+    if (p->surface.snapshot(fresh) && (!p->havePatch || std::memcmp(fresh, p->snapshot, sizeof fresh) != 0)) {   // mid-preset: false
+        std::memcpy(p->snapshot, fresh, sizeof fresh);
+        p->patch = patchFromParams(p->snapshot);
+        p->seq = seqFromParams(p->snapshot);
+        p->havePatch = changed = true;
+    }
+    for (int o = 0; o < 2; ++o) {   // read once per block: valid until blockDone() below
+        const auto* t = static_cast<const Wavetable*>(p->loader.live(o));
+        changed = changed || t != p->patch.osc[o].table;
+        p->patch.osc[o].table = t;
+    }
+    const auto* tuning = static_cast<const Tuning*>(p->loader.live(2));
+    const float* pitches = tuning ? tuning->pitch : nullptr;
+    changed = changed || pitches != p->patch.tuning;
+    p->patch.tuning = pitches;
+    if (changed) p->synth.setPatch(p->patch);
     if (p->panic.exchange(false)) {
         p->gen.panic(p->synth);
         p->synth.reset();
@@ -230,7 +247,7 @@ void runBlock(Plugin* p, float* L, float* R, int n) {
     }
     p->synth.setTransport(bpm, beats, playing, valid);
     p->gen.setTransport(bpm, beats, playing, valid);
-    p->gen.setPatch(seqFromParams(p->snapshot), p->synth);
+    p->gen.setPatch(p->seq, p->synth);   // every block: it also follows the keys and the clock
     float shapes[4];
     p->gen.shapeValues(shapes);
     p->synth.setSequencerSources(p->gen.seqValue(), shapes);

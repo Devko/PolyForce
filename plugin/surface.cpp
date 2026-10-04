@@ -110,12 +110,14 @@ void Surface::set(int i, float n) {
     if (k == Kind::Readout) return;   // MPC sets param 0 right after loading: ignore
     n = clamp01(n);
     shown_[i].store(n, std::memory_order_relaxed);   // that is what MPC shows now
+    changes_.fetch_add(1, std::memory_order_release);
     if (k == Kind::Button) {
         const bool down = n > 0.5f;
         const bool rising = down && !held_[i];
         held_[i] = down;
         if (rising) {
             release_[i] = true;
+            changes_.fetch_add(1, std::memory_order_release);   // after the flag: notify must see it
             apply(i, n);
             refresh();
         }
@@ -155,22 +157,22 @@ void Surface::apply(int i, float n) {
             if (steps > 0 && steps < kFine) {
                 const int cur = static_cast<int>(std::lround(want_[i].load() * steps));
                 const int pick = stepIndex(i, n, steps, cur);
-                want_[i].store(static_cast<float>(pick) / static_cast<float>(steps));
+                put(i, static_cast<float>(pick) / static_cast<float>(steps));
                 if (exactOption(n, steps)) {   // a tap on a list row closes its popup (a Q-Link nudge doesn't)
                     const int flag = popupFlagOf(i);
-                    if (flag >= 0) want_[flag].store(0.0f);
+                    if (flag >= 0) put(flag, 0.0f);
                 }
                 if (info.kind == Kind::Ui && pick != cur)   // another page: an open list belongs to the old one
                     for (int j = 0; j < P_COUNT; ++j)
-                        if (PARAM_INFO[j].kind == Kind::Popup) want_[j].store(0.0f);
+                        if (PARAM_INFO[j].kind == Kind::Popup) put(j, 0.0f);
                 if (i == P_BR_TARGET && exactOption(n, steps))   // the browser opened: files may have come or gone
                     browseLibrary(pick).rescan();
             } else {
-                want_[i].store(n);
+                put(i, n);
             }
             break;
         }
-        case Kind::Popup: want_[i].store(n > 0.5f ? 1.0f : 0.0f); break;
+        case Kind::Popup: put(i, n > 0.5f ? 1.0f : 0.0f); break;
         case Kind::Stepper: {
             for (int o = 0; o < kTableSlots; ++o)
                 if (i == kTableParam[o]) {
@@ -656,7 +658,7 @@ void Surface::refresh() {
     auto place = [this](int param, const Listing& lst, const std::string& key) {
         const int idx = lst.find(key);
         const int range = stepperRange(static_cast<int>(lst.items.size()));
-        if (idx >= 0) want_[param].store(std::min(1.0f, static_cast<float>(idx) / static_cast<float>(range)));
+        if (idx >= 0) put(param, std::min(1.0f, static_cast<float>(idx) / static_cast<float>(range)));
     };
     for (int o = 0; o < kTableSlots; ++o) {
         place(kTableParam[o], *T, loader_.wanted(o));
@@ -700,7 +702,7 @@ void Surface::refresh() {
         const int c = catPage_ * kBrowserCats + k;
         const bool has = c < ncat;
         catTiles_[static_cast<size_t>(k)] = has ? c : -1;
-        want_[kCatTiles[k]].store(has && c == brCat_ ? 1.0f : 0.0f);
+        put(kCatTiles[k], has && c == brCat_ ? 1.0f : 0.0f);
         t[static_cast<size_t>(kCatTiles[k])] = has ? upper(cats[static_cast<size_t>(c)].name) : "";
     }
     const auto& keys = cats[static_cast<size_t>(brCat_)].keys;
@@ -713,7 +715,7 @@ void Surface::refresh() {
         const bool has = j < nitems;
         const std::string& tk = has ? keys[static_cast<size_t>(j)] : std::string();
         tileKeys_[static_cast<size_t>(k)] = tk;
-        want_[kItemTiles[k]].store(has && tk == key ? 1.0f : 0.0f);
+        put(kItemTiles[k], has && tk == key ? 1.0f : 0.0f);
         if (has) {
             const int idx = L->find(tk);
             t[static_cast<size_t>(kItemTiles[k])] = idx >= 0 ? L->items[static_cast<size_t>(idx)].name : L->label(tk);
@@ -729,7 +731,7 @@ void Surface::refresh() {
         std::snprintf(b, sizeof b, "  %d FR", std::max(1, v.info));
         t[P_BR_NOW] = "OSC " + std::to_string(target + 1) + "  " + tableText(target) + (v.state == Loader::Ready ? b : "");
     }
-    want_[P_FAV].store(!key.empty() && lib.isFavorite(key) ? 1.0f : 0.0f);
+    put(P_FAV, !key.empty() && lib.isFavorite(key) ? 1.0f : 0.0f);
 
     size_t h = 0;
     std::hash<std::string> hs;
@@ -750,7 +752,7 @@ void Surface::setValue(int i, float n) {
     const int steps = stepsOf(i);
     n = clamp01(n);
     if (steps > 0) n = std::round(n * steps) / steps;
-    want_[i].store(n);
+    put(i, n);
 }
 
 void Surface::setTable(int osc, const std::string& key, bool now) {
@@ -787,25 +789,31 @@ bool Surface::snapshot(float* out) const {
 }
 
 void Surface::notify(AutomateFn automate, UpdateFn update, void* ctx) {
-    int pushed = 0;
-    for (int n = 0; n < P_COUNT && pushed < kMaxAutomatePerBlock; ++n) {
-        const int i = cursor_;
-        cursor_ = (cursor_ + 1) % P_COUNT;
-        if (PARAM_INFO[i].kind == Kind::Button) {
-            if (release_[i].exchange(false, std::memory_order_acq_rel)) {
-                automate(ctx, i, 0.0f);
-                shown_[i].store(0.0f, std::memory_order_relaxed);
+    // Nothing changed since the last full pass: no need to look at 436 values every block.
+    const uint32_t changes = changes_.load(std::memory_order_acquire);
+    if (changes != scanned_ || scanPending_) {
+        int pushed = 0, n = 0;
+        for (; n < P_COUNT && pushed < kMaxAutomatePerBlock; ++n) {
+            const int i = cursor_;
+            cursor_ = (cursor_ + 1) % P_COUNT;
+            if (PARAM_INFO[i].kind == Kind::Button) {
+                if (release_[i].exchange(false, std::memory_order_acq_rel)) {
+                    automate(ctx, i, 0.0f);
+                    shown_[i].store(0.0f, std::memory_order_relaxed);
+                    ++pushed;
+                }
+                continue;
+            }
+            if (PARAM_INFO[i].kind == Kind::Readout) continue;
+            const float w = want_[i].load(std::memory_order_relaxed);
+            if (std::fabs(w - shown_[i].load(std::memory_order_relaxed)) > 1e-4f) {
+                automate(ctx, i, w);
+                shown_[i].store(w, std::memory_order_relaxed);
                 ++pushed;
             }
-            continue;
         }
-        if (PARAM_INFO[i].kind == Kind::Readout) continue;
-        const float w = want_[i].load(std::memory_order_relaxed);
-        if (std::fabs(w - shown_[i].load(std::memory_order_relaxed)) > 1e-4f) {
-            automate(ctx, i, w);
-            shown_[i].store(w, std::memory_order_relaxed);
-            ++pushed;
-        }
+        scanPending_ = n < P_COUNT;   // stopped at the per-block cap: go on next block
+        if (!scanPending_) scanned_ = changes;
     }
     if (++sinceText_ >= kTextEveryBlocks) {
         const uint32_t g = textGen_.load(std::memory_order_acquire);

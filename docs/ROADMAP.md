@@ -61,7 +61,7 @@ Design record: [M1_DESIGN.md](M1_DESIGN.md).
 - ✅ Glide: time or rate, always or legato only
 - ✅ Same note again: retrigger or new voice
 - ✅ Bend range up / down (0–24), velocity curve
-- 💤 More than 8 voices: revisit after NEON filters (4)
+- 💤 More than 8 voices: NEON filters are done; decide from the device bench of this build
 
 ## Milestone 3 — oscillators ✅
 
@@ -80,8 +80,9 @@ Design record: [M1_DESIGN.md](M1_DESIGN.md).
 - ✅ Engines Clean (no drift, linear) · Normal · Dirty (analog drift, saturation inside the
   filter loop per sample)
 - ✅ Cutoff, resonance, drive as mod targets (Milestone 5)
-- ⬜ **NEON voice-parallel filters**: 4 voices per SIMD lane group; the biggest CPU win left.
-  Only if the device bench of this build needs it.
+- ✅ **NEON voice-parallel filters**: four voices per vector (lane-packed buses), drive as its
+  own pass; with NEON oscillator reads, fast pitch/cutoff math and per-block caching about
+  −45% ARM instructions at 8 voices (README, "The NEON pass"). Device numbers: `make bench-device`.
 
 ## Milestone 5 — modulation ✅
 
