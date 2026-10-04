@@ -169,6 +169,7 @@ Loader::View Loader::view(int slot) const {
     v.info = s.info;
     v.error = s.error;
     v.state = s.missing ? Missing : (s.want != s.loadedKey ? Loading : Ready);
+    v.ageMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - s.doneAt).count();
     return v;
 }
 
@@ -194,12 +195,14 @@ void Loader::run() {
         kick_ = false;
         if (quit_) break;
 
-        // Free what no block can still be using.
+        // Free what no block can still be using: a block ended since the swap, or none is
+        // running now (the next one reads the new pointers; read after every swap below).
+        const bool idle = !inBlock_.load(std::memory_order_seq_cst);
         const uint32_t e = epoch_.load(std::memory_order_seq_cst);
         std::vector<std::shared_ptr<const void>> dead;
         graveyard_.erase(std::remove_if(graveyard_.begin(), graveyard_.end(),
                                         [&](Grave& g) {
-                                            if (static_cast<int32_t>(e - g.epoch) <= 0) return false;
+                                            if (!idle && static_cast<int32_t>(e - g.epoch) <= 0) return false;
                                             dead.push_back(std::move(g.obj));
                                             return true;
                                         }),
@@ -217,11 +220,21 @@ void Loader::run() {
             dead.clear();   // free outside the lock too
             std::string err;
             int info = 0;
-            auto obj = load(key, &err, &info);
+            std::shared_ptr<const void> obj;
+            try {   // an exception here would end MPC (std::terminate): a throw is a failed load
+                obj = load(key, &err, &info);
+            } catch (...) {
+                obj = nullptr;
+                err = "could not load";
+            }
             bool ok = obj != nullptr;
             if (!ok && !fallback.empty()) {
                 std::string ignored;
-                obj = load(fallback, &ignored, &info);
+                try {
+                    obj = load(fallback, &ignored, &info);
+                } catch (...) {
+                    obj = nullptr;
+                }
             }
             lk.lock();
             if (s.want != key) continue;   // picked something else meanwhile: next round loads that
@@ -229,10 +242,14 @@ void Loader::run() {
             s.missing = !ok;
             s.error = ok ? "" : err;
             s.info = info;
+            s.doneAt = std::chrono::steady_clock::now();
             loads_.fetch_add(1);
             Listener l = listener_;
             lk.unlock();
-            if (l) l(static_cast<int>(i), key, ok);
+            try {
+                if (l) l(static_cast<int>(i), key, ok);
+            } catch (...) {
+            }
             lk.lock();
         }
         lk.unlock();

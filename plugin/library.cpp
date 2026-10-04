@@ -141,10 +141,11 @@ std::shared_ptr<const Listing> scanLibrary(const FileLibrary::Config& cfg) {
         std::vector<std::string> stems;
         for (const Found& f : found) stems.push_back(f.stem);
         const std::string prefix = sharedPrefix(stems);
+        const std::string shown = cat == cfg.builtinCategory ? cat + " (files)" : cat;   // never the built-ins' own
         std::vector<Entry> entries;
         for (Found& f : found)
-            entries.push_back({f.key, f.path, cat, f.stem.substr(prefix.size()), -1});
-        addCategory(cat == cfg.builtinCategory ? cat + " (files)" : cat, std::move(entries));
+            entries.push_back({f.key, f.path, shown, f.stem.substr(prefix.size()), -1});
+        addCategory(shown, std::move(entries));
     }
     return L;
 }
@@ -181,9 +182,15 @@ void FileLibrary::loadLists() const {
     }
 }
 
-void FileLibrary::saveList(const std::string& file, const std::vector<std::string>& keys) const {
+// Saves run outside mtx_ (they touch the disk), one at a time, and an older list never
+// overwrites a newer one (two instances' loader threads touch Recent at once on a project load).
+void FileLibrary::saveList(const std::string& file, const std::vector<std::string>& keys, uint64_t gen) const {
     const std::string dir = dataDir();
     if (dir.empty() || file.empty()) return;
+    std::lock_guard<std::mutex> lk(saveMtx_);
+    uint64_t& last = file == cfg_.favFile ? savedFav_ : savedRecent_;
+    if (gen <= last) return;
+    last = gen;
     std::string text;
     for (const std::string& k : keys) text += k + "\n";
     writeFileAtomic(dir + "/" + file, text);
@@ -197,6 +204,7 @@ bool FileLibrary::isFavorite(const std::string& key) const {
 
 void FileLibrary::setFavorite(const std::string& key, bool on) {
     std::vector<std::string> keys;
+    uint64_t gen = 0;
     {
         std::lock_guard<std::mutex> lk(mtx_);
         loadLists();
@@ -204,8 +212,9 @@ void FileLibrary::setFavorite(const std::string& key, bool on) {
         if (on) fav_.insert(key);
         else fav_.erase(key);
         keys.assign(fav_.begin(), fav_.end());
+        gen = ++gen_;
     }
-    saveList(cfg_.favFile, keys);
+    saveList(cfg_.favFile, keys, gen);
 }
 
 std::vector<std::string> FileLibrary::favorites() const {
@@ -224,6 +233,7 @@ std::vector<std::string> FileLibrary::favorites() const {
 
 void FileLibrary::touchRecent(const std::string& key) {
     std::vector<std::string> keys;
+    uint64_t gen = 0;
     {
         std::lock_guard<std::mutex> lk(mtx_);
         loadLists();
@@ -232,8 +242,9 @@ void FileLibrary::touchRecent(const std::string& key) {
         recent_.insert(recent_.begin(), key);
         if (recent_.size() > cfg_.recentMax) recent_.resize(cfg_.recentMax);
         keys = recent_;
+        gen = ++gen_;
     }
-    saveList(cfg_.recentFile, keys);
+    saveList(cfg_.recentFile, keys, gen);
 }
 
 std::vector<std::string> FileLibrary::recent() const {

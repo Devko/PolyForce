@@ -5,6 +5,7 @@
 #include "../plugin/library.h"
 #include "../plugin/paths.h"
 #include "../plugin/presets.h"
+#include "factory_presets.h"
 
 #include <filesystem>
 #include <fstream>
@@ -63,7 +64,7 @@ void presets() {
     pf::presetLibrary().rescan();
     const auto L = pf::presetLibrary().listing();
     CHECK(L->categories.size() >= 1 && L->categories[0] == "Factory");
-    CHECK(L->members[0].size() == 21 && L->items[0].name == "Init");
+    CHECK(L->members[0].size() == static_cast<size_t>(pf::kNumFactoryPresets) && L->items[0].name == "Init");
 
     // Every factory preset loads and plays something finite and audible.
     for (int m : L->members[0]) {

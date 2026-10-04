@@ -1,9 +1,25 @@
 # Milestone 1 design: wavetable library, browsing, steal modes
 
-Status: **designed, not started** (2026-10-04). Decisions behind it are in
-[ROADMAP.md](ROADMAP.md#decisions): all browsing options A–F, tables from the plugin folder
+Status: **built** (Milestone 1, 2026-10-04); kept as the design record. Decisions behind it are
+in [ROADMAP.md](ROADMAP.md#decisions): all browsing options A–F, tables from the plugin folder
 **and** the SSD, all four steal modes. Every touchscreen mechanic below is copied from
 RackForcePlugin (`plugin/surface.{h,cpp}`), where it is device-proven.
+
+What changed after this design:
+- §5 Quietest is written (released voices first, then the quietest held one), and stealing
+  fades the old voice out over 3 ms (Milestone 2).
+- §6.2 `br_osc` became `br_target` with a third option, PRESETS: the same page browses presets
+  (Milestone 7). Presets and tunings use the same library and loader code (`FileLibrary`,
+  `Loader::SlotType`) with their own roots and favorites/recent files.
+- §8 the state is now `polyforce 4` (real values, per-oscillator routes, tuning and preset keys);
+  see `plugin/state.h`.
+- §1 the plugin folder comes from our own `plugin/paths.cpp` (`/proc/self/maps`), not the
+  toolkit's wrapper header.
+- §3 the loader has three slots (osc 1, osc 2, tuning); it also frees replaced tables while no
+  block runs, and catches anything a load throws. MISSING shows in the status line for 5 s, then
+  only in the stepper text.
+- Still to do on the device: step 7 (all 379 tables reachable, CPU, project reload) and the
+  `setParameter`-after-`effSetChunk` trace from §8.
 
 Build order (each step ends green on `make test`; steps 1 and 7 also run `make bench-device`):
 

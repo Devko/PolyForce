@@ -151,8 +151,16 @@ void testPolyphony() {
     h.set(pf::P_VOICES, 4);
     for (int n = 0; n < 6; ++n) h.on(60 + n);
     CHECK(h.voices() == 4);
-    h.on(60);                  // same note again reuses its voice
-    CHECK(h.voices() == 4);
+    h.midi(0xB0, 120, 0);      // all sound off
+    // The same note again: Retrigger reuses its voice, New voice stacks a second one.
+    h.on(60);
+    h.on(60);
+    CHECK(h.voices() == 1);
+    h.midi(0xB0, 120, 0);
+    h.set(pf::P_SAME_NOTE, 1);
+    h.on(60);
+    h.on(60);
+    CHECK(h.voices() == 2);
     CHECK(h.finite);
 }
 
@@ -335,6 +343,8 @@ int main() {
     browserTests();
     std::printf("== tunings + presets\n");
     patchTests();
+    std::printf("== review fixes\n");
+    reviewTests();
     std::printf("== imported wavetable\n");
     testImportedTable();
     std::error_code ec;

@@ -740,7 +740,7 @@ def header():
     opts = []
     for i, p in enumerate(P):
         if "options" in p:
-            opts.append("static const char* const OPTS_%d[] = {%s};" % (i, ", ".join(c_str(o) for o in p["options"])))
+            opts.append("static constexpr const char* OPTS_%d[] = {%s};" % (i, ", ".join(c_str(o) for o in p["options"])))
     info = ",\n".join("    {%s, %s, Kind::%s, %rf, %d, %s, %d}" % (
         c_str(p["key"]), c_str(p["name"]), KIND[p["kind"]], float(round(norm(p), 6)),
         len(p.get("options", [])), "OPTS_%d" % i if "options" in p else "nullptr",
@@ -774,13 +774,13 @@ struct ParamInfo {
     int popupOf;                // Kind::Popup: the parameter whose list it opens, else -1
 };
 
-static const ParamSpec PARAM_SPECS[P_COUNT] = {
+static constexpr ParamSpec PARAM_SPECS[P_COUNT] = {
 %s
 };
 
 %s
 
-static const ParamInfo PARAM_INFO[P_COUNT] = {
+static constexpr ParamInfo PARAM_INFO[P_COUNT] = {
 %s
 };
 
@@ -877,18 +877,20 @@ def main():
     assert P[0]["kind"] == "readout", "parameter 0 must stay a read-only readout"
     layout = pages()
     check_layout(layout)
+    presets = factory_presets()   # everything checked before anything is written
+    outputs = [
+        ("params.json", json.dumps(params_json(), indent=1)),
+        ("layout.conf", layout),
+        ("vst.json", json.dumps(VST, indent=1)),
+        (os.path.join("build", "factory_presets.h"), presets_header(presets)),
+        (os.path.join("build", "param_ids.h"), header()),   # last: make's target, newer than the rest
+    ]
     os.makedirs(os.path.join(HERE, "build"), exist_ok=True)
-    with open(os.path.join(HERE, "params.json"), "w", newline="\n") as f:
-        json.dump(params_json(), f, indent=1)
-    with open(os.path.join(HERE, "layout.conf"), "w", newline="\n") as f:
-        f.write(layout)
-    with open(os.path.join(HERE, "vst.json"), "w", newline="\n") as f:
-        json.dump(VST, f, indent=1)
-    with open(os.path.join(HERE, "build", "param_ids.h"), "w", newline="\n") as f:
-        f.write(header())
-    presets = factory_presets()
-    with open(os.path.join(HERE, "build", "factory_presets.h"), "w", newline="\n") as f:
-        f.write(presets_header(presets))
+    for name, text in outputs:
+        path = os.path.join(HERE, name)
+        with open(path + ".tmp", "w", newline="\n") as f:
+            f.write(text)
+        os.replace(path + ".tmp", path)
     print("surface: %d parameters, layout ok, %d factory presets" % (len(P), len(presets)))
 
 

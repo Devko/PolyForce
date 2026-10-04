@@ -1,10 +1,13 @@
 #include "paths.h"
 
+#include <atomic>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
-#include <sstream>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace pf {
 namespace {
@@ -71,29 +74,51 @@ std::string resolveKey(const std::string& key, const std::vector<Root>& rs) {
     const size_t colon = key.find(':');
     if (colon == std::string::npos) return {};
     const std::string label = key.substr(0, colon), rel = key.substr(colon + 1);
-    if (rel.empty() || rel.find("..") != std::string::npos) return {};   // keys come from saved state text
+    // Keys come from saved state text: never a way out of the root ("Lead...wav" is fine).
+    if (rel.empty() || rel[0] == '/') return {};
+    for (size_t at = 0; at <= rel.size();) {
+        const size_t slash = std::min(rel.find('/', at), rel.size());
+        const std::string part = rel.substr(at, slash - at);
+        if (part == ".." || part == ".") return {};
+        at = slash + 1;
+    }
     for (const Root& r : rs)
         if (r.label == label) return r.dir + "/" + rel;
     return {};
 }
 
 bool writeFileAtomic(const std::string& path, const std::string& text) {
-    const std::string tmp = path + ".new";
-    {
-        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-        if (!f) return false;
-        f << text;
-        if (!f.flush()) return false;
+    // A temp name of our own (two instances may save the same list at once), written in full
+    // and synced before it replaces the file; removed on any failure.
+    static std::atomic<unsigned> counter{0};
+    const std::string tmp = path + ".new." + std::to_string(getpid()) + "." + std::to_string(counter.fetch_add(1));
+    const int fd = ::open(tmp.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);
+    if (fd < 0) return false;
+    bool ok = true;
+    for (size_t done = 0; ok && done < text.size();) {
+        const ssize_t w = ::write(fd, text.data() + done, text.size() - done);
+        if (w < 0 && errno == EINTR) continue;
+        ok = w > 0;
+        if (ok) done += static_cast<size_t>(w);
     }
-    return std::rename(tmp.c_str(), path.c_str()) == 0;
+    ok = ok && ::fsync(fd) == 0;
+    ok = ::close(fd) == 0 && ok;
+    ok = ok && std::rename(tmp.c_str(), path.c_str()) == 0;
+    if (!ok) ::unlink(tmp.c_str());
+    return ok;
 }
 
-bool readFile(const std::string& path, std::string& out) {
-    std::ifstream f(path, std::ios::binary);
+bool readFile(const std::string& path, std::string& out, size_t maxBytes) {
+    struct stat st{};
+    if (::stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) return false;
+    if (static_cast<unsigned long long>(st.st_size) > maxBytes) return false;   // not one of ours: don't read it whole
+    FILE* f = std::fopen(path.c_str(), "rb");
     if (!f) return false;
-    std::ostringstream s;
-    s << f.rdbuf();
-    out = s.str();
+    std::string s(static_cast<size_t>(st.st_size), '\0');
+    const size_t got = s.empty() ? 0 : std::fread(&s[0], 1, s.size(), f);
+    std::fclose(f);
+    s.resize(got);
+    out = std::move(s);
     return true;
 }
 

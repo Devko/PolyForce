@@ -4,9 +4,12 @@
 #include "paths.h"
 #include "../dsp/tuning.h"
 
+#include <algorithm>
 #include <cstdio>
+#include <fcntl.h>
 #include <filesystem>
 #include <system_error>
+#include <unistd.h>
 
 namespace pf {
 namespace fs = std::filesystem;
@@ -59,16 +62,27 @@ std::string nextUserPreset(std::string* key) {
     const auto roots = presetRoots();
     if (roots.empty()) return {};
     const Root& r = roots.front();
+    const std::string dir = r.dir + "/User";
     std::error_code ec;
-    fs::create_directories(r.dir + "/User", ec);
-    for (int n = 1; n < 10000; ++n) {
+    fs::create_directories(dir, ec);
+    // One past the highest number there: a deleted "User 001" is never reused, so favorites,
+    // Recent and projects that named it can't come back as a different sound.
+    int top = 0;
+    for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+        int n = 0;
+        char tail[8] = {};
+        if (std::sscanf(it->path().filename().string().c_str(), "User %d.pf%1s", &n, tail) == 2 && tail[0] == 'p')
+            top = std::max(top, n);
+    }
+    for (int n = top + 1; n < top + 100; ++n) {
         char name[32];
         std::snprintf(name, sizeof name, "User %03d.pfp", n);
-        const std::string path = r.dir + "/User/" + name;
-        if (!fs::exists(path, ec)) {
-            if (key) *key = r.label + ":User/" + name;
-            return path;
-        }
+        const std::string path = dir + "/" + name;
+        const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);   // claimed: no overwrite
+        if (fd < 0) continue;
+        ::close(fd);
+        if (key) *key = r.label + ":User/" + name;
+        return path;
     }
     return {};
 }

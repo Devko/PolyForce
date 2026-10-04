@@ -16,6 +16,7 @@
 // A scan is a directory listing only (no file is opened): a few ms for ~400 files.
 #include "paths.h"
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -72,12 +73,15 @@ public:
 
 private:
     void loadLists() const;   // with mtx_ held: favorites/recent files, read on first use
-    void saveList(const std::string& file, const std::vector<std::string>& keys) const;
+    void saveList(const std::string& file, const std::vector<std::string>& keys, uint64_t gen) const;
 
     Config cfg_;
     mutable std::mutex mtx_;
     mutable std::shared_ptr<const Listing> listing_;
     mutable bool listsLoaded_ = false;
+    uint64_t gen_ = 0;                          // list changes, under mtx_
+    mutable std::mutex saveMtx_;                // one save at a time...
+    mutable uint64_t savedFav_ = 0, savedRecent_ = 0;   // ...never an older list over a newer one
     mutable std::set<std::string> fav_;
     mutable std::vector<std::string> recent_;
 };

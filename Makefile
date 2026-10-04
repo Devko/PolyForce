@@ -31,7 +31,9 @@ ARM_OPT  := -O3 -march=armv7-a -mtune=cortex-a17 -mfpu=neon-vfpv4 -mfloat-abi=ha
 ARM_SO   := $(BUILD)/arm/polyforce.so
 ARM_BENCH := $(BUILD)/arm/pfbench
 
-.PHONY: all surface skin test test-arm bench arm-plugin arm-bench bench-device preview plugin-package plugin-install clean
+.PHONY: all surface skin test test-arm test-tables bench arm-plugin arm-bench bench-device preview plugin-package plugin-install clean
+# A recipe that fails leaves no half-written target behind for the next make to trust.
+.DELETE_ON_ERROR:
 all: test arm-plugin
 
 # --- generated --------------------------------------------------------------------------------
@@ -39,12 +41,14 @@ all: test arm-plugin
 # python3, so tests and the .so build anywhere. It also checks the layout (keys, options, when=,
 # Q-Link sets, geometry) before writing anything.
 surface: $(GEN)
-$(GEN): $(SURF)/surface.py $(wildcard presets/Factory/*.pfp)
+# presets/Factory itself too: its time changes when a preset is deleted.
+$(GEN): $(SURF)/surface.py presets/Factory $(wildcard presets/Factory/*.pfp)
 	python3 $(SURF)/surface.py
 
 # The skin (TUI.json + PNGs) and the plugin-list entry: sd88me's generator, Pillow and a host gcc.
 skin: $(SKIN)
-$(SKIN): $(GEN) $(MV)/tools/gen_vst.py $(MV)/tools/shadow_skin.py
+$(SKIN): $(GEN) $(MV)/tools/gen_vst.py $(MV)/tools/shadow_skin.py $(MV)/tools/skin_assets.py $(MV)/tools/shadow_art.c \
+         $(wildcard $(SURF)/fonts/*.ttf)
 	mkdir -p $(SURF_OUT)
 	gcc -O2 -I$(MV)/tools/vendor/force-shadow/tools -o $(SURF_OUT)/shadow_art $(MV)/tools/shadow_art.c -lm
 	cd $(SURF) && SHADOW_TITLE_FONT=fonts/TitilliumWeb-Bold.ttf $(PY) ../$(MV)/tools/gen_vst.py vst.json
@@ -57,7 +61,7 @@ preview: $(SKIN)
 # --- native -----------------------------------------------------------------------------------
 # Sample wavetables for the tests (Serum-layout WAVs). Kept OUTSIDE this repo: third-party
 # content, never committed or packaged.
-WAVETABLES ?= ../wavetables
+WAVETABLES ?= $(firstword $(wildcard ../wavetables ../../wavetables /mnt/d/DEV/mockba/wavetables) ../wavetables)
 
 # The whole plugin through its VST2 entry points, under ASan/UBSan.
 test: $(BUILD)/plugin_test
@@ -71,7 +75,7 @@ $(BUILD)/plugin_test: $(TESTS) $(wildcard test/*.h) $(SRC) $(HDR) $(GEN) | $(BUI
 # The same suite cross-compiled for the Force's CPU and run under qemu-user (no sanitizers):
 # catches 32-bit and ARM-only code paths (the FPSCR flush, NEON float vectorisation).
 test-arm: $(BUILD)/arm/plugin_test
-	qemu-arm -L /usr/arm-linux-gnueabihf $<
+	PF_WAVETABLES="$(WAVETABLES)" qemu-arm -L /usr/arm-linux-gnueabihf $<
 
 $(BUILD)/arm/plugin_test: $(TESTS) $(wildcard test/*.h) $(SRC) $(HDR) $(GEN)
 	mkdir -p $(BUILD)/arm
@@ -91,7 +95,7 @@ bench: $(BUILD)/polyforce.so $(BUILD)/pfbench
 $(BUILD)/polyforce.so: $(SRC) $(HDR) $(GEN) | $(BUILD)
 	$(CXX) -std=c++17 -O3 -fPIC -fvisibility=hidden -Wall -Wextra -pthread $(INC) -shared -Wl,--no-undefined $(SRC) -o $@
 
-$(BUILD)/pfbench: tools/bench.cpp dsp/wavetable.cpp plugin/vst2.h $(GEN) | $(BUILD)
+$(BUILD)/pfbench: tools/bench.cpp dsp/wavetable.cpp $(HDR) $(GEN) | $(BUILD)
 	$(CXX) -std=c++17 -O2 -Wall -Wextra $(INC) $< dsp/wavetable.cpp -ldl -o $@
 
 # --- device -----------------------------------------------------------------------------------
@@ -107,7 +111,7 @@ $(ARM_SO): $(SRC) $(HDR) $(GEN)
 	@arm-linux-gnueabihf-nm -D --defined-only $@ | grep -c ' T ' | sed 's/^/exported functions: /'
 
 arm-bench: $(ARM_BENCH)
-$(ARM_BENCH): tools/bench.cpp dsp/wavetable.cpp plugin/vst2.h $(GEN)
+$(ARM_BENCH): tools/bench.cpp dsp/wavetable.cpp $(HDR) $(GEN)
 	mkdir -p $(BUILD)/arm
 	$(ARM_CXX) -std=c++17 $(ARM_OPT) -Wall -Wextra -Wno-psabi $(INC) $< dsp/wavetable.cpp -ldl -o $@
 
@@ -116,22 +120,26 @@ $(ARM_BENCH): tools/bench.cpp dsp/wavetable.cpp plugin/vst2.h $(GEN)
 # then deletes them. Touches nothing else on the device.
 #   wsl -e make -C /mnt/d/DEV/mockba/PolyForce bench-device FORCE=root@<ip>
 BENCH_ARGS ?= -v 1,2,4,8 -u 1,2,4,8 -s 3
+BENCH_MATRIX_ARGS ?= -v 8 -u 1,8 -s 3 -m 1   # the same with a busy modulation matrix
 TABLE      ?= $(shell find "$(WAVETABLES)" -name '*.wav' -size +2047k 2>/dev/null | sort | head -1)
 bench-device: $(ARM_SO) $(ARM_BENCH)
 	scp -q $(SSH_OPTS) $(ARM_SO) $(ARM_BENCH) $(FORCE):/tmp/
 	@if [ -n "$(TABLE)" ]; then scp -q $(SSH_OPTS) "$(TABLE)" $(FORCE):/tmp/pf_table.wav; fi
-	$(SSH) $(FORCE) 'T=; [ -f /tmp/pf_table.wav ] && T="-t /tmp/pf_table.wav"; /tmp/pfbench /tmp/polyforce.so $(BENCH_ARGS) -c 1 $$T; rm -f /tmp/pfbench /tmp/polyforce.so /tmp/pf_table.wav'
+	$(SSH) $(FORCE) 'T=; [ -f /tmp/pf_table.wav ] && T="-t /tmp/pf_table.wav"; /tmp/pfbench /tmp/polyforce.so $(BENCH_ARGS) -c 1 $$T; /tmp/pfbench /tmp/polyforce.so $(BENCH_MATRIX_ARGS) -c 1; rm -f /tmp/pfbench /tmp/polyforce.so /tmp/pf_table.wav'
 
 # Release zip: plugin + skin + sd88me's installer (stops MPC, backs up and edits
 # MPC.settings, restarts MPC).
-PLUGIN_VERSION ?= 0.0.2
+PLUGIN_VERSION ?= 0.0.3
 plugin-package: $(ARM_SO) $(SKIN)
 	@# Everything shipped runs under BusyBox on the device: a CR in a script breaks it there.
 	@! grep -l "$$(printf '\r')" $(MV)/tools/release/* || { echo "error: CRLF in a shipped script"; exit 1; }
 	$(PY) $(MV)/tools/release.py --so $(ARM_SO) --skin "$(SKIN_DIR)" --entry $(SURF_OUT)/pluginlist-entry.xml \
 		--version $(PLUGIN_VERSION) --repo Devko/PolyForce --license MIT \
-		--about "PolyForce wavetable synth (phase 0 spike): 8 voices, 2 wavetable oscillators with 8x unison, 2 filters, 2 envelopes." \
-		--requires "root SSH (MockbaMod)" -o dist
+		--about "PolyForce wavetable synth (preview): 8 voices, 2 wavetable oscillators with 8x unison and subs, 2 filters with comb and vowel, 2 LFOs, a 12-slot mod matrix, arpeggiator and sequencers, presets, microtuning." \
+		--requires "root SSH (MockbaMod)" \
+		--user-data Wavetables --user-data Presets --user-data Tunings \
+		--user-data favorites.txt --user-data recent.txt --user-data preset_favorites.txt --user-data preset_recent.txt \
+		-o dist
 
 # Install on a device: stops MPC, backs up + edits MPC.settings, restarts MPC. Save the MPC
 # project first. Usage (any shell): wsl -e make -C /mnt/d/DEV/mockba/PolyForce plugin-install FORCE=root@<ip>

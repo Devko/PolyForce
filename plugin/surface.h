@@ -53,9 +53,23 @@ public:
     void        refresh();
     std::string busyText() const;          // "LOADING ..." / "MISSING ..." for the status line, or ""
 
+    // Many values changed as one (a preset, a project, randomize): the audio thread keeps the
+    // previous sound until the batch is complete. Nests; UI thread.
+    void        beginBatch();
+    void        endBatch();
+    struct Batch {
+        explicit Batch(Surface& s) : s_(s) { s_.beginBatch(); }
+        ~Batch() { s_.endBatch(); }
+        Batch(const Batch&) = delete;
+        Batch& operator=(const Batch&) = delete;
+        Surface& s_;
+    };
+
     // --- audio thread ------------------------------------------------------------
     void        notify(AutomateFn automate, UpdateFn update, void* ctx);
-    void        snapshot(float* out) const;   // every parameter's current 0..1 value
+    // Every parameter's current 0..1 value. False (and `out` untouched) while a batch is
+    // being written: keep using the previous snapshot.
+    bool        snapshot(float* out) const;
 
     static int  kFine;   // ranges with this many steps or more follow MPC's value
 
@@ -71,7 +85,8 @@ private:
     void stepTable(int osc, int delta);
     static std::string stepKey(FileLibrary& lib, const std::string& cur, int delta);
     void browserAction(int i);
-    std::vector<Category> categories(FileLibrary& lib) const;   // FAVORITES, RECENT, then the library's
+    // FAVORITES, RECENT, then the library's categories (from L, the listing in use).
+    std::vector<Category> categories(FileLibrary& lib, const Listing& L) const;
     int  browseTarget() const;                  // 0, 1: an oscillator's table; 2: presets
     static FileLibrary& browseLibrary(int target);
     std::string browseKey(int target) const;    // with mtx_ held
@@ -83,6 +98,7 @@ private:
     std::string amountText(int i) const;
     void autoAssignXy();
     std::string tableText(int osc) const;       // with mtx_ held
+    int  stepperCur(int i, const Listing& L, const std::string& key) const;   // where a stepper stands
 
     Loader& loader_;
 
@@ -98,6 +114,8 @@ private:
     std::atomic<float>    shown_[P_COUNT];
     std::atomic<bool>     release_[P_COUNT];
     std::atomic<uint32_t> textGen_{0};
+    std::atomic<uint32_t> batchSeq_{0};    // odd while a batch is being written (a seqlock)
+    std::atomic<int>      batchDepth_{0};
 
     // Browser state + text cache (refresh writes, the UI thread reads).
     mutable std::mutex       mtx_;

@@ -10,9 +10,10 @@
 //                                                 scrolling through 50 tables loads one)
 //                worker      loads, then publishes: live = new pointer, old one to the graveyard
 //                audio       live(slot)           read once at block start, used until block end
-//              The audio thread calls blockDone() after every block; the worker frees a
-//              graveyard entry only once a block has ended after its swap, so a block never
-//              sees its table freed. No locks, frees or allocation on the audio thread.
+//              The audio thread calls blockStart() before and blockDone() after every block;
+//              the worker frees a graveyard entry once a block has ended after its swap, or
+//              when no block is running (MPC may stop processing a track for a long time), so a
+//              block never sees its table freed. No locks, frees or allocation on the audio thread.
 //              A failed load publishes the slot's fallback (built-in Classic, 12-TET) but keeps
 //              the wanted key, so a saved project keeps its reference.
 #include "../dsp/wavetable.h"
@@ -73,6 +74,7 @@ public:
         State state = Ready;
         int info = 0;
         std::string error;
+        long long ageMs = 0;     // since the last publish (how long MISSING has been showing)
     };
     // slot, key: called on the worker after every publish (not under any lock).
     using Listener = std::function<void(int slot, const std::string& key, bool ok)>;
@@ -90,8 +92,12 @@ public:
     bool busy() const;              // some slot isn't at its wanted key yet
     int loads() const { return loads_.load(); }   // completed loads (tests)
 
-    const void* live(int slot) const { return slots_[static_cast<size_t>(slot)].live.load(std::memory_order_acquire); }
-    void blockDone() { epoch_.fetch_add(1, std::memory_order_acq_rel); }
+    const void* live(int slot) const { return slots_[static_cast<size_t>(slot)].live.load(std::memory_order_seq_cst); }
+    void blockStart() { inBlock_.store(true, std::memory_order_seq_cst); }
+    void blockDone() {
+        epoch_.fetch_add(1, std::memory_order_seq_cst);
+        inBlock_.store(false, std::memory_order_seq_cst);
+    }
 
     static constexpr int kDebounceMs = 150;
 
@@ -99,7 +105,7 @@ private:
     struct Slot {
         SlotType type;
         std::string want, loadedKey, error;
-        std::chrono::steady_clock::time_point wantAt{};
+        std::chrono::steady_clock::time_point wantAt{}, doneAt{};
         bool now = false, missing = false;
         int info = 0;
         std::shared_ptr<const void> owned;
@@ -118,6 +124,7 @@ private:
     bool quit_ = false, kick_ = false;
     std::vector<Grave> graveyard_;
     std::atomic<uint32_t> epoch_{0};
+    std::atomic<bool> inBlock_{false};
     std::atomic<int> loads_{0};
     Listener listener_;
     std::thread thread_;

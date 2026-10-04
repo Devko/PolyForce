@@ -122,14 +122,20 @@ void phases() {
         q.osc[0].phaseMode = mode;
         pf::Synth s;
         s.setPatch(q);
-        s.noteOn(60, 127);
-        s.noteOn(72, 127);
-        float l[kBlock], r[kBlock];
-        s.render(l, r, kBlock);
-        // Voice 0 plays 60, voice 1 plays 72 (an octave up): at Reset both start at phase 0,
-        // so the first samples rise together; at Random they don't agree.
-        const bool together = l[1] > 0.0f && l[2] > l[1];
-        if (mode == pf::PH_RESET) CHECK(together);
+        int apart = 0;
+        for (int trial = 0; trial < 6; ++trial) {
+            s.reset();
+            s.noteOn(60, 127);
+            s.noteOn(72, 127);
+            float l[kBlock], r[kBlock];
+            s.render(l, r, kBlock);
+            // Voice 0 plays 60, voice 1 plays 72 (an octave up): at Reset both start at phase 0,
+            // so the first samples rise together; at Random they mostly don't agree.
+            const bool together = l[1] > 0.0f && l[2] > l[1];
+            if (mode == pf::PH_RESET) CHECK(together);
+            apart += together ? 0 : 1;
+        }
+        if (mode == pf::PH_RANDOM) CHECK(apart >= 1);
     }
     p.osc[0].phaseMode = pf::PH_RANDOM;
     pf::Synth s2;

@@ -9,10 +9,11 @@ enum LfoWave : int { LW_SINE, LW_TRIANGLE, LW_SAW_UP, LW_SAW_DOWN, LW_SQUARE, LW
 // Global: one LFO for all voices (synced: locked to MPC's bar position).
 enum LfoTrig : int { LT_RETRIG, LT_FREE, LT_GLOBAL };
 
-// Tempo-synced LFO and sequencer lengths, in beats (quarter notes).
+// Tempo-synced LFO and sequencer lengths, in beats (quarter notes). Double: step k sits at
+// k * length, and a float triplet length drifts off the host's grid over a song.
 constexpr int kNumSyncDivs = 17;
-constexpr float kSyncBeats[kNumSyncDivs] = {32.0f, 16.0f, 8.0f, 4.0f, 2.0f, 4.0f / 3.0f, 1.0f, 2.0f / 3.0f, 1.5f,
-                                            0.5f, 1.0f / 3.0f, 0.75f, 0.25f, 1.0f / 6.0f, 0.375f, 0.125f, 1.0f / 12.0f};
+constexpr double kSyncBeats[kNumSyncDivs] = {32.0, 16.0, 8.0, 4.0, 2.0, 4.0 / 3.0, 1.0, 2.0 / 3.0, 1.5,
+                                             0.5, 1.0 / 3.0, 0.75, 0.25, 1.0 / 6.0, 0.375, 0.125, 1.0 / 12.0};
 
 enum ModSource : int {
     MS_NONE, MS_ENV1, MS_ENV2, MS_LFO1, MS_LFO2, MS_VELOCITY, MS_NOTE, MS_MODWHEEL, MS_AFTERTOUCH, MS_BEND,

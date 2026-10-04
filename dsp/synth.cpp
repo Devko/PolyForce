@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace pf {
 namespace {
@@ -25,6 +26,12 @@ inline float softclip(float x) {
 
 // Per-sample one-pole step for a time constant of `tau` seconds.
 inline float onePole(float tau, float sr) { return 1.0f - std::exp(-1.0f / (std::max(tau, 1e-5f) * sr)); }
+
+// A one-pole step `k` meant for a whole chunk, for a chunk of `n` samples (render() splits
+// chunks at MIDI events and sequencer steps: a short chunk must not smooth a full step).
+inline float chunkStep(float k, int n) {
+    return n >= kChunk ? k : 1.0f - std::pow(1.0f - k, static_cast<float>(n) / static_cast<float>(kChunk));
+}
 
 inline float tick(Env& e, const EnvCoef& c, bool loop = false) {
     switch (e.stage) {
@@ -135,7 +142,12 @@ void Synth::setPatch(const Patch& p) {
     patch_ = p;
     patch_.voices = std::clamp(p.voices, 1, kMaxVoices);
     for (int o = 0; o < 2; ++o) updateOsc(o, patch_.osc[o]);
-    for (int e = 0; e < 2; ++e) envc_[e] = envCoef(patch_.env[e], sr_);
+    for (int e = 0; e < 2; ++e) {   // knobs moved: every voice's own (modulated) copy is stale
+        const EnvCoef c = envCoef(patch_.env[e], sr_);
+        if (std::memcmp(&c, &envc_[e], sizeof c) != 0)
+            for (auto& v : voices_) v.envc[e].dec = 0.0f;
+        envc_[e] = c;
+    }
 
     // The matrix: which slots do something, and their amounts in target units.
     nSlots_ = 0;
@@ -282,9 +294,15 @@ void Synth::noteOnPoly(int note, int velocity, int limit) {
                 v = &x;
                 break;
             }
+    if (v && v->fade > 0) {   // fading out for this very note: it starts after the fade, as planned
+        v->pendingNote = note;
+        v->pendingVel = velocity;
+        v->pendingUp = false;
+        return;
+    }
     for (int i = 0; !v && i < limit; ++i)
         if (!voices_[i].active) v = &voices_[i];
-    if (v) start(*v, note, velocity);
+    if (v) start(*v, note, velocity, nHeld_ > 1);
     else startOrSteal(*victim(limit), note, velocity);
 }
 
@@ -301,46 +319,51 @@ void Synth::noteOnMono(int note, int velocity) {
         v.sustained = false;
         return;
     }
-    start(v, note, velocity);
+    start(v, note, velocity, nHeld_ > 1);
 }
 
-// All `limit` voices are sounding and a new note needs one of them.
+// All `limit` voices are sounding and a new note needs one of them. A voice already fading
+// out for another new note is taken only when every voice is (a chord played into a full
+// voice pool would otherwise keep only its last note).
 Synth::Voice* Synth::victim(int limit) {
     limit = std::clamp(limit, 1, kMaxVoices);
     auto older = [](const Voice& a, const Voice& b) { return static_cast<int32_t>(a.age - b.age) < 0; };
     Voice* best = nullptr;
-    switch (patch_.steal) {
-        case ST_QUIETEST: {
-            // Released voices first (they are on their way out anyway), quietest first; else
-            // the quietest held one.
-            for (int pass = 0; pass < 2 && !best; ++pass)
+    for (int strict = 1; strict >= 0 && !best; --strict) {
+        auto free = [&](const Voice& x) { return !strict || x.pendingNote < 0; };
+        switch (patch_.steal) {
+            case ST_QUIETEST: {
+                // Released voices first (they are on their way out anyway), quietest first; else
+                // the quietest held one.
+                for (int pass = 0; pass < 2 && !best; ++pass)
+                    for (int i = 0; i < limit; ++i) {
+                        Voice& x = voices_[i];
+                        const bool released = !x.gate && !x.sustained;
+                        if ((pass == 0 && !released) || !free(x)) continue;
+                        if (!best || x.env[0].v < best->env[0].v) best = &x;
+                    }
+                break;
+            }
+            case ST_KEEP_LOW:
+            case ST_KEEP_HIGH: {
+                // The oldest voice, except the one holding the lowest (highest) note: a bass line
+                // (or a top melody) survives any chord played over it.
+                Voice* keep = nullptr;
                 for (int i = 0; i < limit; ++i) {
                     Voice& x = voices_[i];
-                    const bool released = !x.gate && !x.sustained;
-                    if (pass == 0 && !released) continue;
-                    if (!best || x.env[0].v < best->env[0].v) best = &x;
+                    if (!(x.gate || x.sustained)) continue;
+                    const bool better = patch_.steal == ST_KEEP_LOW ? (!keep || x.note < keep->note) : (!keep || x.note > keep->note);
+                    if (better) keep = &x;
                 }
-            break;
-        }
-        case ST_KEEP_LOW:
-        case ST_KEEP_HIGH: {
-            // The oldest voice, except the one holding the lowest (highest) note: a bass line
-            // (or a top melody) survives any chord played over it.
-            Voice* keep = nullptr;
-            for (int i = 0; i < limit; ++i) {
-                Voice& x = voices_[i];
-                if (!(x.gate || x.sustained)) continue;
-                const bool better = patch_.steal == ST_KEEP_LOW ? (!keep || x.note < keep->note) : (!keep || x.note > keep->note);
-                if (better) keep = &x;
+                for (int i = 0; i < limit; ++i)
+                    if (&voices_[i] != keep && free(voices_[i]) && (!best || older(voices_[i], *best))) best = &voices_[i];
+                break;
             }
-            for (int i = 0; i < limit; ++i)
-                if (&voices_[i] != keep && (!best || older(voices_[i], *best))) best = &voices_[i];
-            break;
+            default:
+                for (int i = 0; i < limit; ++i)
+                    if (free(voices_[i]) && (!best || older(voices_[i], *best))) best = &voices_[i];
+                break;
         }
-        default:
-            for (int i = 0; i < limit; ++i)
-                if (!best || older(voices_[i], *best)) best = &voices_[i];
-            break;
     }
     return best ? best : &voices_[0];
 }
@@ -349,11 +372,12 @@ Synth::Voice* Synth::victim(int limit) {
 void Synth::startOrSteal(Voice& v, int note, int velocity) {
     if (!v.active || v.env[0].v < 1e-3f) {
         v.active = false;
-        start(v, note, velocity);
+        start(v, note, velocity, nHeld_ > 1);
         return;
     }
     v.pendingNote = note;
     v.pendingVel = velocity;
+    v.pendingUp = false;
     if (v.fade <= 0) v.fade = kFadeSamples;
     v.gate = false;
     v.sustained = false;
@@ -366,25 +390,28 @@ void Synth::glideTo(Voice& v, int note, bool legatoMove) {
     const float dist = std::fabs(v.target - v.pitch);
     if (!glide || dist < 1e-4f || patch_.glideTime <= 1e-4f) {
         v.pitch = v.target;
-        v.glideStep = 0.0f;
-    } else {
+        v.glideLeft = 0;
+    } else {   // counted in samples, not summed steps: a slow, small glide never stalls on rounding
         const float samples = patch_.glideTime * sr_ * (patch_.glideRate ? dist / 12.0f : 1.0f);
-        v.glideStep = dist / std::max(samples, 1.0f);
+        v.glideFrom = v.pitch;
+        v.glideLen = v.glideLeft = static_cast<int>(std::clamp(samples, 1.0f, 1e9f));
     }
     lastPitch_ = v.target;
+    havePitch_ = true;
 }
 
-void Synth::start(Voice& v, int note, int velocity, bool retrigger) {
+void Synth::start(Voice& v, int note, int velocity, bool legato) {
     const bool wasActive = v.active;
     // Where the pitch comes from: this voice's own pitch if it was sounding, else the last
     // note played (poly glide). "Legato" glides only while another key is held.
-    const float from = wasActive ? v.pitch : lastPitch_;
-    v.pitch = from >= 0.0f ? from : tuned(note);
-    glideTo(v, note, nHeld_ > 1);
+    v.pitch = wasActive ? v.pitch : (havePitch_ ? lastPitch_ : tuned(note));
+    glideTo(v, note, legato);
     v.active = true;
     v.gate = true;
     v.sustained = false;
     v.pendingNote = -1;
+    v.pendingUp = false;
+    v.releaseIn = 0;
     v.fade = 0;
     v.age = ++clock_;
     v.vel = shapeVelocity(velocity);
@@ -410,16 +437,14 @@ void Synth::start(Voice& v, int note, int velocity, bool retrigger) {
         v.slotSlew[s] = 0.0f;
     }
     v.ownEnv = false;
-    if (retrigger)
-        for (auto& e : v.env) e.stage = Attack;   // a retriggered voice attacks from where it is
+    for (auto& e : v.env) e.stage = Attack;   // a retriggered voice attacks from where it is
 
     if (!wasActive) {
         for (auto& e : v.env) e.v = 0.0f;
         for (auto& f : v.svf)
             for (auto& ch : f)
                 for (auto& st : ch) st = Svf{};
-        if (patch_.flt[0].type >= F_COMB_PLUS || patch_.flt[1].type >= F_COMB_PLUS)
-            std::fill(v.comb, v.comb + 2 * 2 * kCombLen, 0.0f);   // only combs read their past
+        v.combLive[0] = v.combLive[1] = false;   // a comb clears its lines when it first runs
         v.drift = 0.0f;
         resetPhases(v);
     }
@@ -433,7 +458,8 @@ void Synth::resetPhases(Voice& v) {
     for (int o = 0; o < 2; ++o) {
         const OscPatch& p = patch_.osc[o];
         if (p.phaseMode == PH_FREE) continue;
-        const double base = clampf(p.phase, 0.0f, 1.0f);
+        double base = clampf(p.phase, 0.0f, 1.0f);
+        base -= std::floor(base);   // 360 degrees = 0 (2^32 doesn't fit the phase)
         for (int u = 0; u < kMaxUnison; ++u) {
             if (p.phaseMode == PH_RANDOM) {
                 v.phase[o][u] = random();
@@ -450,8 +476,8 @@ void Synth::resetPhases(Voice& v) {
 
 void Synth::noteOff(int note) {
     dropKey(note);
-    for (auto& v : voices_)   // a stolen voice waiting for this note: let it just fade out
-        if (v.active && v.pendingNote == note) v.pendingNote = -1;
+    for (auto& v : voices_)   // a stolen voice waiting for this note: it still plays, briefly
+        if (v.active && v.pendingNote == note) v.pendingUp = true;
 
     if (patch_.voiceMode == VM_MONO || patch_.voiceMode == VM_LEGATO) {
         Voice& v = voices_[0];
@@ -459,9 +485,10 @@ void Synth::noteOff(int note) {
         if (nHeld_ > 0) {   // back to the newest key still held
             const Held& k = held_[nHeld_ - 1];
             if (patch_.voiceMode == VM_LEGATO) glideTo(v, k.note, true);
-            else start(v, k.note, k.vel);
+            else start(v, k.note, k.vel, true);
             return;
         }
+        v.gate = false;
         if (pedal_) v.sustained = true;
         else release(v);
         return;
@@ -474,7 +501,8 @@ void Synth::noteOff(int note) {
             int take = -1;
             for (int k = nHeld_ - 1; k >= 0 && take < 0; --k) {
                 bool sounding = false;
-                for (const auto& x : voices_) sounding = sounding || (x.active && x.gate && x.note == held_[k].note);
+                for (const auto& x : voices_)   // a voice fading out to start it counts as sounding it
+                    sounding = sounding || (x.active && ((x.gate && x.note == held_[k].note) || x.pendingNote == held_[k].note));
                 if (!sounding) take = k;
             }
             if (take >= 0) {
@@ -509,15 +537,19 @@ void Synth::allNotesOff() {
     nHeld_ = 0;
     for (auto& v : voices_) {
         v.pendingNote = -1;
+        v.pendingUp = false;
+        v.releaseIn = 0;
         if (v.active) release(v);
     }
 }
 
 void Synth::reset() {
     for (auto& v : voices_) {
-        v.active = v.gate = v.sustained = false;
+        v.active = v.gate = v.sustained = v.pendingUp = false;
         v.pendingNote = -1;
+        v.releaseIn = 0;
         v.fade = 0;
+        v.glideLeft = 0;
         v.env[0] = v.env[1] = Env{};
     }
     nHeld_ = 0;
@@ -554,7 +586,7 @@ float Synth::randomBipolar() { return static_cast<float>(static_cast<int32_t>(ra
 // One LFO over one chunk: returns its value at the chunk's start (-1..1) and advances.
 // `locked`: a synced Global LFO, its phase read from the song position (bars line up).
 float Synth::lfoStep(LfoState& st, const LfoPatch& p, float rateMul, int n, bool locked) {
-    const float divBeats = kSyncBeats[std::clamp(p.div, 0, kNumSyncDivs - 1)];
+    const double divBeats = kSyncBeats[std::clamp(p.div, 0, kNumSyncDivs - 1)];
     auto newCycle = [&] {
         st.held = randomBipolar();
         st.from = st.to;
@@ -668,7 +700,7 @@ void Synth::modulate(Voice& v, float env2, int n, Mods& m) {
                 x = v.slotHold[s];
                 break;
             case MM_SLEW:
-                v.slotSlew[s] += (x - v.slotSlew[s]) * slotSlewK_[s];
+                v.slotSlew[s] += (x - v.slotSlew[s]) * chunkStep(slotSlewK_[s], n);
                 x = v.slotSlew[s];
                 break;
             default: break;
@@ -749,7 +781,8 @@ void Synth::render(float* outL, float* outR, int n) {
         std::fill(R, R + len, 0.0f);
 
         // Knob moves arrive in 1/128 steps: glide cutoff (~2 ms) and volume (~6 ms) between them.
-        for (int f = 0; f < 2; ++f) cutSemi_[f] += (cutTarget[f] - cutSemi_[f]) * 0.2f;
+        const float kCut = chunkStep(0.2f, len), kVol = chunkStep(0.07f, len);
+        for (int f = 0; f < 2; ++f) cutSemi_[f] += (cutTarget[f] - cutSemi_[f]) * kCut;
         // The shared (Global) LFOs, then the song position moves on.
         for (int l = 0; l < 2; ++l)
             if (lfoUsed_[l] && patch_.lfo[l].trig == LT_GLOBAL) lfoStep(glfo_[l], patch_.lfo[l], 1.0f, len, patch_.lfo[l].sync);
@@ -759,7 +792,7 @@ void Synth::render(float* outL, float* outR, int n) {
             if (v.active) renderVoice(v, L, R, len);
 
         const float g0 = vol_;
-        vol_ += (volTarget_ - vol_) * 0.07f;
+        vol_ += (volTarget_ - vol_) * kVol;
         const float step = (vol_ - g0) / static_cast<float>(len);
         float g = g0;
         for (int i = 0; i < len; ++i) {
@@ -779,20 +812,24 @@ void Synth::renderVoice(Voice& v, float* outL, float* outR, int n) {
     modulate(v, mod, n, m);
     const EnvCoef& c1 = v.ownEnv ? v.envc[1] : envc_[1];
     for (int i = 0; i < n; ++i) tick(v.env[1], c1, patch_.env[1].loop && v.gate);
-    if (v.glideStep > 0.0f) {   // glide toward the note
-        const float target = v.target, step = v.glideStep * static_cast<float>(n);
-        if (std::fabs(target - v.pitch) <= step) {
-            v.pitch = target;
-            v.glideStep = 0.0f;
-        } else {
-            v.pitch += target > v.pitch ? step : -step;
+    if (v.glideLeft > 0) {   // glide toward the note
+        v.glideLeft = std::max(v.glideLeft - n, 0);
+        v.pitch = v.target + (v.glideFrom - v.target) * static_cast<float>(v.glideLeft) / static_cast<float>(v.glideLen);
+    }
+    if (v.releaseIn > 0 && (v.releaseIn -= n) <= 0) {   // its key went up while it waited to start
+        v.releaseIn = 0;
+        if (v.gate) {
+            v.gate = false;
+            if (pedal_) v.sustained = true;
+            else release(v);
         }
     }
     float pitch = v.pitch + (bend_ >= 0.0f ? bend_ * patch_.bendUp : bend_ * patch_.bendDown);
     if (patch_.engine != EN_CLEAN) {   // analog drift: a slow random walk, a few cents
         const float range = patch_.engine == EN_DIRTY ? 6.0f : 2.5f;
         const float r = static_cast<float>(static_cast<int32_t>(random())) * (1.0f / 2147483648.0f);
-        v.drift = clampf(v.drift * 0.9995f + r * 0.08f * range, -range, range);
+        const float w = n >= kChunk ? 1.0f : std::sqrt(static_cast<float>(n) / static_cast<float>(kChunk));   // a walk's step grows with sqrt(time)
+        v.drift = clampf(v.drift * (1.0f - chunkStep(0.0005f, n)) + r * 0.08f * range * w, -range, range);
         pitch += v.drift * 0.01f;
     }
 
@@ -865,7 +902,11 @@ void Synth::renderVoice(Voice& v, float* outL, float* outR, int n) {
         if (v.fade <= 0) {
             v.fade = 0;
             v.active = false;
-            if (v.pendingNote >= 0) start(v, v.pendingNote, v.pendingVel);
+            if (v.pendingNote >= 0) {
+                const bool up = v.pendingUp;
+                start(v, v.pendingNote, v.pendingVel, nHeld_ > 1);
+                if (up) v.releaseIn = kFadeSamples;   // a short key press still sounds, then releases
+            }
         }
         return;
     }
@@ -982,7 +1023,7 @@ void Synth::renderNoise(uint32_t& rng, float* lp, float color, float gain, float
         k = 1.5f * color;
         var = (1.0f + k) * (1.0f + k) + k * k * kB / (2.0f - kB) - 2.0f * k * (1.0f + k) * kB;
     }
-    const float g = gain * std::min(1.0f / std::sqrt(std::max(var, 1e-6f)), 6.0f);
+    const float g = gain * std::min(1.0f / std::sqrt(std::max(var, 1e-6f)), 12.0f);   // dark end needs 11.5
     constexpr float kScale = 1.7320508f / 2147483648.0f;   // uniform -1..1 has RMS 1/sqrt(3): make it 1
     for (int i = 0; i < n; ++i) {
         for (int ch = 0; ch < 2; ++ch) {
@@ -1008,6 +1049,7 @@ constexpr float kFormantGain[3] = {1.0f, 0.63f, 0.4f};
 
 void Synth::filter(Voice& v, int f, float pitch, const Mods& m, float mod, float* L, float* R, int n) const {
     const FilterPatch& p = patch_.flt[f];
+    if (!isComb(p.type)) v.combLive[f] = false;   // switched to a comb later: start from silence
     if (p.type == F_OFF) return;
 
     // Coefficients once per chunk: cutoff (smoothed) + env 2 + keytrack + modulation, in semitones.
@@ -1016,10 +1058,12 @@ void Synth::filter(Voice& v, int f, float pitch, const Mods& m, float mod, float
     const float res = clampf(p.res + m.res[f], 0.0f, 1.0f);
     const float drive = clampf(p.drive + m.drive[f], 0.0f, 1.0f);
     const float pre = 1.0f + 15.0f * drive * drive;
-    const float post = 1.0f / softclip(pre);   // small signals keep ~unity gain
+    const float post = 1.0f / softclip(pre);   // a full-scale input keeps ~unity gain
+    const float wet = std::min(1.0f, 8.0f * drive);   // fades the drive in: no level step just above 0
+    auto drv = [&](float x) { return x + wet * (softclip(x * pre) * post - x); };
     const bool dirty = patch_.engine == EN_DIRTY;
 
-    if (p.type == F_COMB_PLUS || p.type == F_COMB_MINUS) {
+    if (isComb(p.type)) {
         // A feedback comb tuned to the cutoff (keytrack 100% = the note's pitch): metallic
         // resonances, plucked-string tones. Comb- (inverted feedback) sounds an octave lower
         // and hollow. Resonance = feedback.
@@ -1029,12 +1073,16 @@ void Synth::filter(Voice& v, int f, float pitch, const Mods& m, float mod, float
         const int d0 = static_cast<int>(delay);
         const float frac = delay - static_cast<float>(d0);
         constexpr int kMask = kCombLen - 1;
+        if (!v.combLive[f]) {   // this note's first comb chunk: no older note in the lines
+            std::fill_n(v.comb + static_cast<size_t>(f) * 2 * kCombLen, 2 * kCombLen, 0.0f);
+            v.combLive[f] = true;
+        }
         for (int ch = 0; ch < 2; ++ch) {
             float* x = ch ? R : L;
             float* line = v.comb + (static_cast<size_t>(f) * 2 + static_cast<size_t>(ch)) * kCombLen;
             int w = v.combPos;
             for (int i = 0; i < n; ++i) {
-                const float in = drive > 0.0f ? softclip(x[i] * pre) * post : x[i];
+                const float in = drive > 0.0f ? drv(x[i]) : x[i];
                 const float a = line[(w - d0) & kMask], b = line[(w - d0 - 1) & kMask];
                 float y = in + fb * (a + frac * (b - a));
                 if (dirty) y = softclip(y);
@@ -1043,7 +1091,7 @@ void Synth::filter(Voice& v, int f, float pitch, const Mods& m, float mod, float
                 x[i] = y * out;
             }
         }
-        if (f == 1 || patch_.flt[1].type < F_COMB_PLUS)   // both filters share the write position
+        if (f == 1 || !isComb(patch_.flt[1].type))   // both filters share the write position
             v.combPos = (v.combPos + n) & (kCombLen - 1);
         return;
     }
@@ -1063,7 +1111,7 @@ void Synth::filter(Voice& v, int f, float pitch, const Mods& m, float mod, float
         for (int ch = 0; ch < 2; ++ch) {
             float* x = ch ? R : L;
             for (int i = 0; i < n; ++i) {
-                const float in = drive > 0.0f ? softclip(x[i] * pre) * post : x[i];
+                const float in = drive > 0.0f ? drv(x[i]) : x[i];
                 float y = 0.0f, b, l;
                 for (int j = 0; j < 3; ++j) {
                     svf(v.svf[f][ch][j], fc[j], in, b, l);
@@ -1082,7 +1130,7 @@ void Synth::filter(Voice& v, int f, float pitch, const Mods& m, float mod, float
     for (int ch = 0; ch < 2; ++ch) {
         float* x = ch ? R : L;
         if (drive > 0.0f)
-            for (int i = 0; i < n; ++i) x[i] = softclip(x[i] * pre) * post;
+            for (int i = 0; i < n; ++i) x[i] = drv(x[i]);
         if (dirty) svfBlock<true>(p.type, v.svf[f][ch][0], v.svf[f][ch][1], c, flat, x, n);
         else svfBlock<false>(p.type, v.svf[f][ch][0], v.svf[f][ch][1], c, flat, x, n);
     }

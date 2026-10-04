@@ -16,6 +16,7 @@ namespace pf {
 constexpr int kStateVersion = 4;
 
 std::string saveState(const Surface& s, bool asPreset);
+bool isStateText(const std::string& text);   // "polyforce <version >= 1>" (a UTF-8 BOM allowed)
 // A preset starts from the defaults (what it doesn't say is the default); a project's state
 // only overrides what it lists. False if it isn't PolyForce state.
 bool loadState(Surface& s, const std::string& text, bool asPreset);

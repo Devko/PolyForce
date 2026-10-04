@@ -327,9 +327,16 @@ std::string stem(const std::string& path) {
 } // namespace
 
 bool loadWavetable(const std::string& path, Wavetable& out, std::string* err) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(path, std::ios::binary | std::ios::ate);
     if (!f) return fail(err, "cannot open");
-    const std::vector<uint8_t> b((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    // A long sample named *.wav must not be read whole: the largest real table (256 frames of
+    // 4096 samples in 32-bit, plus headers) is about 4 MB.
+    constexpr std::streamoff kMaxBytes = 32 << 20;
+    const std::streamoff size = f.tellg();
+    if (size < 0 || size > kMaxBytes) return fail(err, "too big for a wavetable");
+    f.seekg(0);
+    std::vector<uint8_t> b(static_cast<size_t>(size));
+    if (size > 0 && !f.read(reinterpret_cast<char*>(b.data()), size)) return fail(err, "cannot read");
     if (b.size() < 12 || std::memcmp(b.data(), "RIFF", 4) != 0 || std::memcmp(b.data() + 8, "WAVE", 4) != 0)
         return fail(err, "not a WAV file");
 

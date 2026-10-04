@@ -17,7 +17,8 @@
 namespace pf {
 
 bool presetText(const std::string& key, std::string& out);   // factory or file
-// Where the next user preset goes (and its key). "" if there is no preset root.
+// Claims the next user preset file (created empty: highest number + 1) and its key. "" if
+// there is no preset root. The caller writes it, or removes it on failure.
 std::string nextUserPreset(std::string* key);
 
 Loader::SlotType tuningSlotType();   // fallback builtin:12-TET; the object is a pf::Tuning

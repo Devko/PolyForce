@@ -40,7 +40,7 @@ namespace {
 
 using namespace pf;
 
-constexpr size_t kTextCap = 48;   // JUCE reads names/display text into 256 bytes; stay well inside
+constexpr size_t kTextCap = 128;   // JUCE reads names/display text into 256 bytes; stay well inside
 constexpr int kMaxMidi = 512;
 constexpr float kSampleRate = 44100.0f;   // MPC OS always runs 44.1 kHz (spec §2.7)
 constexpr int kScratch = 512;
@@ -98,6 +98,7 @@ struct Plugin {
     RawMidi midi[kMaxMidi] = {};
     int     nMidi = 0;
     float   scratch[2][kScratch] = {};
+    int     ppqOffset = 0;   // process(): this sub-block starts this many samples into the host's block
 
     // CPU meter: the audio thread sums its own CPU time against the real-time budget and
     // publishes twice a second; the status line is formatted on the UI thread.
@@ -108,8 +109,8 @@ struct Plugin {
     Plugin() {
         // Loaded tables show in the stepper texts and the browser; a fresh one goes on the
         // Recent list. Runs on the loader's worker.
-        loader.setListener([this](int, const std::string& key, bool ok) {
-            if (ok && key.compare(0, 8, "builtin:") != 0) tableLibrary().touchRecent(key);
+        loader.setListener([this](int slot, const std::string& key, bool ok) {
+            if (slot < 2 && ok && key.compare(0, 8, "builtin:") != 0) tableLibrary().touchRecent(key);   // slot 2: tuning
             surface.refresh();
         });
     }
@@ -118,10 +119,14 @@ struct Plugin {
 
 Plugin* self(AEffect* e) { return static_cast<Plugin*>(e->object); }
 
+// Copies at most cap - 1 bytes, never cutting a UTF-8 character in half.
 void copyStr(void* dst, const std::string& s, size_t cap) {
     if (!dst || cap == 0) return;
-    std::strncpy(static_cast<char*>(dst), s.c_str(), cap - 1);
-    static_cast<char*>(dst)[cap - 1] = 0;
+    size_t n = std::min(s.size(), cap - 1);
+    if (n < s.size())
+        while (n > 0 && (static_cast<unsigned char>(s[n]) & 0xC0) == 0x80) --n;   // s[n] continues a character
+    std::memcpy(dst, s.data(), n);
+    static_cast<char*>(dst)[n] = 0;
 }
 
 std::string statusText(const Plugin* p) {
@@ -135,9 +140,21 @@ std::string statusText(const Plugin* p) {
 
 // --- parameters (UI thread) ---------------------------------------------------------------
 
-float getParameter(AEffect* e, int32_t i) { return self(e)->surface.get(i); }
+// Nothing may throw into MPC (a preset load reads a file, allocates, parses).
+float getParameter(AEffect* e, int32_t i) {
+    try {
+        return self(e)->surface.get(i);
+    } catch (...) {
+        return 0.0f;
+    }
+}
 
-void setParameter(AEffect* e, int32_t i, float v) { self(e)->surface.set(i, v); }
+void setParameter(AEffect* e, int32_t i, float v) {
+    try {
+        self(e)->surface.set(i, v);
+    } catch (...) {
+    }
+}
 
 // --- audio thread -------------------------------------------------------------------------
 
@@ -150,7 +167,7 @@ void handleMidi(Plugin* p, const RawMidi& m) {
             break;
         case 0x80: p->gen.keyOff(m.d1, s); break;
         case 0xB0:
-            if (m.d1 == 64) s.sustain(m.d2 >= 64);
+            if (m.d1 == 64) p->gen.pedal(m.d2 >= 64, s);   // sustains notes, or holds the arp's keys
             else if (m.d1 == 120) {
                 p->gen.panic(s);
                 s.reset();
@@ -176,12 +193,18 @@ void renderTo(Plugin* p, float* L, float* R, int& pos, int to) {
         const int step = p->gen.untilNext(to - pos);
         p->synth.render(L + pos, R + pos, step);
         pos += step;
+        const int was = p->gen.currentStep();
         p->gen.advance(step, p->synth);
+        if (p->gen.currentStep() != was) {   // the Seq lane moves at the step, mid-block
+            float shapes[4];
+            p->gen.shapeValues(shapes);
+            p->synth.setSequencerSources(p->gen.seqValue(), shapes);
+        }
     }
 }
 
 void runBlock(Plugin* p, float* L, float* R, int n) {
-    p->surface.snapshot(p->snapshot);
+    p->surface.snapshot(p->snapshot);   // mid-preset: keeps the previous values
     Patch patch = patchFromParams(p->snapshot);
     for (int o = 0; o < 2; ++o)   // read once per block: valid until blockDone() below
         patch.osc[o].table = static_cast<const Wavetable*>(p->loader.live(o));
@@ -198,9 +221,10 @@ void runBlock(Plugin* p, float* L, float* R, int n) {
         const intptr_t r = p->master(&p->fx, vst::audioMasterGetTime, 0,
                                      vst::kVstTempoValid | vst::kVstPpqPosValid, nullptr, 0.0f);
         if (const VstTimeInfo* t = reinterpret_cast<const VstTimeInfo*>(r)) {
-            if (t->flags & vst::kVstTempoValid) bpm = t->tempo;
-            valid = (t->flags & vst::kVstPpqPosValid) != 0;
-            beats = t->ppqPos;
+            // A NaN or absurd value would stall or spin the sequencer clock: ignore it.
+            if ((t->flags & vst::kVstTempoValid) && std::isfinite(t->tempo) && t->tempo >= 1.0 && t->tempo <= 1000.0) bpm = t->tempo;
+            valid = (t->flags & vst::kVstPpqPosValid) != 0 && std::isfinite(t->ppqPos) && std::fabs(t->ppqPos) < 1e9;
+            beats = valid ? t->ppqPos + p->ppqOffset * bpm / 60.0 / static_cast<double>(kSampleRate) : 0.0;
             playing = (t->flags & vst::kVstTransportPlaying) != 0;
         }
     }
@@ -270,6 +294,7 @@ void processReplacing(AEffect* e, float** /*in*/, float** out, int32_t n) {
     Plugin* p = self(e);
     FlushDenormals ftz;
     const double t0 = threadCpuUs();
+    p->loader.blockStart();
     try {
         runBlock(p, out[0], out[1], n);
     } catch (...) {   // nothing may throw into MPC: an escaping exception ends the whole process
@@ -281,12 +306,26 @@ void processReplacing(AEffect* e, float** /*in*/, float** out, int32_t n) {
     meter(p, threadCpuUs() - t0, n);
 }
 
-// Legacy accumulating entry point (MPC uses processReplacing).
+// Legacy accumulating entry point (MPC uses processReplacing): sub-blocks of kScratch, each
+// with its own events and its own place on the host's timeline.
 void process(AEffect* e, float** in, float** out, int32_t n) {
     if (!out || !out[0] || !out[1]) return;
     Plugin* p = self(e);
+    RawMidi all[kMaxMidi];
+    const int nAll = p->nMidi;
+    std::copy(p->midi, p->midi + nAll, all);
     for (int32_t pos = 0; pos < n; pos += kScratch) {
         const int32_t m = std::min<int32_t>(kScratch, n - pos);
+        const bool last = pos + m >= n;
+        p->nMidi = 0;
+        for (int i = 0; i < nAll; ++i) {
+            const int32_t d = std::max<int32_t>(all[i].delta, 0);
+            if ((d >= pos && d < pos + m) || (last && d >= pos + m)) {
+                p->midi[p->nMidi] = all[i];
+                p->midi[p->nMidi++].delta = d - pos;
+            }
+        }
+        p->ppqOffset = pos;
         float* tmp[2] = {p->scratch[0], p->scratch[1]};
         processReplacing(e, in, tmp, m);
         for (int32_t i = 0; i < m; ++i) {
@@ -294,6 +333,7 @@ void process(AEffect* e, float** in, float** out, int32_t n) {
             out[1][pos + i] += tmp[1][i];
         }
     }
+    p->ppqOffset = 0;
 }
 
 void onMidi(Plugin* p, const VstEvents* evs) {

@@ -7,8 +7,8 @@
 //   tableRoots()  wavetable folders, in order: <plugin dir>/Wavetables ("plugin"), then the SSD
 //                 /media/AkaiForce/Wavetables ("ssd"; noexec only stops binaries). A missing folder
 //                 simply contributes nothing. PF_TABLE_ROOTS (colon-separated) replaces both.
-//   dataDir()     favorites.txt, recent.txt, user presets: the plugin folder. PF_DATA_DIR overrides;
-//                 "" = nothing is persisted.
+//   dataDir()     favorites and recent lists (tables and presets): the plugin folder. PF_DATA_DIR
+//                 overrides; "" = nothing is persisted. User presets go to the first preset root.
 #include <string>
 #include <vector>
 
@@ -30,6 +30,7 @@ std::string resolveKey(const std::string& key, const std::vector<Root>& roots);
 
 // Writes `text` to `path` via path.new + rename (a crash never leaves half a file). False on error.
 bool writeFileAtomic(const std::string& path, const std::string& text);
-bool readFile(const std::string& path, std::string& out);
+// A whole (small) file: presets, tunings, lists. False if it is missing or over maxBytes.
+bool readFile(const std::string& path, std::string& out, size_t maxBytes = 1u << 20);
 
 } // namespace pf

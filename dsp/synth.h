@@ -22,6 +22,7 @@ constexpr int kChunk = 16;   // control rate: filter coefficients, mod envelope,
 enum FilterType : int { F_OFF, F_LP12, F_LP24, F_BP, F_HP12, F_HP24, F_NOTCH, F_PEAK, F_COMB_PLUS, F_COMB_MINUS,
                         F_VOWEL };
 constexpr int kNumFilterModes = 11;
+constexpr bool isComb(int type) { return type == F_COMB_PLUS || type == F_COMB_MINUS; }
 // Clean: linear filters, steady pitch. Normal: a slow analog pitch drift per voice. Dirty: more
 // drift and saturation inside the filter loop (resonance that growls and compresses).
 enum EngineMode : int { EN_CLEAN, EN_NORMAL, EN_DIRTY };
@@ -183,9 +184,13 @@ private:
         uint32_t age = 0;             // start order, for stealing the oldest
         float    pitch = 60.0f;       // sounding pitch (semitones), glides toward `target`
         float    target = 60.0f;      // the note's pitch in the current tuning
-        float    glideStep = 0.0f;    // semitones per sample while gliding, 0 = arrived
+        float    glideFrom = 60.0f;   // where the glide started
+        int      glideLen = 0;        // its length in samples
+        int      glideLeft = 0;       // samples still to go, 0 = arrived
         int      pendingNote = -1;    // a stolen voice: the note it starts after its fade
         int      pendingVel = 0;
+        bool     pendingUp = false;   // ...and its key already went up during the fade
+        int      releaseIn = 0;       // samples until such a note releases (it still sounds briefly)
         int      fade = 0;            // samples of fade-out left (stealing)
         Env      env[2];
         uint32_t phase[2][kMaxUnison] = {};
@@ -196,6 +201,7 @@ private:
         Svf      svf[2][2][3];        // [filter][channel][stage] (Vowel: 3 formants)
         float*   comb = nullptr;      // [filter][channel][kCombLen] delay lines (Synth-owned)
         int      combPos = 0;
+        bool     combLive[2] = {};    // the filter's lines hold this note's past (else cleared before use)
         float    drift = 0.0f;        // cents, a slow random walk (Normal / Dirty)
         // modulation
         LfoState lfo[2];
@@ -244,7 +250,8 @@ private:
 
     void updateOsc(int o, const OscPatch& p);
     static EnvCoef envCoef(const EnvPatch& e, float sr);
-    void start(Voice& v, int note, int velocity, bool retrigger = true);
+    // legato: another key was held (Legato glide mode glides only then).
+    void start(Voice& v, int note, int velocity, bool legato);
     void startOrSteal(Voice& v, int note, int velocity);
     void release(Voice& v);
     Voice* victim(int limit);
@@ -279,7 +286,8 @@ private:
     bool     pedal_ = false;
     Held     held_[kHeldMax] = {};    // keys down, oldest first
     int      nHeld_ = 0;
-    float    lastPitch_ = -1.0f;      // the last note started: where a poly glide comes from
+    float    lastPitch_ = 60.0f;      // the last note started: where a poly glide comes from
+    bool     havePitch_ = false;      // ...once there was one (tunings make negative pitches)
     uint32_t clock_ = 0;
     uint32_t rng_ = 0x9e3779b9u;
     float    cutSemi_[2] = {};       // smoothed cutoff (MIDI-note scale), per filter

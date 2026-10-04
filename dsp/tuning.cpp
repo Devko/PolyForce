@@ -88,10 +88,11 @@ bool parseTun(const std::string& text, Tuning& out, std::string* err) {
         ++found;
     }
     if (found == 0) return fail(err, "no note lines");
-    const double offset = 12.0 * std::log2(base / kNote0Hz);   // BaseFreq relative to 12-TET's note 0
+    // AnaMark: [Tuning] cents count from the fixed 8.1757989 Hz; [Exact Tuning] ones from BaseFreq.
+    const double offset = 12.0 * std::log2(base / kNote0Hz);
     const Tuning& et = equalTemperament();
     for (int n = 0; n < 128; ++n)
-        out.pitch[n] = have[n] ? static_cast<float>(cents[n] / 100.0 + offset) : et.pitch[n];
+        out.pitch[n] = have[n] ? static_cast<float>(cents[n] / 100.0 + (exact[n] ? offset : 0.0)) : et.pitch[n];
     return true;
 }
 
@@ -137,12 +138,13 @@ bool parseScl(const std::string& text, Tuning& out, std::string* err) {
 }
 
 bool loadTuning(const std::string& path, Tuning& out, std::string* err) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(path, std::ios::binary | std::ios::ate);
     if (!f) return fail(err, "cannot open");
-    std::ostringstream s;
-    s << f.rdbuf();
-    const std::string text = s.str();
-    if (text.size() > (1u << 20)) return fail(err, "too big");
+    const std::streamoff size = f.tellg();
+    if (size < 0 || size > (1 << 20)) return fail(err, "too big");   // checked before reading it
+    f.seekg(0);
+    std::string text(static_cast<size_t>(size), '\0');
+    if (size > 0 && !f.read(&text[0], size)) return fail(err, "cannot read");
     const std::string ext = lower(path.size() >= 4 ? path.substr(path.size() - 4) : path);
     Tuning t;
     t.name = stemOf(path);

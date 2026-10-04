@@ -259,7 +259,8 @@ void loaderTests() {
         CHECK(h.display(pf::P_O1_TABLE) == "Built-in / Classic");
         CHECK(h.display(pf::P_O1_POS) == "FRAME 11 / 16");   // 0.66 of 16 frames
         h.press(pf::P_O1_TABLE_NEXT);
-        CHECK(h.display(pf::P_O1_TABLE) == "LOADING Built-in / PWM");   // debounced: not yet
+        const std::string now = h.display(pf::P_O1_TABLE);   // debounced: not yet (unless this machine stalled 150 ms)
+        CHECK(now == "LOADING Built-in / PWM" || now == "Built-in / PWM");
         CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Built-in / PWM"; }));
         h.press(pf::P_O1_TABLE_PREV);
         CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Built-in / Classic"; }));
@@ -301,17 +302,23 @@ void loaderTests() {
             return b.display(pf::P_O1_TABLE) == "Analog / Saw" && b.display(pf::P_O2_TABLE) == "Analog / Pulse";
         }));
     }
-    // Scrolling through ten tables loads only the one the scroll stops on (150 ms debounce).
+    // Scrolling through ten tables loads only the one the scroll stops on (150 ms debounce):
+    // detents 30 ms apart, slow enough for the loader to load every one if it didn't wait.
     {
         Host h;
         const auto before = pf::tableLibrary().recent();
         // A Q-Link spin: MPC sends its own running value + 1/128 per detent, 10 detents.
-        for (int k = 1; k <= 10; ++k) h.setN(pf::P_O1_TABLE, static_cast<float>(k) / 128.0f);
+        for (int k = 1; k <= 10; ++k) {
+            h.setN(pf::P_O1_TABLE, static_cast<float>(k) / 128.0f);
+            std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        }
         CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Unsorted / loose"; }));
         const auto after = pf::tableLibrary().recent();
         CHECK(!after.empty() && after.front() == "plugin:loose.wav");
-        CHECK(std::find(after.begin(), after.end(), "plugin:Digital/Bells.wav") == after.end() ||
-              std::find(before.begin(), before.end(), "plugin:Digital/Bells.wav") != before.end());
+        int fresh = 0;   // file tables loaded by this scroll
+        for (const std::string& k : after)
+            fresh += std::find(before.begin(), before.end(), k) == before.end() ? 1 : 0;
+        CHECK(fresh == 1);
     }
     // The handoff under ASan: tables swap and get freed while another thread renders.
     {
@@ -334,7 +341,11 @@ void loaderTests() {
         stop = true;
         audio.join();
         pf::TableCache::get().setCap(96u << 20);
-        CHECK(true);   // reaching here under ASan is the check
+        // Reaching here under ASan is half the check; the swaps really happened is the other.
+        CHECK(h.until([&] {
+            const std::string a = h.display(pf::P_O1_TABLE);
+            return a.compare(0, 8, "LOADING ") != 0 && a.compare(0, 9, "Built-in ") != 0;
+        }));
     }
 }
 

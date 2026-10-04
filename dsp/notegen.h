@@ -53,6 +53,9 @@ public:
     // Keys from MPC. With the arp/sequencer off they go straight to the synth.
     void keyOn(int note, int vel, Synth& synth);
     void keyOff(int note, Synth& synth);
+    // The sustain pedal: with the arp/sequencer off it sustains the synth's notes; on, it holds
+    // the keys (released keys stay in the arp until the pedal goes up), not every generated note.
+    void pedal(bool down, Synth& synth);
     void panic(Synth& synth);    // all keys up, generated notes off
 
     int  untilNext(int limit) const;          // samples to the next generated event, at most limit (>= 1)
@@ -72,7 +75,11 @@ public:
 private:
     struct Off { int note; double at; };   // a generated note's end, in beats
     void startClock();
+    void rebase(double beat);               // the clock moves to `beat`: generated notes' ends move with it
+    void reaim(double beat, bool jumped);   // the next step = the first boundary at or after `beat`
     double boundary(long k) const;          // beat of step k (with swing)
+    int  wrap(long k) const { const long n = p_.steps; return static_cast<int>(((k % n) + n) % n); }
+    void releaseHeard(Synth& synth);
     void fireStep(long k, Synth& synth);
     void stopGenerated(Synth& synth);
     int  arpNotes(int* out, int max) const;   // the arp's note list, in play order
@@ -91,13 +98,16 @@ private:
     long     arpIndex_ = 0;
     float    seqValue_ = 0.0f;
 
-    struct Key { int note, vel; };
-    Key  keys_[16] = {};          // physically down, in press order
+    struct Key { int note, vel; bool pedal; };   // pedal: the key is up, the pedal holds it
+    Key  keys_[16] = {};          // down (or held by the pedal), in press order
     int  nKeys_ = 0;
     Key  latched_[16] = {};       // the latched chord (arp latch)
     int  nLatched_ = 0;
     bool latchFresh_ = true;      // the next key down starts a new latched chord
-
+    bool pedal_ = false;
+    double lastFireBeat_ = -1e30; // when the last step fired (a loop point must not fire it twice)
+    int  heard_[16] = {};         // notes played straight to the synth while recording
+    int  nHeard_ = 0;
     Off  offs_[64] = {};          // sounding generated notes
     int  nOffs_ = 0;
     int  recPos_ = 0;
