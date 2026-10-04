@@ -21,6 +21,10 @@ static_assert(P_M12_A2 - P_M12_SRC == P_M1_A2 - P_M1_SRC && P_M12_SRC - P_M1_SRC
               "matrix params out of order");
 static_assert(P_XY4_Y - P_XY1_X == 7, "XY params out of order");
 static_assert(P_M1_A1 == P_M1_T1 + 1 && P_M1_A2 == P_M1_T2 + 1, "a matrix amount must follow its target (surface.cpp)");
+static_assert(kNumArpDirs == AD_COUNT && kNumSeqSteps == kSeqSteps && kNumShapeSteps == kShapeSteps,
+              "surface.py sequencer lists must match dsp/notegen.h");
+static_assert(P_S16_NOTE - P_S1_NOTE == 15 && P_S16_VEL - P_S1_VEL == 15 && P_S16_MOD - P_S1_MOD == 15, "step params out of order");
+static_assert(P_SH4_8 - P_SH4_MODE == 8 && P_SH2_MODE - P_SH1_MODE == 9, "shape params out of order");
 static_assert(P_E2_R - P_E2_A == P_E1_R - P_E1_A, "envelope params out of order");
 
 float paramValue(int id, float n) {
@@ -184,6 +188,34 @@ Patch patchFromParams(const float* norm) {
         p.xy[2 * x + 1] = V(P_XY1_Y + 2 * x);
     }
     return p;
+}
+
+SeqPatch seqFromParams(const float* norm) {
+    auto V = [norm](int id) { return paramValue(id, norm[id]); };
+    SeqPatch s;
+    s.mode = static_cast<int>(V(P_SEQ_MODE));
+    s.dir = static_cast<int>(V(P_ARP_DIR));
+    s.octaves = static_cast<int>(V(P_ARP_OCT));
+    s.rate = static_cast<int>(V(P_CLK_RATE));
+    s.gate = V(P_CLK_GATE);
+    s.swing = V(P_CLK_SWING);
+    s.latch = V(P_ARP_LATCH) > 0.5f;
+    s.pattern = V(P_ARP_PATTERN) > 0.5f;
+    s.steps = static_cast<int>(V(P_SEQ_STEPS));
+    s.record = V(P_SEQ_REC) > 0.5f;
+    for (int k = 0; k < kSeqSteps; ++k) {
+        s.note[k] = static_cast<int>(V(P_S1_NOTE + k));
+        s.vel[k] = static_cast<int>(V(P_S1_VEL + k));
+        s.mod[k] = V(P_S1_MOD + k);
+    }
+    s.shapeRate = static_cast<int>(V(P_SH_RATE));
+    s.shapeSteps = static_cast<int>(V(P_SH_STEPS));
+    for (int l = 0; l < kShapeLanes; ++l) {
+        const int d = l * (P_SH2_MODE - P_SH1_MODE);
+        s.shapeMode[l] = static_cast<int>(V(P_SH1_MODE + d));
+        for (int k = 0; k < kShapeSteps; ++k) s.shape[l][k] = V(P_SH1_1 + d + k);
+    }
+    return s;
 }
 
 } // namespace pf

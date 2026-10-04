@@ -155,5 +155,6 @@ void voiceTests();        // m2_test.cpp
 void oscillatorTests();   // m3_test.cpp
 void filterTests();       // m4_test.cpp
 void modulationTests();   // m5_test.cpp
+void sequencerTests();    // m6_test.cpp
 
 } // namespace pft

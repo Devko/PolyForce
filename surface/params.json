@@ -3951,6 +3951,868 @@
    "type": "enum"
   },
   {
+   "key": "seq_mode",
+   "name": "Arp/Seq",
+   "options": [
+    "Off",
+    "Arp",
+    "Seq"
+   ],
+   "default": "Off"
+  },
+  {
+   "key": "arp_dir",
+   "name": "Arp direction",
+   "options": [
+    "Up",
+    "Down",
+    "Up/Down",
+    "Down/Up",
+    "Played",
+    "Random",
+    "Chord"
+   ],
+   "default": "Up"
+  },
+  {
+   "key": "arp_dir__open",
+   "name": "Arp direction List",
+   "options": [
+    "Closed",
+    "Open"
+   ],
+   "default": "Closed",
+   "popup_of": "arp_dir",
+   "type": "enum"
+  },
+  {
+   "key": "arp_oct",
+   "name": "Arp octaves",
+   "min": 0,
+   "max": 1,
+   "default": 0.0,
+   "display": "string"
+  },
+  {
+   "key": "clk_rate",
+   "name": "Arp/Seq rate",
+   "options": [
+    "8 bars",
+    "4 bars",
+    "2 bars",
+    "1 bar",
+    "1/2",
+    "1/2T",
+    "1/4",
+    "1/4T",
+    "1/4.",
+    "1/8",
+    "1/8T",
+    "1/8.",
+    "1/16",
+    "1/16T",
+    "1/16.",
+    "1/32",
+    "1/32T"
+   ],
+   "default": "1/16"
+  },
+  {
+   "key": "clk_rate__open",
+   "name": "Arp/Seq rate List",
+   "options": [
+    "Closed",
+    "Open"
+   ],
+   "default": "Closed",
+   "popup_of": "clk_rate",
+   "type": "enum"
+  },
+  {
+   "key": "clk_gate",
+   "name": "Arp/Seq gate",
+   "min": 0,
+   "max": 1,
+   "default": 0.473684,
+   "display": "string"
+  },
+  {
+   "key": "clk_swing",
+   "name": "Arp/Seq swing",
+   "min": 0,
+   "max": 1,
+   "default": 0.0,
+   "display": "string"
+  },
+  {
+   "key": "arp_latch",
+   "name": "Arp latch",
+   "options": [
+    "Off",
+    "Latch"
+   ],
+   "default": "Off"
+  },
+  {
+   "key": "arp_pattern",
+   "name": "Arp pattern",
+   "options": [
+    "Off",
+    "Steps"
+   ],
+   "default": "Off"
+  },
+  {
+   "key": "seq_steps",
+   "name": "Seq steps",
+   "min": 0,
+   "max": 1,
+   "default": 1.0,
+   "display": "string"
+  },
+  {
+   "key": "seq_rec",
+   "name": "Seq record",
+   "options": [
+    "Off",
+    "Rec"
+   ],
+   "default": "Off"
+  },
+  {
+   "key": "s1_note",
+   "name": "Step 1 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s2_note",
+   "name": "Step 2 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s3_note",
+   "name": "Step 3 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s4_note",
+   "name": "Step 4 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s5_note",
+   "name": "Step 5 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s6_note",
+   "name": "Step 6 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s7_note",
+   "name": "Step 7 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s8_note",
+   "name": "Step 8 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s9_note",
+   "name": "Step 9 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s10_note",
+   "name": "Step 10 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s11_note",
+   "name": "Step 11 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s12_note",
+   "name": "Step 12 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s13_note",
+   "name": "Step 13 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s14_note",
+   "name": "Step 14 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s15_note",
+   "name": "Step 15 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s16_note",
+   "name": "Step 16 note",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s1_vel",
+   "name": "Step 1 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s2_vel",
+   "name": "Step 2 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s3_vel",
+   "name": "Step 3 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s4_vel",
+   "name": "Step 4 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s5_vel",
+   "name": "Step 5 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s6_vel",
+   "name": "Step 6 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s7_vel",
+   "name": "Step 7 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s8_vel",
+   "name": "Step 8 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s9_vel",
+   "name": "Step 9 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s10_vel",
+   "name": "Step 10 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s11_vel",
+   "name": "Step 11 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s12_vel",
+   "name": "Step 12 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s13_vel",
+   "name": "Step 13 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s14_vel",
+   "name": "Step 14 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s15_vel",
+   "name": "Step 15 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s16_vel",
+   "name": "Step 16 velocity",
+   "min": 0,
+   "max": 1,
+   "default": 0.787402,
+   "display": "string"
+  },
+  {
+   "key": "s1_mod",
+   "name": "Step 1 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s2_mod",
+   "name": "Step 2 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s3_mod",
+   "name": "Step 3 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s4_mod",
+   "name": "Step 4 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s5_mod",
+   "name": "Step 5 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s6_mod",
+   "name": "Step 6 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s7_mod",
+   "name": "Step 7 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s8_mod",
+   "name": "Step 8 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s9_mod",
+   "name": "Step 9 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s10_mod",
+   "name": "Step 10 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s11_mod",
+   "name": "Step 11 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s12_mod",
+   "name": "Step 12 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s13_mod",
+   "name": "Step 13 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s14_mod",
+   "name": "Step 14 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s15_mod",
+   "name": "Step 15 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "s16_mod",
+   "name": "Step 16 mod",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh_rate",
+   "name": "Shape rate",
+   "options": [
+    "8 bars",
+    "4 bars",
+    "2 bars",
+    "1 bar",
+    "1/2",
+    "1/2T",
+    "1/4",
+    "1/4T",
+    "1/4.",
+    "1/8",
+    "1/8T",
+    "1/8.",
+    "1/16",
+    "1/16T",
+    "1/16.",
+    "1/32",
+    "1/32T"
+   ],
+   "default": "1/8"
+  },
+  {
+   "key": "sh_rate__open",
+   "name": "Shape rate List",
+   "options": [
+    "Closed",
+    "Open"
+   ],
+   "default": "Closed",
+   "popup_of": "sh_rate",
+   "type": "enum"
+  },
+  {
+   "key": "sh_steps",
+   "name": "Shape steps",
+   "min": 0,
+   "max": 1,
+   "default": 1.0,
+   "display": "string"
+  },
+  {
+   "key": "sh1_mode",
+   "name": "Shape 1 mode",
+   "options": [
+    "Step",
+    "Ramp",
+    "Smooth"
+   ],
+   "default": "Step"
+  },
+  {
+   "key": "sh1_1",
+   "name": "Shape 1 step 1",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh1_2",
+   "name": "Shape 1 step 2",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh1_3",
+   "name": "Shape 1 step 3",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh1_4",
+   "name": "Shape 1 step 4",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh1_5",
+   "name": "Shape 1 step 5",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh1_6",
+   "name": "Shape 1 step 6",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh1_7",
+   "name": "Shape 1 step 7",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh1_8",
+   "name": "Shape 1 step 8",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh2_mode",
+   "name": "Shape 2 mode",
+   "options": [
+    "Step",
+    "Ramp",
+    "Smooth"
+   ],
+   "default": "Step"
+  },
+  {
+   "key": "sh2_1",
+   "name": "Shape 2 step 1",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh2_2",
+   "name": "Shape 2 step 2",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh2_3",
+   "name": "Shape 2 step 3",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh2_4",
+   "name": "Shape 2 step 4",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh2_5",
+   "name": "Shape 2 step 5",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh2_6",
+   "name": "Shape 2 step 6",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh2_7",
+   "name": "Shape 2 step 7",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh2_8",
+   "name": "Shape 2 step 8",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh3_mode",
+   "name": "Shape 3 mode",
+   "options": [
+    "Step",
+    "Ramp",
+    "Smooth"
+   ],
+   "default": "Step"
+  },
+  {
+   "key": "sh3_1",
+   "name": "Shape 3 step 1",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh3_2",
+   "name": "Shape 3 step 2",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh3_3",
+   "name": "Shape 3 step 3",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh3_4",
+   "name": "Shape 3 step 4",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh3_5",
+   "name": "Shape 3 step 5",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh3_6",
+   "name": "Shape 3 step 6",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh3_7",
+   "name": "Shape 3 step 7",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh3_8",
+   "name": "Shape 3 step 8",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh4_mode",
+   "name": "Shape 4 mode",
+   "options": [
+    "Step",
+    "Ramp",
+    "Smooth"
+   ],
+   "default": "Step"
+  },
+  {
+   "key": "sh4_1",
+   "name": "Shape 4 step 1",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh4_2",
+   "name": "Shape 4 step 2",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh4_3",
+   "name": "Shape 4 step 3",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh4_4",
+   "name": "Shape 4 step 4",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh4_5",
+   "name": "Shape 4 step 5",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh4_6",
+   "name": "Shape 4 step 6",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh4_7",
+   "name": "Shape 4 step 7",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "sh4_8",
+   "name": "Shape 4 step 8",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "ui_seq",
+   "name": "Sequencer page",
+   "options": [
+    "ARP",
+    "STEPS",
+    "SHAPES"
+   ],
+   "default": "ARP"
+  },
+  {
    "key": "xy1_x",
    "name": "XY 1 X",
    "min": 0,

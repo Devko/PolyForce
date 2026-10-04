@@ -206,6 +206,37 @@ for k in range(1, MOD_SLOTS + 1):
     for key in ("src", "via", "mod", "t1", "t2"):
         popup_flag(p + key)
 
+# --- sequencing (Milestone 6): arpeggiator, 16-step sequencer, 4 x 8-step shape sequencer ---
+ARP_DIRS = ["Up", "Down", "Up/Down", "Down/Up", "Played", "Random", "Chord"]   # dsp/notegen.h ArpDir
+SEQ_STEPS = 16
+SHAPE_STEPS = 8
+enum("seq_mode", "Arp/Seq", ["Off", "Arp", "Seq"], "Off")
+enum("arp_dir", "Arp direction", ARP_DIRS, "Up")
+popup_flag("arp_dir")
+num("arp_oct", "Arp octaves", "int", 1, 4, 1, "count")
+enum("clk_rate", "Arp/Seq rate", SYNC_DIVS, "1/16")
+popup_flag("clk_rate")
+num("clk_gate", "Arp/Seq gate", "lin", 0.05, 1, 0.5, "pct")
+num("clk_swing", "Arp/Seq swing", "lin", 0, 0.5, 0, "pct")
+enum("arp_latch", "Arp latch", ["Off", "Latch"], "Off")
+enum("arp_pattern", "Arp pattern", ["Off", "Steps"], "Off")
+num("seq_steps", "Seq steps", "int", 1, SEQ_STEPS, SEQ_STEPS, "count")
+enum("seq_rec", "Seq record", ["Off", "Rec"], "Off", ui=True)
+for k in range(1, SEQ_STEPS + 1):
+    num("s%d_note" % k, "Step %d note" % k, "int", -24, 24, 0, "semi")
+for k in range(1, SEQ_STEPS + 1):
+    num("s%d_vel" % k, "Step %d velocity" % k, "int", 0, 127, 100, "count")
+for k in range(1, SEQ_STEPS + 1):
+    num("s%d_mod" % k, "Step %d mod" % k, "lin", -1, 1, 0, "bipct")
+enum("sh_rate", "Shape rate", SYNC_DIVS, "1/8")
+popup_flag("sh_rate")
+num("sh_steps", "Shape steps", "int", 1, SHAPE_STEPS, SHAPE_STEPS, "count")
+for l in range(1, 5):
+    enum("sh%d_mode" % l, "Shape %d mode" % l, ["Step", "Ramp", "Smooth"], "Step")
+    for k in range(1, SHAPE_STEPS + 1):
+        num("sh%d_%d" % (l, k), "Shape %d step %d" % (l, k), "lin", -1, 1, 0, "bipct")
+enum("ui_seq", "Sequencer page", ["ARP", "STEPS", "SHAPES"], "ARP", ui=True)
+
 for x in range(1, 5):
     num("xy%d_x" % x, "XY %d X" % x, "lin", 0, 1, 0, "pct")
     num("xy%d_y" % x, "XY %d Y" % x, "lin", 0, 1, 0, "pct")
@@ -483,6 +514,50 @@ def pages():
         ["voices", "vel_curve", "volume", "vmode", "steal", "same_note", "glide_mode", "glide_type",
          "glide", "bend_up", "bend_dn", "o1_pos", "o2_pos", "f1_cut", "f2_cut", "e2_pos"]))
 
+    # SEQ: arpeggiator / step sequencer settings, the 16 steps, the 4 shape lanes.
+    L.append("[tab SEQ]")
+    L.append('readout cx=420 cy=126 w=772 h=40 key=status')
+    L.append('enum_h cx=1060 cy=126 sw=110 key=ui_seq')
+    w = '"ui_seq:ARP"'
+    L.append('frame x=34 y=156 w=1212 h=270 title="ARP / SEQUENCER" when=%s' % w)
+    L.append('enum_h cx=220 cy=200 sw=110 key=seq_mode when=%s' % w)
+    L.append('popup cx=560 cy=200 w=180 h=44 key=arp_dir when=%s' % w)
+    L.append('popup cx=790 cy=200 w=150 h=44 key=clk_rate when=%s' % w)
+    L.append('enum_h cx=1080 cy=200 sw=110 key=arp_latch when=%s' % w)
+    for cx, (k, lab) in zip(SLOT8, [("arp_oct", "OCTAVES"), ("clk_gate", "GATE"), ("clk_swing", "SWING"),
+                                    ("seq_steps", "STEPS")]):
+        L.append(knob(cx, ROW_Y[0] + ROW_KNOB, lab, k, w))
+    L.append('text cx=780 cy=262 label="ARP PATTERN" when=%s' % w)
+    L.append('enum_v cx=780 cy=314 sw=150 key=arp_pattern when=%s' % w)
+    L.append('text cx=1060 cy=262 label="RECORD STEPS" when=%s' % w)
+    L.append('enum_v cx=1060 cy=314 sw=150 key=seq_rec when=%s' % w)
+    L.append('frame x=34 y=440 w=1212 h=270 title="SHAPE SEQUENCER CLOCK" when=%s' % w)
+    L.append('popup cx=200 cy=500 w=160 h=44 key=sh_rate when=%s' % w)
+    L.append(knob(SLOT8[3], ROW_Y[1] + ROW_KNOB, "SHAPE STEPS", "sh_steps", w))
+    L.append('text cx=840 cy=600 label="SHAPE 1-4 AND SEQ ARE SOURCES IN THE MATRIX" when=%s' % w)
+    w = '"ui_seq:STEPS"'
+    for r, (key, title, cy) in enumerate([("note", "NOTE  (ST FROM THE KEY)", 224), ("vel", "VELOCITY  (0 = REST)", 410),
+                                          ("mod", "MOD  (THE SEQ SOURCE)", 596)]):
+        L.append('frame x=34 y=%d w=1212 h=180 title="%s" when=%s' % (156 + 186 * r, title, w))
+        for k in range(1, SEQ_STEPS + 1):
+            L.append('slider_v cx=%d cy=%d w=18 h=84 cw=72 label="%d" key=s%d_%s when=%s' % (
+                71 + (k - 1) * 74, cy, k, k, key, w))
+    w = '"ui_seq:SHAPES"'
+    for l in range(1, 5):
+        top = 156 + 140 * (l - 1)
+        L.append('frame x=34 y=%d w=1212 h=134 title="SHAPE %d" when=%s' % (top, l, w))
+        L.append('enum_v cx=150 cy=%d sw=150 key=sh%d_mode when=%s' % (top + 78, l, w))
+        for k in range(1, SHAPE_STEPS + 1):
+            L.append('slider_v cx=%d cy=%d w=16 h=50 cw=100 label="%d" key=sh%d_%d when=%s' % (
+                330 + (k - 1) * 112, top + 52, k, l, k, w))
+    L.append('qlinks "ARP" = ' + ",".join(
+        ["arp_oct", "clk_gate", "clk_swing", "seq_steps", "seq_mode", "arp_dir", "clk_rate", "arp_latch",
+         "arp_pattern", "sh_rate", "sh_steps", "volume", "f1_cut", "f1_res", "o1_pos", "o2_pos"]))
+    for key in ("note", "vel", "mod"):
+        L.append('qlinks "STEP %s" = ' % key.upper() + ",".join("s%d_%s" % (k, key) for k in range(1, SEQ_STEPS + 1)))
+    L.append('qlinks "SHAPE 1+2" = ' + ",".join("sh%d_%d" % (l, k) for l in (1, 2) for k in range(1, SHAPE_STEPS + 1)))
+    L.append('qlinks "SHAPE 3+4" = ' + ",".join("sh%d_%d" % (l, k) for l in (3, 4) for k in range(1, SHAPE_STEPS + 1)))
+
     # TABLES: the browser (docs/M1_DESIGN.md §6.2). Categories left, tables right, actions below.
     L.append("[tab TABLES]")
     L.append('readout cx=440 cy=126 w=812 h=40 key=status')
@@ -518,7 +593,7 @@ def _widget(line):
     w = {"kind": toks[0]}
     for t in toks[1:]:
         k, _, v = t.partition("=")
-        w[k] = int(v) if k in ("x", "y", "w", "h", "cx", "cy", "r", "sw", "rows", "cols", "th", "gap") else v
+        w[k] = int(v) if k in ("x", "y", "w", "h", "cx", "cy", "r", "sw", "rows", "cols", "th", "gap", "cw") else v
     return w
 
 
@@ -711,11 +786,15 @@ constexpr int kNumModSources = %d;
 constexpr int kNumModTargets = %d;
 constexpr int kNumModModifiers = %d;
 constexpr int kNumModSlots = %d;
+constexpr int kNumArpDirs = %d;
+constexpr int kNumSeqSteps = %d;
+constexpr int kNumShapeSteps = %d;
 
 } // namespace pf
 """ % (ids, specs, "\n".join(opts), info, c_str(VST["name"]), c_str(VST["vendor"]), uid, VST["uid"],
        VST["version"], len(FILTER_TYPES), MAX_VOICES, MAX_UNISON, STEPPER_RANGE, BROWSER_CATS, BROWSER_ITEMS,
-       len(LFO_WAVES), len(SYNC_DIVS), len(MOD_SOURCES), len(MOD_TARGETS), len(MODIFIERS), MOD_SLOTS)
+       len(LFO_WAVES), len(SYNC_DIVS), len(MOD_SOURCES), len(MOD_TARGETS), len(MODIFIERS), MOD_SLOTS,
+       len(ARP_DIRS), SEQ_STEPS, SHAPE_STEPS)
 
 
 def main():

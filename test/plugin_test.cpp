@@ -321,6 +321,8 @@ int main() {
     filterTests();
     std::printf("== modulation\n");
     modulationTests();
+    std::printf("== sequencers\n");
+    sequencerTests();
     std::printf("== sustain pedal\n");
     testSustainPedal();
     std::printf("== stress\n");

@@ -17,6 +17,7 @@
 #include "loader.h"
 #include "library.h"
 #include "surface.h"
+#include "../dsp/notegen.h"
 #include "../dsp/synth.h"
 
 #include <algorithm>
@@ -88,6 +89,7 @@ struct Plugin {
     Surface             surface{loader};
     std::atomic<bool>   panic{false};
     pf::Synth           synth{kSampleRate};
+    pf::NoteGen         gen{kSampleRate};
     std::string         chunk;       // effGetChunk buffer: must outlive the call
 
     // audio thread only
@@ -199,18 +201,25 @@ bool loadState(Plugin* p, const std::string& s) {
 
 // --- audio thread -------------------------------------------------------------------------
 
-void handleMidi(pf::Synth& s, const RawMidi& m) {
+void handleMidi(Plugin* p, const RawMidi& m) {
+    pf::Synth& s = p->synth;
     switch (m.status & 0xF0) {
-        case 0x90:
-            if (m.d2) s.noteOn(m.d1, m.d2);
-            else s.noteOff(m.d1);
+        case 0x90:   // keys go through the arpeggiator / sequencer (straight on when it's off)
+            if (m.d2) p->gen.keyOn(m.d1, m.d2, s);
+            else p->gen.keyOff(m.d1, s);
             break;
-        case 0x80: s.noteOff(m.d1); break;
+        case 0x80: p->gen.keyOff(m.d1, s); break;
         case 0xB0:
             if (m.d1 == 64) s.sustain(m.d2 >= 64);
-            else if (m.d1 == 120) s.reset();
-            else if (m.d1 == 123) s.allNotesOff();
-            else s.controller(m.d1, m.d2);   // mod wheel, breath, expression (matrix sources)
+            else if (m.d1 == 120) {
+                p->gen.panic(s);
+                s.reset();
+            } else if (m.d1 == 123) {
+                p->gen.panic(s);
+                s.allNotesOff();
+            } else {
+                s.controller(m.d1, m.d2);   // mod wheel, breath, expression (matrix sources)
+            }
             break;
         case 0xD0: s.aftertouch(static_cast<float>(m.d1) / 127.0f); break;
         case 0xA0: s.polyAftertouch(m.d1, static_cast<float>(m.d2) / 127.0f); break;
@@ -221,23 +230,46 @@ void handleMidi(pf::Synth& s, const RawMidi& m) {
     }
 }
 
+// Renders [pos, to), stopping wherever the arpeggiator / sequencer has an event due.
+void renderTo(Plugin* p, float* L, float* R, int& pos, int to) {
+    while (pos < to) {
+        const int step = p->gen.untilNext(to - pos);
+        p->synth.render(L + pos, R + pos, step);
+        pos += step;
+        p->gen.advance(step, p->synth);
+    }
+}
+
 void runBlock(Plugin* p, float* L, float* R, int n) {
     p->surface.snapshot(p->snapshot);
     Patch patch = patchFromParams(p->snapshot);
     for (int o = 0; o < 2; ++o)   // read once per block: valid until blockDone() below
         patch.osc[o].table = static_cast<const Wavetable*>(p->loader.live(o));
     p->synth.setPatch(patch);
-    if (p->panic.exchange(false)) p->synth.reset();
-    // MPC's tempo and bar position: synced LFOs (and the sequencers) follow them.
+    if (p->panic.exchange(false)) {
+        p->gen.panic(p->synth);
+        p->synth.reset();
+    }
+    // MPC's tempo and bar position: synced LFOs and the sequencers follow them.
+    double bpm = 120.0, beats = 0.0;
+    bool playing = false, valid = false;
     if (p->master) {
         const intptr_t r = p->master(&p->fx, vst::audioMasterGetTime, 0,
                                      vst::kVstTempoValid | vst::kVstPpqPosValid, nullptr, 0.0f);
-        const VstTimeInfo* t = reinterpret_cast<const VstTimeInfo*>(r);
-        if (t) {
-            const bool tempo = (t->flags & vst::kVstTempoValid) != 0, ppq = (t->flags & vst::kVstPpqPosValid) != 0;
-            p->synth.setTransport(tempo ? t->tempo : 120.0, t->ppqPos, (t->flags & vst::kVstTransportPlaying) != 0, ppq);
+        if (const VstTimeInfo* t = reinterpret_cast<const VstTimeInfo*>(r)) {
+            if (t->flags & vst::kVstTempoValid) bpm = t->tempo;
+            valid = (t->flags & vst::kVstPpqPosValid) != 0;
+            beats = t->ppqPos;
+            playing = (t->flags & vst::kVstTransportPlaying) != 0;
         }
     }
+    p->synth.setTransport(bpm, beats, playing, valid);
+    p->gen.setTransport(bpm, beats, playing, valid);
+    p->gen.setPatch(seqFromParams(p->snapshot), p->synth);
+    float shapes[4];
+    p->gen.shapeValues(shapes);
+    p->synth.setSequencerSources(p->gen.seqValue(), shapes);
+    p->gen.advance(0, p->synth);   // a step due exactly at the block start
 
     // Events in time order (insertion sort: no allocation; MPC already sends them sorted),
     // each one applied at its own sample.
@@ -245,15 +277,19 @@ void runBlock(Plugin* p, float* L, float* R, int n) {
         for (int j = i; j > 0 && p->midi[j].delta < p->midi[j - 1].delta; --j) std::swap(p->midi[j], p->midi[j - 1]);
     int pos = 0;
     for (int i = 0; i < p->nMidi; ++i) {
-        const int at = std::clamp(static_cast<int>(p->midi[i].delta), 0, n);
-        if (at > pos) {
-            p->synth.render(L + pos, R + pos, at - pos);
-            pos = at;
-        }
-        handleMidi(p->synth, p->midi[i]);
+        renderTo(p, L, R, pos, std::clamp(static_cast<int>(p->midi[i].delta), 0, n));
+        handleMidi(p, p->midi[i]);
     }
-    if (pos < n) p->synth.render(L + pos, R + pos, n - pos);
+    renderTo(p, L, R, pos, n);
     p->nMidi = 0;
+
+    // Steps the recorder wrote become parameter values (atomics; MPC hears via notify()).
+    NoteGen::Recorded rec;
+    while (p->gen.takeRecorded(rec)) {
+        const int k = std::clamp(rec.step, 0, kSeqSteps - 1);
+        p->surface.setValue(P_S1_NOTE + k, paramNorm(P_S1_NOTE + k, static_cast<float>(rec.note)));
+        p->surface.setValue(P_S1_VEL + k, paramNorm(P_S1_VEL + k, static_cast<float>(rec.vel)));
+    }
 }
 
 void meter(Plugin* p, double us, int n) {
