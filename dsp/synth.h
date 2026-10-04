@@ -18,6 +18,10 @@ constexpr int kMaxUnison = 8;
 constexpr int kChunk = 16;   // control rate: filter coefficients, mod envelope, wave position
 
 enum FilterType : int { F_OFF, F_LP12, F_LP24, F_BP, F_HP12, F_HP24, F_NOTCH, F_PEAK };
+enum VoiceMode : int { VM_POLY, VM_DUO, VM_MONO, VM_LEGATO };
+// Who gives up its voice when all are busy (Patch::voices of them).
+enum StealMode : int { ST_OLDEST, ST_QUIETEST, ST_KEEP_LOW, ST_KEEP_HIGH };
+enum GlideMode : int { GL_OFF, GL_ALWAYS, GL_LEGATO };
 
 struct OscPatch {
     int   wave = 0;        // index into builtinTables()
@@ -45,7 +49,15 @@ struct EnvPatch {
 
 struct Patch {
     float volumeDb = -6.0f;
-    int   voices = kMaxVoices;   // polyphony limit
+    int   voices = kMaxVoices;   // polyphony limit (Poly; Duo uses 2, Mono/Legato 1)
+    int   voiceMode = VM_POLY;
+    int   steal = ST_OLDEST;
+    bool  sameNoteNew = false;   // the same note again: false = retrigger its voice, true = a new voice
+    int   glideMode = GL_OFF;    // Always, or Legato = only while another key is held
+    bool  glideRate = false;     // false: every glide takes glideTime; true: glideTime per octave
+    float glideTime = 0.1f;      // seconds
+    float bendUp = 2.0f, bendDown = 2.0f;   // semitones at full pitch bend
+    float velCurve = 0.0f;       // -1 (hard) .. 0 (linear) .. +1 (soft): velocity^(4^-curve)
     bool  parallel = false;      // false: osc1+osc2 -> F1 -> F2; true: osc1 -> F1, osc2 -> F2
     OscPatch osc[2];
     FilterPatch flt[2];
@@ -70,7 +82,7 @@ public:
     void setPatch(const Patch& p);           // between render() calls
     void noteOn(int note, int velocity);     // velocity 0 = note off
     void noteOff(int note);
-    void pitchBend(float semitones);
+    void pitchBend(float amount);            // -1..1 (the bend ranges are in the Patch)
     void sustain(bool down);
     void allNotesOff();                      // release every voice (CC 123)
     void reset();                            // silence now: CC 120, suspend, transport stop
@@ -78,18 +90,37 @@ public:
     void render(float* outL, float* outR, int n);   // overwrites n samples
     int  activeVoices() const;
 
+    // What a voice is doing (tests, diagnostics).
+    struct VoiceInfo {
+        bool  active, gate;
+        int   note;        // the note it plays (or will play after a steal fade)
+        float pitch;       // sounding pitch in semitones, gliding toward `note`
+        float level;       // amp envelope
+    };
+    VoiceInfo voiceInfo(int i) const;
+
+    static constexpr int kHeldMax = 16;   // keys remembered for Mono/Legato/Duo note priority
+    static constexpr int kFadeSamples = 132;   // ~3 ms: a stolen voice fades before it restarts
+
 private:
     struct Voice {
         bool     active = false;
         bool     gate = false;        // key held
         bool     sustained = false;   // key released while the pedal is down
         int      note = 60;
+        float    vel = 1.0f;          // 0..1 after the velocity curve
         float    velGain = 1.0f;
         uint32_t age = 0;             // start order, for stealing the oldest
+        float    pitch = 60.0f;       // sounding pitch (semitones), glides toward `note`
+        float    glideStep = 0.0f;    // semitones per sample while gliding, 0 = arrived
+        int      pendingNote = -1;    // a stolen voice: the note it starts after its fade
+        int      pendingVel = 0;
+        int      fade = 0;            // samples of fade-out left (stealing)
         Env      env[2];
         uint32_t phase[2][kMaxUnison] = {};
         Svf      svf[2][2][2];        // [filter][channel][stage]
     };
+    struct Held { int note; int vel; };
 
     // Per-oscillator values shared by all voices, rebuilt only when their inputs change.
     struct OscState {
@@ -104,9 +135,17 @@ private:
 
     void updateOsc(int o, const OscPatch& p);
     static EnvCoef envCoef(const EnvPatch& e, float sr);
-    void start(Voice& v, int note, int velocity);
+    void start(Voice& v, int note, int velocity, bool retrigger = true);
+    void startOrSteal(Voice& v, int note, int velocity);
     void release(Voice& v);
-    Voice* victim();
+    Voice* victim(int limit);
+    void glideTo(Voice& v, int note, bool legatoMove);
+    float shapeVelocity(int velocity) const;
+    void noteOnPoly(int note, int velocity, int limit);
+    void noteOnMono(int note, int velocity);
+    void holdKey(int note, int velocity);
+    void dropKey(int note);
+    int  voiceLimit() const;
     void renderVoice(Voice& v, float* outL, float* outR, int n);
     void renderOsc(Voice& v, int o, float pitch, float mod, float* L, float* R, int n) const;
     void filter(Voice& v, int f, float pitch, float mod, float* L, float* R, int n) const;
@@ -117,8 +156,11 @@ private:
     OscState osc_[2];
     EnvCoef  envc_[2];
     Voice    voices_[kMaxVoices];
-    float    bend_ = 0.0f;
+    float    bend_ = 0.0f;            // -1..1
     bool     pedal_ = false;
+    Held     held_[kHeldMax] = {};    // keys down, oldest first
+    int      nHeld_ = 0;
+    float    lastPitch_ = -1.0f;      // the last note started: where a poly glide comes from
     uint32_t clock_ = 0;
     uint32_t rng_ = 0x9e3779b9u;
     float    cutSemi_[2] = {};       // smoothed cutoff (MIDI-note scale), per filter

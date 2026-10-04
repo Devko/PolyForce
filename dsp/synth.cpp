@@ -94,7 +94,7 @@ void Synth::setPatch(const Patch& p) {
     volTarget_ = patch_.volumeDb <= -59.5f ? 0.0f : std::pow(10.0f, patch_.volumeDb / 20.0f) * kHeadroom;
 
     // Polyphony lowered while playing: let the voices above the new limit ring out.
-    for (int i = patch_.voices; i < kMaxVoices; ++i)
+    for (int i = voiceLimit(); i < kMaxVoices; ++i)
         if (voices_[i].active && (voices_[i].gate || voices_[i].sustained)) release(voices_[i]);
 
     if (fresh_) {   // first patch: start the smoothers on target instead of gliding from 0
@@ -144,42 +144,162 @@ EnvCoef Synth::envCoef(const EnvPatch& e, float sr) {
 
 // --- notes --------------------------------------------------------------------------------
 
+int Synth::voiceLimit() const {
+    switch (patch_.voiceMode) {
+        case VM_DUO: return 2;
+        case VM_MONO:
+        case VM_LEGATO: return 1;
+        default: return patch_.voices;
+    }
+}
+
+float Synth::shapeVelocity(int velocity) const {
+    const float v = static_cast<float>(std::clamp(velocity, 1, 127)) / 127.0f;
+    return std::pow(v, std::exp2(-2.0f * clampf(patch_.velCurve, -1.0f, 1.0f)));
+}
+
+void Synth::holdKey(int note, int velocity) {
+    dropKey(note);
+    if (nHeld_ == kHeldMax) {   // forget the oldest key
+        for (int i = 1; i < kHeldMax; ++i) held_[i - 1] = held_[i];
+        --nHeld_;
+    }
+    held_[nHeld_++] = {note, velocity};
+}
+
+void Synth::dropKey(int note) {
+    int w = 0;
+    for (int i = 0; i < nHeld_; ++i)
+        if (held_[i].note != note) held_[w++] = held_[i];
+    nHeld_ = w;
+}
+
 void Synth::noteOn(int note, int velocity) {
     if (velocity <= 0) {
         noteOff(note);
         return;
     }
+    holdKey(note, velocity);
+    if (patch_.voiceMode == VM_MONO || patch_.voiceMode == VM_LEGATO) noteOnMono(note, velocity);
+    else noteOnPoly(note, velocity, voiceLimit());
+}
+
+void Synth::noteOnPoly(int note, int velocity, int limit) {
     Voice* v = nullptr;
-    for (auto& x : voices_)   // the same note again: retrigger its voice, don't stack a second one
-        if (x.active && x.note == note) {
-            v = &x;
+    if (!patch_.sameNoteNew)   // the same note again: retrigger its voice, don't stack a second one
+        for (auto& x : voices_)
+            if (x.active && (x.pendingNote >= 0 ? x.pendingNote : x.note) == note) {
+                v = &x;
+                break;
+            }
+    for (int i = 0; !v && i < limit; ++i)
+        if (!voices_[i].active) v = &voices_[i];
+    if (v) start(*v, note, velocity);
+    else startOrSteal(*victim(limit), note, velocity);
+}
+
+// One voice: a new key while another is held moves the voice (Legato: no new attack;
+// Mono: a new attack from where the envelopes are). Glide decides how the pitch moves.
+void Synth::noteOnMono(int note, int velocity) {
+    Voice& v = voices_[0];
+    for (int i = 1; i < kMaxVoices; ++i)   // leftovers from a poly patch ring out
+        if (voices_[i].active && (voices_[i].gate || voices_[i].sustained)) release(voices_[i]);
+    const bool overlap = v.active && (v.gate || v.sustained) && v.pendingNote < 0;
+    if (overlap && patch_.voiceMode == VM_LEGATO) {
+        glideTo(v, note, true);
+        v.gate = true;
+        v.sustained = false;
+        return;
+    }
+    start(v, note, velocity);
+}
+
+// All `limit` voices are sounding and a new note needs one of them.
+Synth::Voice* Synth::victim(int limit) {
+    limit = std::clamp(limit, 1, kMaxVoices);
+    auto older = [](const Voice& a, const Voice& b) { return static_cast<int32_t>(a.age - b.age) < 0; };
+    Voice* best = nullptr;
+    switch (patch_.steal) {
+        case ST_QUIETEST: {
+            // Released voices first (they are on their way out anyway), quietest first; else
+            // the quietest held one.
+            for (int pass = 0; pass < 2 && !best; ++pass)
+                for (int i = 0; i < limit; ++i) {
+                    Voice& x = voices_[i];
+                    const bool released = !x.gate && !x.sustained;
+                    if (pass == 0 && !released) continue;
+                    if (!best || x.env[0].v < best->env[0].v) best = &x;
+                }
             break;
         }
-    for (int i = 0; !v && i < patch_.voices; ++i)
-        if (!voices_[i].active) v = &voices_[i];
-    if (!v) v = victim();
-    start(*v, note, velocity);
+        case ST_KEEP_LOW:
+        case ST_KEEP_HIGH: {
+            // The oldest voice, except the one holding the lowest (highest) note: a bass line
+            // (or a top melody) survives any chord played over it.
+            Voice* keep = nullptr;
+            for (int i = 0; i < limit; ++i) {
+                Voice& x = voices_[i];
+                if (!(x.gate || x.sustained)) continue;
+                const bool better = patch_.steal == ST_KEEP_LOW ? (!keep || x.note < keep->note) : (!keep || x.note > keep->note);
+                if (better) keep = &x;
+            }
+            for (int i = 0; i < limit; ++i)
+                if (&voices_[i] != keep && (!best || older(voices_[i], *best))) best = &voices_[i];
+            break;
+        }
+        default:
+            for (int i = 0; i < limit; ++i)
+                if (!best || older(voices_[i], *best)) best = &voices_[i];
+            break;
+    }
+    return best ? best : &voices_[0];
 }
 
-// All patch_.voices voices are sounding and a new note needs one of them.
-Synth::Voice* Synth::victim() {
-    // TODO(you): the voice-stealing policy. Placeholder: steal the oldest voice.
-    Voice* best = &voices_[0];
-    for (int i = 1; i < patch_.voices; ++i)
-        if (static_cast<int32_t>(voices_[i].age - best->age) < 0) best = &voices_[i];
-    return best;
+// A stolen voice fades out for ~3 ms, then starts the new note from silence: no click.
+void Synth::startOrSteal(Voice& v, int note, int velocity) {
+    if (!v.active || v.env[0].v < 1e-3f) {
+        v.active = false;
+        start(v, note, velocity);
+        return;
+    }
+    v.pendingNote = note;
+    v.pendingVel = velocity;
+    if (v.fade <= 0) v.fade = kFadeSamples;
+    v.gate = false;
+    v.sustained = false;
 }
 
-void Synth::start(Voice& v, int note, int velocity) {
+void Synth::glideTo(Voice& v, int note, bool legatoMove) {
+    v.note = note;
+    const bool glide = patch_.glideMode == GL_ALWAYS || (patch_.glideMode == GL_LEGATO && legatoMove);
+    const float dist = std::fabs(static_cast<float>(note) - v.pitch);
+    if (!glide || dist < 1e-4f || patch_.glideTime <= 1e-4f) {
+        v.pitch = static_cast<float>(note);
+        v.glideStep = 0.0f;
+    } else {
+        const float samples = patch_.glideTime * sr_ * (patch_.glideRate ? dist / 12.0f : 1.0f);
+        v.glideStep = dist / std::max(samples, 1.0f);
+    }
+    lastPitch_ = static_cast<float>(note);
+}
+
+void Synth::start(Voice& v, int note, int velocity, bool retrigger) {
     const bool wasActive = v.active;
+    // Where the pitch comes from: this voice's own pitch if it was sounding, else the last
+    // note played (poly glide). "Legato" glides only while another key is held.
+    const float from = wasActive ? v.pitch : lastPitch_;
+    v.pitch = from >= 0.0f ? from : static_cast<float>(note);
+    glideTo(v, note, nHeld_ > 1);
     v.active = true;
     v.gate = true;
     v.sustained = false;
-    v.note = note;
+    v.pendingNote = -1;
+    v.fade = 0;
     v.age = ++clock_;
-    const float vel = static_cast<float>(std::clamp(velocity, 1, 127)) / 127.0f;
-    v.velGain = 1.0f - patch_.velSens + patch_.velSens * vel * vel;
-    for (auto& e : v.env) e.stage = Attack;   // a stolen/retriggered voice attacks from where it is
+    v.vel = shapeVelocity(velocity);
+    v.velGain = 1.0f - patch_.velSens + patch_.velSens * v.vel * v.vel;
+    if (retrigger)
+        for (auto& e : v.env) e.stage = Attack;   // a retriggered voice attacks from where it is
 
     if (!wasActive) {
         for (auto& e : v.env) e.v = 0.0f;
@@ -194,14 +314,44 @@ void Synth::start(Voice& v, int note, int velocity) {
 }
 
 void Synth::noteOff(int note) {
-    for (auto& v : voices_)
-        if (v.active && v.gate && v.note == note) {
-            v.gate = false;
-            if (pedal_)
-                v.sustained = true;
-            else
-                release(v);
+    dropKey(note);
+    for (auto& v : voices_)   // a stolen voice waiting for this note: let it just fade out
+        if (v.active && v.pendingNote == note) v.pendingNote = -1;
+
+    if (patch_.voiceMode == VM_MONO || patch_.voiceMode == VM_LEGATO) {
+        Voice& v = voices_[0];
+        if (!(v.active && v.gate && v.note == note)) return;
+        if (nHeld_ > 0) {   // back to the newest key still held
+            const Held& k = held_[nHeld_ - 1];
+            if (patch_.voiceMode == VM_LEGATO) glideTo(v, k.note, true);
+            else start(v, k.note, k.vel);
+            return;
         }
+        if (pedal_) v.sustained = true;
+        else release(v);
+        return;
+    }
+
+    for (auto& v : voices_) {
+        if (!(v.active && v.gate && v.note == note)) continue;
+        // Duo: a voice whose key went up takes over a held key that isn't sounding.
+        if (patch_.voiceMode == VM_DUO && !pedal_) {
+            int take = -1;
+            for (int k = nHeld_ - 1; k >= 0 && take < 0; --k) {
+                bool sounding = false;
+                for (const auto& x : voices_) sounding = sounding || (x.active && x.gate && x.note == held_[k].note);
+                if (!sounding) take = k;
+            }
+            if (take >= 0) {
+                glideTo(v, held_[take].note, true);
+                continue;
+            }
+        }
+        v.gate = false;
+        if (pedal_) v.sustained = true;
+        else release(v);
+        if (patch_.sameNoteNew) break;   // stacked copies of a note go one key-up at a time
+    }
 }
 
 void Synth::release(Voice& v) {
@@ -218,19 +368,30 @@ void Synth::sustain(bool down) {
             if (v.active && v.sustained) release(v);
 }
 
-void Synth::pitchBend(float semitones) { bend_ = semitones; }
+void Synth::pitchBend(float amount) { bend_ = clampf(amount, -1.0f, 1.0f); }
 
 void Synth::allNotesOff() {
-    for (auto& v : voices_)
+    nHeld_ = 0;
+    for (auto& v : voices_) {
+        v.pendingNote = -1;
         if (v.active) release(v);
+    }
 }
 
 void Synth::reset() {
     for (auto& v : voices_) {
         v.active = v.gate = v.sustained = false;
+        v.pendingNote = -1;
+        v.fade = 0;
         v.env[0] = v.env[1] = Env{};
     }
+    nHeld_ = 0;
     pedal_ = false;
+}
+
+Synth::VoiceInfo Synth::voiceInfo(int i) const {
+    const Voice& v = voices_[std::clamp(i, 0, kMaxVoices - 1)];
+    return {v.active, v.gate || v.pendingNote >= 0, v.pendingNote >= 0 ? v.pendingNote : v.note, v.pitch, v.env[0].v};
 }
 
 int Synth::activeVoices() const {
@@ -281,7 +442,16 @@ void Synth::renderVoice(Voice& v, float* outL, float* outR, int n) {
     // Control rate: the mod envelope's value at the start of the chunk drives this chunk.
     const float mod = v.env[1].v;
     for (int i = 0; i < n; ++i) tick(v.env[1], envc_[1]);
-    const float pitch = static_cast<float>(v.note) + bend_;
+    if (v.glideStep > 0.0f) {   // glide toward the note
+        const float target = static_cast<float>(v.note), step = v.glideStep * static_cast<float>(n);
+        if (std::fabs(target - v.pitch) <= step) {
+            v.pitch = target;
+            v.glideStep = 0.0f;
+        } else {
+            v.pitch += target > v.pitch ? step : -step;
+        }
+    }
+    const float pitch = v.pitch + (bend_ >= 0.0f ? bend_ * patch_.bendUp : bend_ * patch_.bendDown);
 
     float l[2][kChunk] = {}, r[2][kChunk] = {};
     for (int o = 0; o < 2; ++o)
@@ -304,6 +474,21 @@ void Synth::renderVoice(Voice& v, float* outL, float* outR, int n) {
     }
 
     const float vg = v.velGain;
+    if (v.fade > 0) {   // being stolen: fade out, then start the waiting note
+        constexpr float kInv = 1.0f / static_cast<float>(kFadeSamples);
+        for (int i = 0; i < n; ++i) {
+            const float a = tick(v.env[0], envc_[0]) * vg * static_cast<float>(std::max(v.fade - i, 0)) * kInv;
+            outL[i] += l[0][i] * a;
+            outR[i] += r[0][i] * a;
+        }
+        v.fade -= n;
+        if (v.fade <= 0) {
+            v.fade = 0;
+            v.active = false;
+            if (v.pendingNote >= 0) start(v, v.pendingNote, v.pendingVel);
+        }
+        return;
+    }
     for (int i = 0; i < n; ++i) {
         const float a = tick(v.env[0], envc_[0]) * vg;
         outL[i] += l[0][i] * a;

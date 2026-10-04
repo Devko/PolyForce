@@ -38,7 +38,6 @@ using namespace pf;
 
 constexpr size_t kTextCap = 48;   // JUCE reads names/display text into 256 bytes; stay well inside
 constexpr int kMaxMidi = 512;
-constexpr float kBendRange = 2.0f;   // semitones
 constexpr float kSampleRate = 44100.0f;   // MPC OS always runs 44.1 kHz (spec §2.7)
 constexpr int kScratch = 512;
 constexpr const char* kStateMagic = "polyforce ";
@@ -207,8 +206,8 @@ void handleMidi(pf::Synth& s, const RawMidi& m) {
             else if (m.d1 == 120) s.reset();
             else if (m.d1 == 123) s.allNotesOff();
             break;
-        case 0xE0:
-            s.pitchBend(static_cast<float>((m.d2 << 7 | m.d1) - 8192) / 8192.0f * kBendRange);
+        case 0xE0:   // -1..1; the patch's bend-up/down ranges turn it into semitones
+            s.pitchBend(static_cast<float>((m.d2 << 7 | m.d1) - 8192) / 8192.0f);
             break;
         default: break;
     }

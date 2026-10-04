@@ -138,6 +138,17 @@ for e, (a, d, s, r) in ((1, (0.003, 0.4, 0.8, 0.3)), (2, (0.001, 0.6, 0.2, 0.5))
     else:
         num("e2_pos", "Env 2 > wave pos", "lin", -1, 1, 0.0, "bipct")
 
+# --- voices (Milestone 2) ---
+enum("vmode", "Voice mode", ["Poly", "Duo", "Mono", "Legato"], "Poly")
+enum("steal", "Steal", ["Oldest", "Quietest", "Keep low", "Keep high"], "Oldest")
+enum("same_note", "Same note", ["Retrigger", "New voice"], "Retrigger")
+enum("glide_mode", "Glide", ["Off", "Always", "Legato"], "Off")
+enum("glide_type", "Glide type", ["Time", "Rate"], "Time")
+num("glide", "Glide time", "log", 0.001, 10, 0.08, "time")
+num("bend_up", "Bend up", "int", 0, 24, 2, "semi")
+num("bend_dn", "Bend down", "int", 0, 24, 2, "semi")
+num("vel_curve", "Velocity curve", "lin", -1, 1, 0, "bipct")
+
 # --- the wavetable browser (docs/M1_DESIGN.md §6.2) ---
 enum("br_target", "Browse for", ["OSC 1", "OSC 2"], "OSC 1", ui=True)
 for i in range(1, BROWSER_CATS + 1):
@@ -276,6 +287,30 @@ def pages():
     L.append('qlinks "ENV" = ' + ",".join(
         ["e1_a", "e1_d", "e1_s", "e1_r", "e2_a", "e2_d", "e2_s", "e2_r",
          "e1_vel", "e2_pos", "volume", "voices", "o1_pos", "o2_pos", "f1_cut", "f2_cut"]))
+
+    # VOICE: how notes become voices (Milestone 2)
+    L.append("[tab VOICE]")
+    L.append(status)
+    L.append('frame x=34 y=156 w=1212 h=270 title="VOICES"')
+    L.append('enum_h cx=420 cy=200 sw=130 key=vmode')
+    L.append(knob(SLOT8[0], ROW_Y[0] + ROW_KNOB, "VOICES", "voices"))
+    L.append(knob(SLOT8[1], ROW_Y[0] + ROW_KNOB, "VEL CURVE", "vel_curve"))
+    L.append(knob(SLOT8[2], ROW_Y[0] + ROW_KNOB, "VOLUME", "volume"))
+    L.append('text cx=780 cy=232 label="STEAL"')
+    L.append('enum_v cx=780 cy=318 sw=170 key=steal')
+    L.append('text cx=1060 cy=232 label="SAME NOTE"')
+    L.append('enum_v cx=1060 cy=286 sw=170 key=same_note')
+    L.append('frame x=34 y=440 w=1212 h=270 title="GLIDE + BEND"')
+    L.append(knob(SLOT8[0], ROW_Y[1] + ROW_KNOB, "GLIDE", "glide"))
+    L.append('text cx=380 cy=516 label="GLIDE"')
+    L.append('enum_v cx=380 cy=584 sw=150 key=glide_mode')
+    L.append('text cx=600 cy=516 label="TYPE"')
+    L.append('enum_v cx=600 cy=568 sw=150 key=glide_type')
+    L.append(knob(SLOT8[5], ROW_Y[1] + ROW_KNOB, "BEND UP", "bend_up"))
+    L.append(knob(SLOT8[6], ROW_Y[1] + ROW_KNOB, "BEND DOWN", "bend_dn"))
+    L.append('qlinks "VOICE" = ' + ",".join(
+        ["voices", "vel_curve", "volume", "vmode", "steal", "same_note", "glide_mode", "glide_type",
+         "glide", "bend_up", "bend_dn", "o1_pos", "o2_pos", "f1_cut", "f2_cut", "e2_pos"]))
 
     # TABLES: the browser (docs/M1_DESIGN.md §6.2). Categories left, tables right, actions below.
     L.append("[tab TABLES]")

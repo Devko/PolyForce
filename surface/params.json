@@ -401,6 +401,88 @@
    "display": "string"
   },
   {
+   "key": "vmode",
+   "name": "Voice mode",
+   "options": [
+    "Poly",
+    "Duo",
+    "Mono",
+    "Legato"
+   ],
+   "default": "Poly"
+  },
+  {
+   "key": "steal",
+   "name": "Steal",
+   "options": [
+    "Oldest",
+    "Quietest",
+    "Keep low",
+    "Keep high"
+   ],
+   "default": "Oldest"
+  },
+  {
+   "key": "same_note",
+   "name": "Same note",
+   "options": [
+    "Retrigger",
+    "New voice"
+   ],
+   "default": "Retrigger"
+  },
+  {
+   "key": "glide_mode",
+   "name": "Glide",
+   "options": [
+    "Off",
+    "Always",
+    "Legato"
+   ],
+   "default": "Off"
+  },
+  {
+   "key": "glide_type",
+   "name": "Glide type",
+   "options": [
+    "Time",
+    "Rate"
+   ],
+   "default": "Time"
+  },
+  {
+   "key": "glide",
+   "name": "Glide time",
+   "min": 0,
+   "max": 1,
+   "default": 0.475772,
+   "display": "string"
+  },
+  {
+   "key": "bend_up",
+   "name": "Bend up",
+   "min": 0,
+   "max": 1,
+   "default": 0.083333,
+   "display": "string"
+  },
+  {
+   "key": "bend_dn",
+   "name": "Bend down",
+   "min": 0,
+   "max": 1,
+   "default": 0.083333,
+   "display": "string"
+  },
+  {
+   "key": "vel_curve",
+   "name": "Velocity curve",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
    "key": "br_target",
    "name": "Browse for",
    "options": [

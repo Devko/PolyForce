@@ -111,6 +111,15 @@ Patch patchFromParams(const float* norm) {
         p.env[e].s = V(P_E1_S + d);
         p.env[e].r = V(P_E1_R + d);
     }
+    p.voiceMode = static_cast<int>(V(P_VMODE));
+    p.steal = static_cast<int>(V(P_STEAL));
+    p.sameNoteNew = V(P_SAME_NOTE) > 0.5f;
+    p.glideMode = static_cast<int>(V(P_GLIDE_MODE));
+    p.glideRate = V(P_GLIDE_TYPE) > 0.5f;
+    p.glideTime = V(P_GLIDE);
+    p.bendUp = V(P_BEND_UP);
+    p.bendDown = V(P_BEND_DN);
+    p.velCurve = V(P_VEL_CURVE);
     p.velSens = V(P_E1_VEL);
     p.env2Pos = V(P_E2_POS);
     return p;
