@@ -161,7 +161,9 @@ frames. A table is normalised as a whole, so level changes across its frames are
 - A name prefix shared by every file in a category (ending in `" - "`) is hidden:
   `ESW Analog - Jupiter 8 Saw` shows as `Jupiter 8 Saw`.
 - **30 tables are built in** (category *Built-in*): analog, FM, digital, vocal, acoustic and chip
-  shapes, all computed. The list, with tips: [Factory content](FACTORY_CONTENT.md#built-in-wavetables).
+  shapes, all computed. *Classic* is ready when the plugin loads; the others are built the first time
+  a sound uses one (a moment of `LOADING`). The list, with tips:
+  [Factory content](FACTORY_CONTENT.md#built-in-wavetables).
 
 ### Picking a table
 

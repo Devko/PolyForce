@@ -17,7 +17,7 @@ all PolyForce's own.
 - **8 voices** · Poly, Duo, Mono and Legato · four steal modes with click-free fades · glide
 - **Two wavetable oscillators** with up to 8× unison, classic waves, sub oscillators and a noise source
 - **Two filters** — LP, BP, HP, notch, peak, comb and vowel — serial or parallel, three engine characters
-- **Deep modulation** — two LFOs, a 12-slot matrix (29 sources, 37 targets) with modifiers, four XY pads
+- **Deep modulation** — two LFOs, a 12-slot matrix (28 sources, 36 targets) with modifiers, four XY pads
 - **Arpeggiator, 16-step sequencer and four shape sequencers**, locked to MPC's transport
 - **30 built-in wavetables** — analog, FM, digital, vocal, acoustic and chip — plus your own
   (Serum-format WAVs) from the plugin folder or the SSD, with a browser, favorites and recents
