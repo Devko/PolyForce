@@ -154,7 +154,8 @@ The tables and preset categories: [Factory content](FACTORY_CONTENT.md).
   `presets/Factory/`, the preset browser's categories. `surface.py` checks names (unique, short
   enough for a tile) and that every table a preset names is a built-in
 - ✅ Level-matched: every preset rendered through the plugin and its volume set for −19 LUFS
-  (one-shots −17 LUFS), peaks at most −3 dBFS; the first 21 kept their sound
+  (one-shots −17 LUFS), peaks at most −3 dBFS; the first 21 kept their sound. 0.0.4: 6 dB louder
+  (engine output), closer to MPC's own instruments; `make loudness` checks the levels
 - ✅ The mod wheel does something on every new preset but the drums (filter, vibrato or position)
 - ✅ Tests cover every built-in table and every factory preset (its tables load, it plays finite and
   audible)

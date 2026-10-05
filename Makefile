@@ -51,7 +51,7 @@ ARM_SO   := $(BUILD)/arm/polyforce.so
 ARM_SO_STAGES := $(BUILD)/arm/polyforce_stages.so
 ARM_BENCH := $(BUILD)/arm/pfbench
 
-.PHONY: all surface skin test test-arm test-arm-pgo test-tables bench arm-plugin arm-bench arm-bench-stages bench-device preview plugin-package plugin-install clean FORCE
+.PHONY: all surface skin test test-arm test-arm-pgo test-tables bench loudness arm-plugin arm-bench arm-bench-stages bench-device preview plugin-package plugin-install clean FORCE
 # A recipe that fails leaves no half-written target behind for the next make to trust.
 .DELETE_ON_ERROR:
 # The stage-timing build too: a -DPF_STAGE_TIMING break shows here, not at bench time.
@@ -128,6 +128,15 @@ $(BUILD)/polyforce_stages.so: $(SRC) $(HDR) $(GEN) | $(BUILD)
 
 $(BUILD)/pfbench: tools/bench.cpp dsp/wavetable.cpp $(HDR) $(GEN) | $(BUILD)
 	$(CXX) -std=c++17 -O2 -Wall -Wextra $(INC) $< dsp/wavetable.cpp -ldl -o $@
+
+# The factory presets' levels: each played through the plugin, loudness (BS.1770) and peak. The
+# sound is the same on x86 (the tests hold the ARM build to it), so this runs natively.
+# LOUDNESS_ARGS: -g <dB> shows them as if every preset were that much louder; -c <category>.
+loudness: $(BUILD)/polyforce.so $(BUILD)/pfloud
+	$(BUILD)/pfloud $(BUILD)/polyforce.so $(LOUDNESS_ARGS)
+
+$(BUILD)/pfloud: tools/loudness.cpp $(HDR) $(GEN) | $(BUILD)
+	$(CXX) -std=c++17 -O2 -Wall -Wextra $(INC) $< -ldl -o $@
 
 # --- device -----------------------------------------------------------------------------------
 # The .so MPC loads: only VSTPluginMain exported; --no-undefined because an unresolved symbol
@@ -231,7 +240,7 @@ bench-device: $(ARM_SO) $(ARM_SO_STAGES) $(ARM_BENCH)
 
 # Release zip: plugin + skin + sd88me's installer (stops MPC, backs up and edits
 # MPC.settings, restarts MPC).
-PLUGIN_VERSION ?= 0.0.3
+PLUGIN_VERSION ?= 0.0.4
 plugin-package: $(ARM_SO) $(SKIN)
 	@# Everything shipped runs under BusyBox on the device: a CR in a script breaks it there.
 	@! grep -l "$$(printf '\r')" $(MV)/tools/release/* || { echo "error: CRLF in a shipped script"; exit 1; }

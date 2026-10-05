@@ -1,5 +1,5 @@
 polyforce 4
-volume=3
+volume=-1
 o1_table=builtin:Sync
 o1_pos=0.1
 o2_wave=3

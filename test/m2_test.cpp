@@ -316,7 +316,7 @@ void cpuGuard() {
     r.run(4);            // the 3 ms fade, then the voice is free
     CHECK(r.s.activeVoices() == 3);
     CHECK(!r.sounds(60) && r.sounds(64) && r.sounds(67) && r.sounds(72));
-    CHECK(r.maxJump < 0.025f);   // the sine's own slope ~0.02; cut without the fade: 0.037
+    CHECK(r.maxJump < 0.05f);   // the sine's own slope ~0.04; cut without the fade: ~0.074 (at -6 dB per voice)
     CHECK(r.s.shedTails(4) == 1);   // only 64 is left to shed
     r.run(4);
     CHECK(r.s.activeVoices() == 2 && r.sounds(67) && r.sounds(72));

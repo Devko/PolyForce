@@ -78,6 +78,15 @@ to it as "Bass (files)" and so on.
 - **Level-matched:** every preset was rendered through the plugin on a phrase that suits it and its
   volume set for the loudest 3 s at −19 LUFS (one-shots: loudest 400 ms at −17 LUFS), peaks at most
   −3 dBFS, so stepping through them doesn't jump in level.
+- **Closer to MPC's own instruments** (0.0.4): on the Force the presets were clearly quieter than
+  MPC's synths, so the engine's output went up 6 dB (−6 dB per voice, was −12) and the presets with
+  it, about −13 LUFS by the measure above. The 14 that would then peak over −1 dBFS (mostly drums
+  and FX) turned their own volume down by the difference.
+- **`make loudness`** plays every preset through the built plugin and prints its loudness (BS.1770,
+  loudest 3 s, one-shots 400 ms) and peak, and flags any peak over −1 dBFS; `LOUDNESS_ARGS="-g 3"`
+  shows what a 3 dB shift would do. Its phrases are its own (a held chord, a line for basses and
+  leads, hits for one-shots), so its numbers sit a few dB below the matching above: compare presets
+  with each other, not with other meters.
 - **Mod wheel:** apart from the drums and most of the original 21 presets, every preset answers the
   mod wheel (a brighter filter, more vibrato or a wavetable move); with the wheel down nothing
   changes.

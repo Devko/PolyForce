@@ -59,6 +59,7 @@ changes; it checks the layout and every factory preset before writing anything.
 | `test-arm-pgo` | The suite linked against the profile-guided objects the shipped `.so` is made of |
 | `test-tables` | Load, check and play every WAV under `$(WAVETABLES)`, with load time and memory |
 | `bench` | x86 bench: only proves the bench and the profiling build work |
+| `loudness` | Every factory preset's loudness (BS.1770) and peak, played through the plugin; flags peaks over −1 dBFS (`LOUDNESS_ARGS`: `-g <dB>` a level shift, `-c <category>`) |
 | `arm-plugin` | `build/arm/polyforce.so`; profile-guided when `qemu-arm` is installed |
 | `arm-bench-stages` | `build/arm/polyforce_stages.so`, the profiling build (never shipped) |
 | `bench-device` | Run the CPU bench on a device (see [below](#benchmarking-on-the-device)) |
