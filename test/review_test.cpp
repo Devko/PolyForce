@@ -4,6 +4,7 @@
 #include "../dsp/notegen.h"
 #include "../dsp/synth.h"
 #include "../dsp/tuning.h"
+#include "../dsp/wavetable.h"
 #include "../plugin/library.h"
 #include "../plugin/loader.h"
 #include "../plugin/paths.h"
@@ -699,6 +700,129 @@ void fileFixes() {
 
 // --- second review (after the performance pass) ---------------------------------------------
 
+void noteGenFixes2() {
+    // A large host song position: step indices were a 32-bit long on the Force and the step
+    // search never ended (from ~5.4e8 quarter notes at 1/16). test-arm runs this on ARM.
+    {
+        Gen g;
+        g.playing = true;
+        g.beats = 6e8;
+        g.block();
+        g.gen.keyOn(60, 100, g.synth);
+        g.ons.clear();
+        g.blocks(1.0);   // four 1/16 steps
+        CHECK(g.ons.size() >= 3);
+    }
+    // Swing turned up right after an odd step played moves that step later, past the clock:
+    // it doesn't play a second time.
+    {
+        Gen g;
+        g.seq.gate = 0.05f;
+        g.block();
+        g.gen.keyOn(60, 100, g.synth);              // step 0 next sample, step 1 ~5512 samples on
+        for (int b = 0; b < 47; ++b) g.block();     // step 1 played and ended
+        const size_t played = g.ons.size();
+        CHECK(played == 2);
+        g.seq.swing = 0.5f;                         // step 1 would now be at ~8270
+        for (int b = 0; b < 35; ++b) g.block();     // up to just before step 2
+        CHECK(g.ons.size() == played);
+    }
+    // Play pressed right after a free-running step fired at a block's end, from a grid line:
+    // the sequence starts at step 0 (it was taken for a loop's end and skipped).
+    {
+        Gen g;
+        g.seq.mode = pf::SQ_SEQ;
+        g.seq.rate = 6;   // 1/4: 22050 samples
+        g.seq.steps = 4;
+        for (int k = 0; k < 4; ++k) g.seq.note[k] = k;
+        g.block();
+        // The key 94 samples into a block: step 1 falls exactly on a block boundary (22272).
+        g.gen.setTransport(120.0, 0.0, false, false);
+        g.gen.setPatch(g.seq, g.synth);
+        g.gen.advance(0, g.synth);
+        float L[kBlock], R[kBlock];
+        for (int pos = 0; pos < kBlock;) {
+            const int step = pos < 94 ? g.gen.untilNext(94 - pos) : g.gen.untilNext(kBlock - pos);
+            g.synth.render(L + pos, R + pos, step);
+            pos += step;
+            g.gen.advance(step, g.synth);
+            if (pos == 94) g.gen.keyOn(60, 100, g.synth);
+        }
+        while (g.ons.size() < 2) g.block();         // step 1 (61) fired as the block ended
+        CHECK(g.ons.back() == 61);
+        g.ons.clear();
+        g.playing = true;
+        g.beats = 0.0;
+        g.block();
+        CHECK(!g.ons.empty() && g.ons.front() == 60);
+    }
+    // A key pressed again inside its last note's gate: the new note isn't cut short by the
+    // old one's pending end.
+    {
+        Gen g;
+        g.seq.rate = 6;   // 1/4
+        g.seq.gate = 0.9f;
+        g.block();
+        g.gen.keyOn(60, 100, g.synth);
+        for (int b = 0; b < 34; ++b) g.block();
+        g.gen.keyOff(60, g.synth);
+        g.gen.keyOn(60, 100, g.synth);              // a new phrase: its step 0 plays 0.9 beat
+        for (int b = 0; b < 137; ++b) g.block();    // past where the old note ended (~19970)
+        CHECK(g.gated.count(60) == 1);
+    }
+    // A new latched chord starts from its first note.
+    {
+        Gen g;
+        g.seq.latch = true;
+        g.block();
+        for (int n : {60, 64, 67}) g.gen.keyOn(n, 100, g.synth);
+        for (int n : {60, 64, 67}) g.gen.keyOff(n, g.synth);
+        for (int b = 0; b < 70; ++b) g.block();     // two steps: the order stands on the chord's third note
+        for (int n : {48, 52, 55}) g.gen.keyOn(n, 100, g.synth);
+        for (int n : {48, 52, 55}) g.gen.keyOff(n, g.synth);
+        g.ons.clear();
+        g.blocks(1.0);
+        CHECK(g.ons.size() >= 3 && std::vector<int>(g.ons.begin(), g.ons.begin() + 3) == std::vector<int>({48, 52, 55}));
+    }
+    // 17 keys: recording, and Off -> Arp. Every key-up still ends its note (the 17th was played
+    // but not remembered; a key pushed out of the list kept sounding after the switch).
+    for (int steal : {pf::ST_OLDEST, pf::ST_KEEP_LOW}) {
+        for (int kind = 0; kind < 2; ++kind) {
+            Gen g;
+            pf::Patch p;
+            p.env[0] = {0.001f, 0.1f, 1.0f, 0.01f};
+            p.steal = steal;
+            g.synth.setPatch(p);
+            g.seq.mode = kind == 0 ? pf::SQ_SEQ : pf::SQ_OFF;
+            g.seq.record = kind == 0;
+            g.block();
+            for (int n = 40; n < 57; ++n) g.gen.keyOn(n, 100, g.synth);
+            g.block();
+            if (kind == 1) {
+                g.seq.mode = pf::SQ_ARP;
+                g.block();
+            }
+            for (int n = 40; n < 57; ++n) g.gen.keyOff(n, g.synth);
+            g.blocks(2.0);
+            CHECK(g.gated.empty());
+        }
+    }
+    // Recording while MPC plays writes the playing step, not the next step-by-step slot.
+    {
+        Gen g;
+        g.seq.mode = pf::SQ_SEQ;
+        g.seq.record = true;
+        g.playing = true;
+        g.block();
+        g.blocks(1.0);
+        g.gen.keyOn(62, 100, g.synth);
+        pf::NoteGen::Recorded r{};
+        CHECK(g.gen.takeRecorded(r));
+        CHECK(r.step == g.gen.currentStep() && r.step >= 3);
+        g.gen.keyOff(62, g.synth);
+    }
+}
+
 void pluginFixes2() {
     // A NaN from the host is read as 0: kept, it reached the engine's smoothers (cutoff,
     // volume) and the instance played NaN until it was reloaded.
@@ -736,6 +860,52 @@ void pluginFixes2() {
         h.run(10);
         CHECK(h.run(4) < 1e-4f);
     }
+    // A float WAV with values near FLT_MAX: refused or loaded finite, never a NaN table.
+    {
+        const std::string path = fixtureDir() + "/fltmax.wav";
+        std::vector<float> smp(2048);   // a square at +-FLT_MAX: band-limiting it overshoots past the float range
+        for (int i = 0; i < 2048; ++i) smp[static_cast<size_t>(i)] = (i < 1024 ? 1.0f : -1.0f) * std::numeric_limits<float>::max();
+        std::ofstream f(path, std::ios::binary);
+        auto u32 = [&](uint32_t v) { f.write(reinterpret_cast<const char*>(&v), 4); };
+        auto u16 = [&](uint16_t v) { f.write(reinterpret_cast<const char*>(&v), 2); };
+        f.write("RIFF", 4);
+        u32(4 + 24 + 8 + 2048 * 4);
+        f.write("WAVEfmt ", 8);
+        u32(16);
+        u16(3);   // float
+        u16(1);
+        u32(44100);
+        u32(44100 * 4);
+        u16(4);
+        u16(32);
+        f.write("data", 4);
+        u32(2048 * 4);
+        f.write(reinterpret_cast<const char*>(smp.data()), 2048 * 4);
+        f.close();
+        pf::Wavetable t;
+        std::string err;
+        if (pf::loadWavetable(path, t, &err)) {
+            bool finite = true;
+            for (float v : t.data) finite = finite && std::isfinite(v);
+            CHECK(finite);
+        }
+    }
+    // Tuning files: a byte-order mark is fine; garbage numbers are errors, not 0; wide scales
+    // (a tritave per degree) load with their far notes clamped.
+    {
+        const std::string path = fixtureDir() + "/bom.tun";
+        std::ofstream(path) << "\xEF\xBB\xBF[Tuning]\nnote 69=6950\n";
+        pf::Tuning t;
+        CHECK(pf::loadTuning(path, t) && std::fabs(t.pitch[69] - 69.5f) < 1e-4f);
+        CHECK(pf::parseTun("[Tuning]\nnote 60=abc\nnote 69=6900\n", t) && t.pitch[60] == 60.0f);
+        CHECK(pf::parseTun("[Tuning]\nnote=6000\nnotes 5=100\nnote 61=6150\n", t) && t.pitch[0] == 0.0f && t.pitch[5] == 5.0f);
+        CHECK(!pf::parseScl("x\n1\nabc.def\n", t));
+        CHECK(!pf::parseScl("x\n1\n3/2/7\n", t));
+        CHECK(!pf::parseScl("x\n1\n101,5\n", t));
+        const std::string tri = fixtureDir() + "/tritave.scl";
+        std::ofstream(tri) << "tritave\n1\n3/1\n";
+        CHECK(pf::loadTuning(tri, t) && std::fabs(t.pitch[61] - (60.0f + 12.0f * std::log2(3.0f))) < 1e-3f);
+    }
     // Keys with control characters resolve to nothing ("..\0" passed the ".." check, and the
     // path then ended at the NUL: "<root>/..").
     {
@@ -753,6 +923,7 @@ void reviewTests() {
     noteGenFixes();
     surfaceFixes();
     fileFixes();
+    noteGenFixes2();
     pluginFixes2();
 }
 

@@ -7,6 +7,8 @@ namespace pf {
 namespace {
 constexpr double kEps = 1e-9;
 constexpr float kPi = 3.14159265f;
+// NaN-safe (std::clamp passes NaN through, and a NaN gate is a note that never ends).
+inline float clampf(float v, float lo, float hi) { return v > lo ? (v < hi ? v : hi) : lo; }
 }
 
 NoteGen::NoteGen(float sampleRate) : sr_(sampleRate) {}
@@ -25,17 +27,28 @@ void NoteGen::setPatch(const SeqPatch& in, Synth& synth) {
     p.shapeSteps = std::clamp(p.shapeSteps, 1, kShapeSteps);
     p.rate = std::clamp(p.rate, 0, kNumSyncDivs - 1);
     p.shapeRate = std::clamp(p.shapeRate, 0, kNumSyncDivs - 1);
-    p.gate = std::clamp(p.gate, 0.05f, 1.0f);
-    p.swing = std::clamp(p.swing, 0.0f, 0.5f);
+    p.gate = clampf(p.gate, 0.05f, 1.0f);
+    p.swing = clampf(p.swing, 0.0f, 0.5f);
+    for (float& m : p.mod) m = clampf(m, -1.0f, 1.0f);
+    for (auto& lane : p.shape)
+        for (float& v : lane) v = clampf(v, -1.0f, 1.0f);
     const int before = p_.mode;
-    const bool regrid = p.rate != p_.rate || p.swing != p_.swing;
+    const bool newRate = p.rate != p_.rate, newSwing = p.swing != p_.swing;
     if (p.mode != before || p.record != p_.record) releaseHeard(synth);
     p_ = p;
-    if (regrid) reaim(beat_, false);   // the step index means another beat at the new rate
+    if (newRate) {
+        reaim(beat_, true);   // the step index means another beat at the new rate
+    } else if (newSwing) {    // the same steps, moved: one that already played doesn't play again
+        const int64_t fired = lastFired_;
+        reaim(beat_, false);
+        next_ = std::max(next_, fired + 1);
+        lastFired_ = std::max(lastFired_, fired);
+    }
     if (p_.mode != before) {
         stopGenerated(synth);
-        if (before == SQ_OFF)   // the keys were playing straight through: they stop too
-            for (int i = 0; i < nKeys_; ++i) synth.noteOff(keys_[i].note);
+        // The keys were playing straight through: they stop too, all of them (a 17th key
+        // pushed the oldest out of keys_ while it kept sounding).
+        if (before == SQ_OFF) synth.allNotesOff();
         if (pedal_) synth.sustain(p_.mode == SQ_OFF);   // the pedal holds notes only when off
         if (p_.mode == SQ_OFF) {   // keys only the pedal held for the arp are up: they go
             int w = 0;
@@ -53,18 +66,20 @@ void NoteGen::setPatch(const SeqPatch& in, Synth& synth) {
     // The mod lanes, for this block (a step that fires inside it updates the Seq lane there).
     int idx = -1;
     if (running_ && lastStep_ >= 0) idx = lastStep_;
-    else if (playing_ || keysDown()) idx = wrap(static_cast<long>(std::floor(beat_ / kSyncBeats[p_.rate])));
-    seqValue_ = idx >= 0 ? std::clamp(p_.mod[idx], -1.0f, 1.0f) : 0.0f;
+    else if (playing_ || keysDown()) idx = wrap(static_cast<int64_t>(std::floor(beat_ / kSyncBeats[p_.rate])));
+    seqValue_ = idx >= 0 ? p_.mod[idx] : 0.0f;
 }
 
 void NoteGen::setTransport(double bpm, double beats, bool playing, bool beatsValid) {
-    bpm_ = std::isfinite(bpm) && bpm > 1.0 && bpm < 1000.0 ? bpm : 120.0;
+    bpm_ = std::isfinite(bpm) && bpm >= 1.0 && bpm <= 1000.0 ? bpm : 120.0;   // the plugin's own bounds
     if (playing && beatsValid && std::isfinite(beats)) {
         // Started, or jumped (a loop, a locate): re-aim at the first step at or after here.
-        // A few ms of difference is the host's rounding, not a jump.
-        const bool jumped = !playing_ || std::fabs(beats - beat_) > 0.01;
+        // A few ms of difference is the host's rounding, not a jump. Only a jump while playing
+        // can be a loop's end (a free-running step that fired just before Play is not one).
+        const bool started = !playing_;
+        const bool jumped = started || std::fabs(beats - beat_) > 0.01;
         rebase(beats);
-        if (jumped) reaim(beats, true);
+        if (jumped) reaim(beats, !started);
         beat_ = beats;
         playing_ = true;
     } else {
@@ -78,19 +93,19 @@ void NoteGen::rebase(double beat) {
     lastFireBeat_ += d;
 }
 
-void NoteGen::reaim(double beat, bool jumped) {
+void NoteGen::reaim(double beat, bool skipFired) {
     const double s = kSyncBeats[p_.rate];
-    long k = static_cast<long>(std::floor(beat / s)) - 1;
+    int64_t k = static_cast<int64_t>(std::floor(beat / s)) - 1;
     while (boundary(k) < beat - kEps) ++k;
     const double sample = bpm_ / 60.0 / static_cast<double>(sr_);
-    if (jumped && std::fabs(lastFireBeat_ - beat) < 1.5 * sample && boundary(k) - beat < 1.5 * sample) {
-        ++k;   // a loop point: that step fired at the end of the last block, as the loop's end
+    if (skipFired && std::fabs(lastFireBeat_ - beat) < 1.5 * sample && boundary(k) - beat < 1.5 * sample) {
+        ++k;   // that step fired a moment ago (a loop's end, the last sample before a regrid)
     }
     next_ = k;
     lastFired_ = k - 1;
 }
 
-double NoteGen::boundary(long k) const {
+double NoteGen::boundary(int64_t k) const {
     const double s = kSyncBeats[p_.rate];
     return static_cast<double>(k) * s + ((k & 1) ? p_.swing * s : 0.0);
 }
@@ -110,12 +125,27 @@ void NoteGen::releaseHeard(Synth& synth) {
 
 void NoteGen::keyOn(int note, int vel, Synth& synth) {
     if (p_.record && p_.mode == SQ_SEQ) {   // the keys write steps instead of playing the sequence
-        const int step = wrap(running_ && lastStep_ >= 0 ? lastStep_ : recPos_);
+        // While MPC plays (or the sequence runs) at the playing step, else step by step.
+        const bool live = (running_ || playing_) && lastStep_ >= 0;
+        const int step = wrap(live ? lastStep_ : recPos_);
         if (nRec_ < 16) rec_[nRec_++] = {step, std::clamp(note - 60, -24, 24), std::clamp(vel, 1, 127)};
         if (!running_) {
-            recPos_ = wrap(step + 1);
-            synth.noteOn(note, vel);   // hear what you write
-            if (nHeard_ < 16) heard_[nHeard_++] = note;
+            if (!live) recPos_ = wrap(step + 1);
+            // Hear what you write. Each heard note is listed once, so its key-up always ends it:
+            // the same key again ends the old note first, a 17th ends the oldest.
+            for (int i = 0; i < nHeard_; ++i)
+                if (heard_[i] == note) {
+                    synth.noteOff(note);
+                    heard_[i] = heard_[--nHeard_];
+                    break;
+                }
+            if (nHeard_ == 16) {
+                synth.noteOff(heard_[0]);
+                for (int j = 1; j < 16; ++j) heard_[j - 1] = heard_[j];
+                --nHeard_;
+            }
+            synth.noteOn(note, vel);
+            heard_[nHeard_++] = note;
         }
         return;
     }
@@ -137,7 +167,10 @@ void NoteGen::keyOn(int note, int vel, Synth& synth) {
         return;
     }
     if (p_.latch) {
-        if (latchFresh_) nLatched_ = 0;   // the first key after all were up: a new chord
+        if (latchFresh_) {   // the first key after all were up: a new chord, from its start
+            nLatched_ = 0;
+            arpIndex_ = 0;
+        }
         latchFresh_ = false;
         bool have = false;
         for (int i = 0; i < nLatched_; ++i)
@@ -236,12 +269,12 @@ void NoteGen::advance(int samples, Synth& synth) {
         while (boundary(next_) <= now) {
             lastFired_ = next_;
             lastStep_ = wrap(next_++);
-            if (playing_ || keysDown()) seqValue_ = std::clamp(p_.mod[lastStep_], -1.0f, 1.0f);
+            if (playing_ || keysDown()) seqValue_ = p_.mod[lastStep_];
         }
         return;
     }
     while (boundary(next_) <= now) {
-        const long k = next_++;
+        const int64_t k = next_++;
         if (k <= lastFired_) continue;
         if (boundary(next_) <= now) {   // a later step is due as well (after a jump): only the latest plays
             lastFired_ = k;
@@ -283,12 +316,12 @@ int NoteGen::arpNotes(int* out, int max) const {
     return c;
 }
 
-void NoteGen::fireStep(long k, Synth& synth) {
+void NoteGen::fireStep(int64_t k, Synth& synth) {
     lastFired_ = k;
     lastFireBeat_ = beat_;
     const int step = wrap(k);
     lastStep_ = step;
-    seqValue_ = std::clamp(p_.mod[step], -1.0f, 1.0f);   // the Seq lane moves with the step, not a block later
+    seqValue_ = p_.mod[step];   // the Seq lane moves with the step, not a block later
     if (!keysDown()) return;
     const double len = (boundary(k + 1) - boundary(k)) * static_cast<double>(p_.gate);
     const bool latched = p_.latch && nLatched_ > 0;
@@ -298,6 +331,12 @@ void NoteGen::fireStep(long k, Synth& synth) {
     const Key& last = src[n - 1];
     auto play = [&](int note, int vel) {
         note = std::clamp(note, 0, 127);
+        for (int i = 0; i < nOffs_; ++i)   // still sounding from an earlier step: end it now, or
+            if (offs_[i].note == note) {   // its pending end would cut this new one short
+                synth.noteOff(note);
+                offs_[i] = offs_[--nOffs_];
+                break;
+            }
         if (nOffs_ == 64) return;
         synth.noteOn(note, std::clamp(vel, 1, 127));
         offs_[nOffs_++] = {note, boundary(k) + len};
@@ -331,8 +370,8 @@ void NoteGen::fireStep(long k, Synth& synth) {
 void NoteGen::shapeValues(float* out4) const {
     const double pos = beat_ / kSyncBeats[p_.shapeRate];
     const double fl = std::floor(pos);
-    const long ns = p_.shapeSteps;
-    const int i = static_cast<int>(((static_cast<long>(fl) % ns) + ns) % ns);   // count-in: negative beats
+    const int64_t ns = p_.shapeSteps;
+    const int i = static_cast<int>(((static_cast<int64_t>(fl) % ns) + ns) % ns);   // count-in: negative beats
     const int j = (i + 1) % p_.shapeSteps;
     const float frac = static_cast<float>(pos - fl);
     for (int l = 0; l < kShapeLanes; ++l) {

@@ -76,11 +76,14 @@ private:
     struct Off { int note; double at; };   // a generated note's end, in beats
     void startClock();
     void rebase(double beat);               // the clock moves to `beat`: generated notes' ends move with it
-    void reaim(double beat, bool jumped);   // the next step = the first boundary at or after `beat`
-    double boundary(long k) const;          // beat of step k (with swing)
-    int  wrap(long k) const { const long n = p_.steps; return static_cast<int>(((k % n) + n) % n); }
+    // The next step = the first boundary at or after `beat`; skipFired: not one that fired a
+    // moment ago (a loop's end, a regrid right after a step).
+    void reaim(double beat, bool skipFired);
+    // Step indices are 64-bit: a 32-bit long (ARMv7) overflows at a large host ppq.
+    double boundary(int64_t k) const;       // beat of step k (with swing)
+    int  wrap(int64_t k) const { const int64_t n = p_.steps; return static_cast<int>(((k % n) + n) % n); }
     void releaseHeard(Synth& synth);
-    void fireStep(long k, Synth& synth);
+    void fireStep(int64_t k, Synth& synth);
     void stopGenerated(Synth& synth);
     int  arpNotes(int* out, int max) const;   // the arp's note list, in play order
     bool keysDown() const { return nKeys_ > 0 || (p_.latch && nLatched_ > 0); }
@@ -92,10 +95,10 @@ private:
     double   beat_ = 0.0;        // the clock
     bool     playing_ = false;
     bool     running_ = false;   // generating notes
-    long     next_ = 0;          // the next step boundary's index
-    long     lastFired_ = -1;
+    int64_t  next_ = 0;          // the next step boundary's index
+    int64_t  lastFired_ = -1;
     int      lastStep_ = -1;
-    long     arpIndex_ = 0;
+    int64_t  arpIndex_ = 0;
     float    seqValue_ = 0.0f;
 
     struct Key { int note, vel; bool pedal; };   // pedal: the key is up, the pedal holds it

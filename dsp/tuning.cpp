@@ -37,6 +37,21 @@ std::string stemOf(const std::string& path) {
 
 constexpr double kNote0Hz = 8.17579891564371;   // MIDI note 0 in 12-TET at A = 440
 
+// Whole-token numbers: "abc", "6.8x", "3/2/7" or "101,5" are errors, not 0 or a prefix's value.
+bool number(const std::string& s, double& v) {
+    if (s.empty()) return false;
+    char* end = nullptr;
+    v = std::strtod(s.c_str(), &end);
+    return end == s.c_str() + s.size() && std::isfinite(v);
+}
+
+bool integer(const std::string& s, long& v) {
+    if (s.empty() || !std::all_of(s.begin(), s.end(), [](char c) { return c >= '0' && c <= '9'; })) return false;
+    if (s.size() > 9) return false;   // no overflow, far beyond any count or ratio term we take
+    v = std::strtol(s.c_str(), nullptr, 10);
+    return true;
+}
+
 } // namespace
 
 const Tuning& equalTemperament() {
@@ -70,19 +85,19 @@ bool parseTun(const std::string& text, Tuning& out, std::string* err) {
         const std::string key = lower(trim(line.substr(0, eq)));
         const std::string val = trim(line.substr(eq + 1));
         if (key == "basefreq") {
-            const double b = std::atof(val.c_str());
-            if (b > 0.0 && std::isfinite(b)) base = b;
+            double b = 0.0;
+            if (number(val, b) && b > 0.0) base = b;
             continue;
         }
         if (key.compare(0, 4, "note") != 0) continue;
-        const int n = std::atoi(key.c_str() + 4);
-        if (n < 0 || n > 127) continue;
-        const double c = std::atof(val.c_str());
-        if (!std::isfinite(c)) continue;
+        long n = -1;   // "note 60": the index after "note", digits only
+        if (!integer(trim(key.substr(4)), n) || n > 127) continue;
+        double c = 0.0;
+        if (!number(val, c)) continue;   // a line we can't read keeps the note's default
         const bool isExact = section == "[exact tuning]";
         if (section != "[tuning]" && !isExact) continue;
         if (exact[n] && !isExact) continue;   // [Exact Tuning] wins
-        cents[n] = c;
+        cents[static_cast<size_t>(n)] = c;
         have[n] = true;
         exact[n] = exact[n] || isExact;
         ++found;
@@ -105,22 +120,28 @@ bool parseScl(const std::string& text, Tuning& out, std::string* err) {
         lines.push_back(line);
     }
     if (lines.size() < 2) return fail(err, "too short");
-    const int count = std::atoi(lines[1].c_str());
+    std::string countText = lines[1];
+    const size_t csp = countText.find_first_of(" \t");
+    if (csp != std::string::npos) countText = countText.substr(0, csp);
+    long countL = 0;
+    if (!integer(countText, countL)) return fail(err, "bad degree count");
+    const int count = static_cast<int>(countL);
     if (count < 1 || count > 1000 || static_cast<int>(lines.size()) < 2 + count) return fail(err, "bad degree count");
     std::vector<double> deg(static_cast<size_t>(count));   // cents
     for (int i = 0; i < count; ++i) {
         std::string v = lines[static_cast<size_t>(2 + i)];
         const size_t sp = v.find_first_of(" \t");
         if (sp != std::string::npos) v = v.substr(0, sp);
-        double c;
-        if (v.find('.') != std::string::npos) {
-            c = std::atof(v.c_str());
-        } else {
+        double c = 0.0;
+        if (v.find('.') != std::string::npos) {   // cents
+            if (!number(v, c)) return fail(err, "bad degree");
+        } else {                                   // a ratio, "3/2", or a whole number, "2"
             const size_t slash = v.find('/');
-            const double num = std::atof(v.c_str());
-            const double den = slash == std::string::npos ? 1.0 : std::atof(v.c_str() + slash + 1);
-            if (num <= 0.0 || den <= 0.0) return fail(err, "bad ratio");
-            c = 1200.0 * std::log2(num / den);
+            long num = 0, den = 1;
+            if (!integer(v.substr(0, slash), num) || (slash != std::string::npos && !integer(v.substr(slash + 1), den)))
+                return fail(err, "bad ratio");
+            if (num <= 0 || den <= 0) return fail(err, "bad ratio");
+            c = 1200.0 * std::log2(static_cast<double>(num) / static_cast<double>(den));
         }
         if (!std::isfinite(c)) return fail(err, "bad degree");
         deg[static_cast<size_t>(i)] = c;
@@ -145,13 +166,18 @@ bool loadTuning(const std::string& path, Tuning& out, std::string* err) {
     f.seekg(0);
     std::string text(static_cast<size_t>(size), '\0');
     if (size > 0 && !f.read(&text[0], size)) return fail(err, "cannot read");
+    if (text.compare(0, 3, "\xEF\xBB\xBF") == 0) text.erase(0, 3);   // a UTF-8 byte-order mark
     const std::string ext = lower(path.size() >= 4 ? path.substr(path.size() - 4) : path);
     Tuning t;
     t.name = stemOf(path);
     const bool ok = ext == ".scl" ? parseScl(text, t, err) : parseTun(text, t, err);
     if (!ok) return false;
-    for (float p : t.pitch)
-        if (!std::isfinite(p) || p < -200.0f || p > 400.0f) return fail(err, "pitch out of range");
+    // Wide scales (a tritave per degree, 2-EDO) run far out at the keyboard's ends: those
+    // notes are clamped (inaudible either way), the scale still loads.
+    for (float& p : t.pitch) {
+        if (!std::isfinite(p)) return fail(err, "pitch out of range");
+        p = std::max(-200.0f, std::min(p, 400.0f));
+    }
     out = std::move(t);
     return true;
 }

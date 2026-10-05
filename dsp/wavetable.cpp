@@ -303,10 +303,10 @@ bool fail(std::string* err, const char* why) {
 }
 
 float readSample(const uint8_t* p, uint16_t tag, uint16_t bits) {
-    if (tag == 3) {
+    if (tag == 3) {   // finite but huge (near FLT_MAX) would overflow to inf in the build: garbage anyway
         float v;
         std::memcpy(&v, p, sizeof v);
-        return std::isfinite(v) ? v : 0.0f;
+        return std::isfinite(v) ? std::max(-1e6f, std::min(v, 1e6f)) : 0.0f;
     }
     if (bits == 16) return static_cast<float>(static_cast<int16_t>(rd16(p))) / 32768.0f;
     if (bits == 24) {
@@ -400,9 +400,13 @@ bool loadWavetable(const std::string& path, Wavetable& out, std::string* err) {
         const float* m0 = t.get(fr, 0);
         for (int i = 0; i < kTableSize; ++i) peak = std::max(peak, std::fabs(m0[i]));
     }
+    if (!std::isfinite(peak)) return fail(err, "bad sample values");
     if (peak < 1e-6f) return fail(err, "silent");
     const float gain = 1.0f / peak;
-    for (float& v : t.data) v *= gain;
+    for (float& v : t.data) {
+        v *= gain;
+        if (!std::isfinite(v)) return fail(err, "bad sample values");   // never a NaN table on the audio thread
+    }
 
     out = std::move(t);
     return true;
