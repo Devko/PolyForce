@@ -51,13 +51,11 @@ int main(int argc, char** argv) {
         bool sane = true;
         for (int f = 0; f < t.frames; ++f)
             for (int k = 0; k < pf::kMipLevels; ++k) {
-                const float* m = t.get(f, k);
+                const int16_t* m = t.get(f, k);
                 const int len = pf::mipLength(k);   // each level its own length (2048 .. 256)
-                sane = sane && m[len] == m[0];
-                for (int i = 0; i < len; ++i) {
-                    sane = sane && std::isfinite(m[i]);
-                    if (k == 0) peak = std::max(peak, std::fabs(m[i]));
-                }
+                sane = sane && m[len] == m[0] && std::isfinite(t.scale[static_cast<size_t>(f)]);
+                if (k == 0)
+                    for (int i = 0; i < len; ++i) peak = std::max(peak, std::fabs(t.at(f, 0, i)));
             }
         sane = sane && peak > 0.999f && peak < 1.001f;
 
@@ -95,7 +93,7 @@ int main(int argc, char** argv) {
             worstMs = ms;
             worstName = rel;
         }
-        worstBytes = std::max(worstBytes, t.data.size() * sizeof(float));
+        worstBytes = std::max(worstBytes, t.bytes());
     }
 
     std::printf("%d tables ok, %d failed, %d frames\n", ok, failed, frames);

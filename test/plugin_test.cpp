@@ -48,25 +48,24 @@ void testTables() {
     for (const auto& w : t) {
         CHECK(w.frames == 16);
         for (int f = 0; f < w.frames; ++f) {
-            const float* m0 = w.get(f, 0);
             float peak = 0.0f;
-            for (int i = 0; i < pf::kTableSize; ++i) peak = std::max(peak, std::fabs(m0[i]));
+            for (int i = 0; i < pf::kTableSize; ++i) peak = std::max(peak, std::fabs(w.at(f, 0, i)));
             CHECK(peak > 0.99f && peak < 1.01f);
             bool guards = true;   // every level ends in a guard sample = its sample 0
             for (int k = 0; k < pf::kMipLevels; ++k) {
-                const float* lv = w.get(f, k);
+                const int16_t* lv = w.get(f, k);
                 guards = guards && lv[pf::mipLength(k)] == lv[0];
             }
             CHECK(guards);
             // the top level keeps only the fundamental: at most one rise through zero (none
             // when the frame has no fundamental, e.g. Sync at an exact 2x or 8x ratio)
             // (a silent level holds ~1e-16 FFT crosstalk from its paired frame: skip it)
-            const float* top = w.get(f, pf::kMipLevels - 1);
+            const int16_t* top = w.get(f, pf::kMipLevels - 1);
             const int topLen = pf::mipLength(pf::kMipLevels - 1);
             float topPeak = 0.0f;
-            for (int i = 0; i < topLen; ++i) topPeak = std::max(topPeak, std::fabs(top[i]));
+            for (int i = 0; i < topLen; ++i) topPeak = std::max(topPeak, std::fabs(w.at(f, pf::kMipLevels - 1, i)));
             int rises = 0;
-            for (int i = 0; i < topLen; ++i) rises += (top[i] < 0.0f && top[i + 1] >= 0.0f) ? 1 : 0;
+            for (int i = 0; i < topLen; ++i) rises += (top[i] < 0 && top[i + 1] >= 0) ? 1 : 0;
             CHECK(rises <= 1 || topPeak < 1e-6f);
         }
     }

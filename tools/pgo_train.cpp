@@ -2,8 +2,9 @@
 // plugin is linked in and plays a spread of patches through VSTPluginMain under qemu-arm, the
 // way MPC drives it. Every filter type in filter 1 (filter 2 another one), the three engines,
 // unison 1 / 3 / 8, a busy matrix, more notes than voices (steals), a release, both routings,
-// subs, noise and the classic waves. The profile only steers the compiler (which paths are hot);
-// what the trainer leaves out is still optimised as usual (-fprofile-partial-training).
+// subs, noise, the classic waves, positions moving and holding still (the frame cache). The
+// profile only steers the compiler (which paths are hot); what the trainer leaves out is still
+// optimised as usual (-fprofile-partial-training).
 #include "../dsp/mod.h"
 #include "../dsp/synth.h"
 #include "../plugin/vst2.h"
@@ -77,7 +78,7 @@ int main() {
                     set(pf::P_F2_CUT, 3000.0f);
                     set(pf::P_ROUTING, static_cast<float>(f1 % 2));
                     set(pf::P_O2_ROUTE, static_cast<float>(f1 % 4));
-                    set(pf::P_E2_POS, 0.3f);
+                    set(pf::P_E2_POS, (f1 + uni) % 2 ? 0.3f : 0.0f);   // moving, or holding still
                     set(pf::P_ENGINE, static_cast<float>(eng));
                     set(pf::P_O1_SUB_LEVEL, (f1 % 3) ? 0.0f : 0.5f);
                     set(pf::P_NOISE_LEVEL, (f1 % 5) ? 0.0f : 0.3f);

@@ -8,6 +8,7 @@
 // interpolation needs ~8 samples per cycle of the top harmonic, so the high levels (few
 // harmonics) are short. 9,227 floats per frame instead of 11 x 2,049 = 22,539.
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -26,17 +27,26 @@ constexpr int mipOffset(int k) { return k == 0 ? 0 : mipOffset(k - 1) + mipLengt
 constexpr int kFrameStride = mipOffset(kMipLevels - 1) + mipLength(kMipLevels - 1) + 1;
 static_assert(kFrameStride == 9227, "mip layout changed: update the comment above");
 
+// Samples are 16-bit with one scale per frame (value = sample * scale[frame]): half the memory of
+// floats (4.5 MB for 256 frames), the rounding ~96 dB under each frame's own peak, so a quiet
+// frame keeps its resolution. The oscillator reads them directly while the position moves and
+// from a premixed float copy (Synth's frame cache) while it holds still.
 struct Wavetable {
     std::string name;
     int frames = 0;
-    std::vector<float> data;   // [frame][level][mipLength(level) + 1]
+    uint32_t id = 0;               // unique per table built or loaded (newTableId): the frame cache's key
+    std::vector<int16_t> data;     // [frame][level][mipLength(level) + 1]
+    std::vector<float> scale;      // [frame]
 
     // Level `mip` of `frame`: mipLength(mip) samples plus a guard sample (= sample 0).
-    const float* get(int frame, int mip) const {
+    const int16_t* get(int frame, int mip) const {
         return data.data() + static_cast<size_t>(frame) * kFrameStride + static_cast<size_t>(mipOffset(mip));
     }
-    size_t bytes() const { return data.size() * sizeof(float); }
+    float at(int frame, int mip, int i) const { return static_cast<float>(get(frame, mip)[i]) * scale[static_cast<size_t>(frame)]; }
+    size_t bytes() const { return data.size() * sizeof(int16_t) + scale.size() * sizeof(float); }
 };
+
+uint32_t newTableId();   // 1, 2, 3, ... (thread-safe)
 
 // The library's built-in tables (Classic, PWM, Sync, Formant), built once per process on
 // first use and read-only afterwards, so all plugin instances share one copy.

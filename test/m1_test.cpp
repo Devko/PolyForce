@@ -128,17 +128,16 @@ void tablesTests() {
         double worst = 0.0;
         bool guards = true;
         for (int f = 0; f < frames; ++f) {
-            const float* m0 = t.get(f, 0);
-            for (int i = 0; i < 2048; ++i) worst = std::max(worst, std::fabs(m0[i] - fixtureSample(f, i, 2048) / peak));
+            for (int i = 0; i < 2048; ++i) worst = std::max(worst, std::fabs(t.at(f, 0, i) - fixtureSample(f, i, 2048) / peak));
             for (int k = 0; k < pf::kMipLevels; ++k) guards = guards && t.get(f, k)[pf::mipLength(k)] == t.get(f, k)[0];
         }
-        CHECK(worst < 1e-4);   // float32 input, exact spectrum
+        CHECK(worst < 1e-4);   // float32 input, exact spectrum, 16-bit samples (half a step: < 2e-5)
         CHECK(guards);
         // The last frame of an odd count (no partner) and a paired one alike: level 3 keeps
         // harmonics 1..128 at 1024 samples = every other sample of level 0 for these frames.
         const int f = frames - 1;
         double lvErr = 0.0;
-        for (int i = 0; i < 1024; ++i) lvErr = std::max(lvErr, static_cast<double>(std::fabs(t.get(f, 3)[i] - t.get(f, 0)[2 * i])));
+        for (int i = 0; i < 1024; ++i) lvErr = std::max(lvErr, static_cast<double>(std::fabs(t.at(f, 3, i) - t.at(f, 0, 2 * i))));
         CHECK(lvErr < 1e-4);
     }
 
@@ -148,7 +147,7 @@ void tablesTests() {
         CHECK(pf::loadWavetable(fx("plugin/loose.wav"), t));
         double peak = 0.0, worst = 0.0;
         for (int i = 0; i < 1024; ++i) peak = std::max(peak, std::fabs(fixtureSample(0, i, 1024)));
-        for (int i = 0; i < 1024; ++i) worst = std::max(worst, std::fabs(t.get(0, 0)[2 * i] - fixtureSample(0, i, 1024) / peak));
+        for (int i = 0; i < 1024; ++i) worst = std::max(worst, std::fabs(t.at(0, 0, 2 * i) - fixtureSample(0, i, 1024) / peak));
         CHECK(t.frames == 1 && worst < 1e-4);
     }
     // 16-bit PCM without the marker: 2048-sample frames assumed, quantisation-level error.
@@ -167,9 +166,9 @@ void tablesTests() {
     const double t0 = nowMs();
     CHECK(pf::loadWavetable(fx("plugin/Digital/Bells.wav"), big));
     const double ms = nowMs() - t0;
-    std::printf("  256-frame import: %.0f ms, %.1f MB (was 22 MB)\n", ms, static_cast<double>(big.bytes()) / (1 << 20));
+    std::printf("  256-frame import: %.0f ms, %.1f MB (float samples: 9.0 MB)\n", ms, static_cast<double>(big.bytes()) / (1 << 20));
     CHECK(big.frames == 256);
-    CHECK(big.bytes() < 10u << 20);   // design target: under 10 MB
+    CHECK(big.bytes() < 5u << 20);   // 16-bit samples: 4.5 MB
 }
 
 // --- library ----------------------------------------------------------------------------------

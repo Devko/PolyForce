@@ -146,7 +146,7 @@ int main(int argc, char** argv) {
         const double ms = wallMs() - a;
         if (ok) {
             std::printf("wavetable import: %d frames in %.0f ms (%.2f ms/frame), %.1f MB\n", t.frames, ms,
-                        ms / t.frames, static_cast<double>(t.data.size() * sizeof(float)) / (1024.0 * 1024.0));
+                        ms / t.frames, static_cast<double>(t.bytes()) / (1024.0 * 1024.0));
             // The plugin's only table root becomes the table's folder (its "plugin" root).
             const std::string path = table;
             const size_t slash = path.rfind('/');

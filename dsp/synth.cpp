@@ -402,6 +402,126 @@ template <int Q> SumFn sumOf(int extra, bool tab) {
     return extra == 0 ? sumOf<Q, 0>(tab) : extra == 1 ? sumOf<Q, 1>(tab) : sumOf<Q, 2>(tab);
 }
 
+// One unison voice's samples from a wavetable level (Synth::renderOsc, renderSub), added into L and
+// R: PK_FLOAT reads a float frame (the frame cache), PK_INT a 16-bit frame (its scale rides on the
+// gains), PK_MORPH two 16-bit frames morphed. The phase is a 32-bit fixed-point fraction of a
+// cycle: its top bits index the level (its own length), the rest are the interpolation fraction,
+// and wrap-around is free integer overflow (no floor(), no branch). The gains glide: sample i gets
+// g0 + dg * (i + 1), the last one the target. Returns the phase after the last sample.
+enum PlayKind { PK_FLOAT, PK_INT, PK_MORPH };
+
+// 1 / 2^(32 - bits) per level: the phase's fraction bits as 0..1, without a divide per call.
+struct MipFrac {
+    float v[kMipLevels];
+};
+constexpr MipFrac mipFrac() {
+    MipFrac f{};
+    for (int k = 0; k < kMipLevels; ++k) f.v[k] = 1.0f / static_cast<float>(1u << (32 - kMipBits[k]));
+    return f;
+}
+constexpr MipFrac kMipFrac = mipFrac();
+
+struct Play {
+    const float* f = nullptr;                    // PK_FLOAT
+    const int16_t *a = nullptr, *b = nullptr;    // PK_INT: a; PK_MORPH: a morphed toward b
+    float sa = 1.0f, sb = 1.0f;                  // PK_MORPH: their scales
+    float m0 = 0.0f, dm = 0.0f;                  // PK_MORPH: the morph at sample i is m0 + dm * (i + 1)
+    int   shift = 32 - kTableBits;               // 32 - the level's bits
+    float frac = kMipFrac.v[0];                  // 1 / 2^shift
+    void level(int mip) {
+        shift = 32 - kMipBits[mip];
+        frac = kMipFrac.v[mip];
+    }
+};
+
+#ifdef PF_NEON
+// Four (p[i], p[i + 1]) pairs of 16-bit samples, one 32-bit load each: the first samples and the
+// steps to the next, as floats.
+inline void gather16(const int16_t* p, uint32_t i0, uint32_t i1, uint32_t i2, uint32_t i3, float32x4_t& x, float32x4_t& d) {
+    uint32_t w0, w1, w2, w3;
+    __builtin_memcpy(&w0, p + i0, 4);
+    __builtin_memcpy(&w1, p + i1, 4);
+    __builtin_memcpy(&w2, p + i2, 4);
+    __builtin_memcpy(&w3, p + i3, 4);
+    const int16x4x2_t z = vuzp_s16(vreinterpret_s16_u64(vcreate_u64(w0 | static_cast<uint64_t>(w1) << 32)),
+                                   vreinterpret_s16_u64(vcreate_u64(w2 | static_cast<uint64_t>(w3) << 32)));
+    x = vcvtq_f32_s32(vmovl_s16(z.val[0]));
+    d = vcvtq_f32_s32(vsubl_s16(z.val[1], z.val[0]));
+}
+#endif
+
+template <int Kind>
+uint32_t play(const Play& p, uint32_t ph, uint32_t dph, float gl0, float dgl, float gr0, float dgr, float* L, float* R, int n) {
+    const int shift = p.shift;
+    const uint32_t mask = (1u << shift) - 1;
+    const float kFrac = p.frac;
+    const float* F = p.f;
+    const int16_t *A = p.a, *B = p.b;
+    int i = 0;
+#ifdef PF_NEON
+    // Four samples at a time. The four table positions are computed in core registers; each
+    // (x[idx], x[idx+1]) pair is one load, and an unzip splits the pairs into "this sample" and
+    // "next sample" vectors. The fractions come from a phase vector.
+    uint32x4_t phv = {ph, ph + dph, ph + 2 * dph, ph + 3 * dph};
+    const uint32x4_t step4 = vdupq_n_u32(4 * dph), maskv = vdupq_n_u32(mask);
+    const float32x4_t fracScale = vdupq_n_f32(kFrac), one4 = {1.0f, 2.0f, 3.0f, 4.0f};
+    float32x4_t mv = vmlaq_n_f32(vdupq_n_f32(p.m0), one4, p.dm);
+    float32x4_t glv = vmlaq_n_f32(vdupq_n_f32(gl0), one4, dgl), grv = vmlaq_n_f32(vdupq_n_f32(gr0), one4, dgr);
+    const float32x4_t dm4 = vdupq_n_f32(4.0f * p.dm), dgl4 = vdupq_n_f32(4.0f * dgl), dgr4 = vdupq_n_f32(4.0f * dgr);
+    for (; i + 4 <= n; i += 4) {
+        const uint32_t i0 = ph >> shift, i1 = (ph + dph) >> shift, i2 = (ph + 2 * dph) >> shift, i3 = (ph + 3 * dph) >> shift;
+        const float32x4_t fr = vmulq_f32(vcvtq_f32_u32(vandq_u32(phv, maskv)), fracScale);
+        float32x4_t x;
+        if (Kind == PK_FLOAT) {
+            const float32x4x2_t pa = vuzpq_f32(vcombine_f32(vld1_f32(F + i0), vld1_f32(F + i1)),
+                                               vcombine_f32(vld1_f32(F + i2), vld1_f32(F + i3)));
+            x = vmlaq_f32(pa.val[0], fr, vsubq_f32(pa.val[1], pa.val[0]));
+        } else {
+            float32x4_t a, da;
+            gather16(A, i0, i1, i2, i3, a, da);
+            x = vmlaq_f32(a, fr, da);
+            if (Kind == PK_MORPH) {
+                float32x4_t b, db;
+                gather16(B, i0, i1, i2, i3, b, db);
+                const float32x4_t xa = vmulq_n_f32(x, p.sa), xb = vmulq_n_f32(vmlaq_f32(b, fr, db), p.sb);
+                x = vmlaq_f32(xa, mv, vsubq_f32(xb, xa));
+                mv = vaddq_f32(mv, dm4);
+            }
+        }
+        vst1q_f32(L + i, vmlaq_f32(vld1q_f32(L + i), x, glv));
+        vst1q_f32(R + i, vmlaq_f32(vld1q_f32(R + i), x, grv));
+        phv = vaddq_u32(phv, step4);
+        ph += 4 * dph;
+        glv = vaddq_f32(glv, dgl4);
+        grv = vaddq_f32(grv, dgr4);
+    }
+#endif
+    for (; i < n; ++i) {
+        const float k = static_cast<float>(i + 1);
+        const uint32_t idx = ph >> shift;
+        const float fr = static_cast<float>(ph & mask) * kFrac;
+        float x;
+        if (Kind == PK_FLOAT) {
+            x = F[idx] + fr * (F[idx + 1] - F[idx]);
+        } else {
+            const float a = static_cast<float>(A[idx]);
+            x = a + fr * (static_cast<float>(A[idx + 1]) - a);
+            if (Kind == PK_MORPH) {
+                const float b = static_cast<float>(B[idx]);
+                const float xa = x * p.sa, xb = (b + fr * (static_cast<float>(B[idx + 1]) - b)) * p.sb;
+                x = xa + (p.m0 + p.dm * k) * (xb - xa);
+            }
+        }
+        L[i] += x * (gl0 + dgl * k);
+        R[i] += x * (gr0 + dgr * k);
+        ph += dph;
+    }
+    return ph;
+}
+
+using PlayFn = uint32_t (*)(const Play&, uint32_t, uint32_t, float, float, float, float, float*, float*, int);
+constexpr PlayFn kPlay[3] = {play<PK_FLOAT>, play<PK_INT>, play<PK_MORPH>};
+
 } // namespace
 
 Synth::Synth(float sampleRate) : sr_(sampleRate), invSr_(1.0f / sampleRate) {
@@ -1068,13 +1188,15 @@ void Synth::waveView(int o, float* out, int n) const {
     const int fa = std::min(static_cast<int>(fpos), std::max(t->frames - 2, 0));
     const int fb = std::min(fa + 1, t->frames - 1);
     const float morph = fpos - static_cast<float>(fa);
-    const float* A = t->get(fa, 0);
-    const float* B = t->get(fb, 0);
+    const int16_t* A = t->get(fa, 0);
+    const int16_t* B = t->get(fb, 0);
+    const float sa = t->scale[static_cast<size_t>(fa)], sb = t->scale[static_cast<size_t>(fb)];
     const int len = mipLength(0);
     for (int c = 0; c < n; ++c) {
         float best = 0.0f;
         for (int s = c * len / n, e = (c + 1) * len / n; s < e; ++s) {
-            const float v = A[s] + morph * (B[s] - A[s]);
+            const float a = static_cast<float>(A[s]) * sa;
+            const float v = a + morph * (static_cast<float>(B[s]) * sb - a);
             if (std::fabs(v) > std::fabs(best)) best = v;
         }
         out[c] = clampf(best, -1.0f, 1.0f);
@@ -1090,7 +1212,7 @@ int Synth::shedTails(int max) {
                 (!quiet || v.env[0].v < quiet->env[0].v))
                 quiet = &v;
         if (!quiet) break;
-        quiet->fade = kFadeSamples;   // finishVoice fades it, then frees it (nothing waits to start)
+        quiet->fade = kFadeSamples;   // finishLanes fades it, then frees it (nothing waits to start)
         ++shed;
     }
     return shed;
@@ -1111,6 +1233,7 @@ void Synth::render(float* outL, float* outR, int n) {
 
     for (int pos = 0; pos < n; pos += kChunk) {
         const int len = std::min(kChunk, n - pos);
+        cacheLeft_ = cacheOn_ ? kCacheBudget : 0;
         float* L = outL + pos;
         float* R = outR + pos;
         std::fill(L, L + len, 0.0f);
@@ -1416,10 +1539,53 @@ void Synth::finishLanes(float* outL, float* outR, int n, bool direct) {
     }
 }
 
-// The hot loop. Phase is a 32-bit fixed-point fraction of a cycle: the top bits index the
-// level's frame (its own length), the rest are the interpolation fraction, and wrap-around
-// is free integer overflow (no floor(), no branch).
-void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, float* R, int n) const {
+// The frame cache (see FrameSlot): the float copy of level `mip` of frame fa (fb == fa) or of fa
+// and fb premixed at `morph`, found or filled; null when it would have to be filled and this
+// chunk's budget is spent. `hint`: the slot the caller found last time, tried first (inline: the
+// usual case); findFrame searches the rest and fills.
+inline const float* Synth::cachedFrame(const Wavetable& t, int fa, int fb, float morph, int mip, int& hint) {
+    if (static_cast<unsigned>(hint) < static_cast<unsigned>(kCacheSlots) && cache_[hint].holds(t.id, fa, fb, mip, morph)) {
+        cache_[hint].used = ++cacheClock_;
+        return cache_[hint].data;
+    }
+    return findFrame(t, fa, fb, morph, mip, hint);
+}
+
+const float* Synth::findFrame(const Wavetable& t, int fa, int fb, float morph, int mip, int& hint) {
+    int lru = 0;
+    for (int k = 0; k < kCacheSlots; ++k) {
+        if (cache_[k].holds(t.id, fa, fb, mip, morph)) {
+            hint = k;
+            cache_[k].used = ++cacheClock_;
+            return cache_[k].data;
+        }
+        if (cache_[k].used < cache_[lru].used) lru = k;
+    }
+    const int len = mipLength(mip) + 1;   // with the guard sample
+    if (cacheLeft_ < len) return nullptr;
+    cacheLeft_ -= len;
+    FrameSlot& c = cache_[lru];
+    const int16_t* a = t.get(fa, mip);
+    if (fb == fa) {
+        const float sa = t.scale[static_cast<size_t>(fa)];
+        for (int i = 0; i < len; ++i) c.data[i] = static_cast<float>(a[i]) * sa;
+    } else {
+        const int16_t* b = t.get(fb, mip);
+        const float wa = t.scale[static_cast<size_t>(fa)] * (1.0f - morph), wb = t.scale[static_cast<size_t>(fb)] * morph;
+        for (int i = 0; i < len; ++i) c.data[i] = static_cast<float>(a[i]) * wa + static_cast<float>(b[i]) * wb;
+    }
+    c.id = t.id;
+    c.fa = fa;
+    c.fb = fb;
+    c.mip = mip;
+    c.morph = morph;
+    c.used = ++cacheClock_;
+    hint = lru;
+    return c.data;
+}
+
+// One oscillator of one voice: its unison stack at this chunk's pitch and position (play()).
+void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, float* R, int n) {
     const OscState& s = osc_[o];
     const OscPatch& p = patch_.osc[o];
     if (!s.table) {   // Noise: the position knob is its colour, unison doesn't apply
@@ -1440,6 +1606,7 @@ void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, flo
     const float morph = fpos - static_cast<float>(fa);
     // The morph glides between the same two frames (a new pair: it jumps, the frames differ anyway).
     const float morph0 = v.ramp.valid && v.ramp.frame[o] == fa ? v.ramp.morph[o] : morph;
+    const bool still = v.ramp.valid && v.ramp.frame[o] == fa && morph0 == morph;   // where it was last chunk
     v.ramp.morph[o] = morph;
     v.ramp.frame[o] = fa;
     const float invN = 1.0f / static_cast<float>(n);
@@ -1458,8 +1625,6 @@ void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, flo
     }
     const float inc = std::min(noteHz(pitch + p.pitch + m.pitch[o]) / sr_, 0.45f);   // cycles per sample
     const int mip = mipFor(inc * maxRatio);                                          // the stack's highest voice decides
-    const float* A = t.get(fa, mip);
-    const float* B = t.get(fb, mip);
     float lvl = m.level[o], lvr = m.level[o];
     if (m.pan[o] != 0.0f) {   // pan modulated: a balance on top of the stack's own placement
         float pl, pr;
@@ -1471,125 +1636,60 @@ void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, flo
     v.ramp.oscGain[o][0] = lvl;
     v.ramp.oscGain[o][1] = lvr;
 
-    // This level's own length: the top `bits` of the phase index it, the rest interpolate.
-    const int shift = 32 - kMipBits[mip];
-    const uint32_t mask = (1u << shift) - 1;
-    const float kFrac = 1.0f / static_cast<float>(1u << shift);
     const bool twoFrames = fb != fa && (morph > 0.0f || morph0 > 0.0f);   // else frame A alone (classic shapes, a position on a frame)
+    // A position that holds still (the same as last chunk) plays the frame cache's float copy, two
+    // frames premixed; a moving one, a note's first chunk or the cache's budget spent reads the
+    // 16-bit frames as it goes (a frame pair just reached is not worth a copy: the position moves).
+    Play src;
+    src.level(mip);
+    int kind = PK_FLOAT;
+    float gs = 1.0f;   // PK_INT: the frame's scale, on the gains
+    if (!still || !(src.f = cachedFrame(t, fa, twoFrames ? fb : fa, twoFrames ? morph : 0.0f, mip, v.cacheSlot[o]))) {
+        src.a = t.get(fa, mip);
+        if (twoFrames) {
+            kind = PK_MORPH;
+            src.b = t.get(fb, mip);
+            src.sa = t.scale[static_cast<size_t>(fa)];
+            src.sb = t.scale[static_cast<size_t>(fb)];
+            src.m0 = morph0;
+            src.dm = dMorph;
+        } else {
+            kind = PK_INT;
+            gs = t.scale[static_cast<size_t>(fa)];
+        }
+    }
     for (int u = 0; u < s.n; ++u) {
-        uint32_t ph = v.phase[o][u];
         const uint32_t dph = static_cast<uint32_t>(inc * ratio[u] * 4294967296.0f);
-        // Gains glide from the last chunk's: sample i gets g0 + dg * (i + 1), the last one the target.
         const float gl0 = s.gl[u] * lvl0, gr0 = s.gr[u] * lvr0;
         const float dgl = (s.gl[u] * lvl - gl0) * invN, dgr = (s.gr[u] * lvr - gr0) * invN;
-        int i = 0;
-#ifdef PF_NEON
-        // Four samples at a time. The four table positions are computed in core registers;
-        // each (A[idx], A[idx+1]) pair is one 64-bit load, and an unzip splits the pairs into
-        // "this sample" and "next sample" vectors. The fractions come from a phase vector.
-        uint32x4_t phv = {ph, ph + dph, ph + 2 * dph, ph + 3 * dph};
-        const uint32x4_t step4 = vdupq_n_u32(4 * dph), maskv = vdupq_n_u32(mask);
-        const float32x4_t fracScale = vdupq_n_f32(kFrac), one4 = {1.0f, 2.0f, 3.0f, 4.0f};
-        float32x4_t mv = vmlaq_n_f32(vdupq_n_f32(morph0), one4, dMorph);
-        float32x4_t glv = vmlaq_n_f32(vdupq_n_f32(gl0), one4, dgl), grv = vmlaq_n_f32(vdupq_n_f32(gr0), one4, dgr);
-        const float32x4_t dm4 = vdupq_n_f32(4.0f * dMorph), dgl4 = vdupq_n_f32(4.0f * dgl), dgr4 = vdupq_n_f32(4.0f * dgr);
-        for (; i + 4 <= n; i += 4) {
-            const uint32_t i0 = ph >> shift, i1 = (ph + dph) >> shift, i2 = (ph + 2 * dph) >> shift, i3 = (ph + 3 * dph) >> shift;
-            const float32x4_t fr = vmulq_f32(vcvtq_f32_u32(vandq_u32(phv, maskv)), fracScale);
-            const float32x4x2_t pa = vuzpq_f32(vcombine_f32(vld1_f32(A + i0), vld1_f32(A + i1)),
-                                               vcombine_f32(vld1_f32(A + i2), vld1_f32(A + i3)));
-            float32x4_t x = vmlaq_f32(pa.val[0], fr, vsubq_f32(pa.val[1], pa.val[0]));
-            if (twoFrames) {
-                const float32x4x2_t pb = vuzpq_f32(vcombine_f32(vld1_f32(B + i0), vld1_f32(B + i1)),
-                                                   vcombine_f32(vld1_f32(B + i2), vld1_f32(B + i3)));
-                const float32x4_t b = vmlaq_f32(pb.val[0], fr, vsubq_f32(pb.val[1], pb.val[0]));
-                x = vmlaq_f32(x, mv, vsubq_f32(b, x));
-            }
-            vst1q_f32(L + i, vmlaq_f32(vld1q_f32(L + i), x, glv));
-            vst1q_f32(R + i, vmlaq_f32(vld1q_f32(R + i), x, grv));
-            phv = vaddq_u32(phv, step4);
-            ph += 4 * dph;
-            mv = vaddq_f32(mv, dm4);
-            glv = vaddq_f32(glv, dgl4);
-            grv = vaddq_f32(grv, dgr4);
-        }
-#endif
-        if (twoFrames) {
-            for (; i < n; ++i) {
-                const float k = static_cast<float>(i + 1);
-                const uint32_t idx = ph >> shift;
-                const float fr = static_cast<float>(ph & mask) * kFrac;
-                const float a = A[idx] + fr * (A[idx + 1] - A[idx]);
-                const float b = B[idx] + fr * (B[idx + 1] - B[idx]);
-                const float x = a + (morph0 + dMorph * k) * (b - a);
-                L[i] += x * (gl0 + dgl * k);
-                R[i] += x * (gr0 + dgr * k);
-                ph += dph;
-            }
-        } else {
-            for (; i < n; ++i) {
-                const float k = static_cast<float>(i + 1);
-                const uint32_t idx = ph >> shift;
-                const float fr = static_cast<float>(ph & mask) * kFrac;
-                const float x = A[idx] + fr * (A[idx + 1] - A[idx]);
-                L[i] += x * (gl0 + dgl * k);
-                R[i] += x * (gr0 + dgr * k);
-                ph += dph;
-            }
-        }
-        v.phase[o][u] = ph;
+        v.phase[o][u] = kPlay[kind](src, v.phase[o][u], dph, gl0 * gs, dgl * gs, gr0 * gs, dgr * gs, L, R, n);
     }
 }
 
 // The sub oscillator: one classic-shape voice under the oscillator, panned with it.
-void Synth::renderSub(Voice& v, int o, float pitch, float level, float* L, float* R, int n) const {
+void Synth::renderSub(Voice& v, int o, float pitch, float level, float* L, float* R, int n) {
     const OscPatch& p = patch_.osc[o];
     const Wavetable& t = classicTable(std::clamp(p.subWave, 0, static_cast<int>(CW_SQUARE)));
     const float inc = std::min(noteHz(pitch + p.pitch + p.subTune) / sr_, 0.45f);
     const int mip = mipFor(inc);
-    const float* A = t.get(0, mip);
-    const int shift = 32 - kMipBits[mip];
-    const uint32_t mask = (1u << shift) - 1;
-    const float kFrac = 1.0f / static_cast<float>(1u << shift);
     const float level0 = v.ramp.valid ? v.ramp.subGain[o] : level;
     v.ramp.subGain[o] = level;
     const float invN = 1.0f / static_cast<float>(n);
     const float gl0 = osc_[o].subGl * level0, gr0 = osc_[o].subGr * level0;
     const float dgl = (osc_[o].subGl * level - gl0) * invN, dgr = (osc_[o].subGr * level - gr0) * invN;
-    uint32_t ph = v.subPhase[o];
     const uint32_t dph = static_cast<uint32_t>(inc * 4294967296.0f);
-    int i = 0;
-#ifdef PF_NEON
-    uint32x4_t phv = {ph, ph + dph, ph + 2 * dph, ph + 3 * dph};
-    const uint32x4_t step4 = vdupq_n_u32(4 * dph), maskv = vdupq_n_u32(mask);
-    const float32x4_t fracScale = vdupq_n_f32(kFrac), one4 = {1.0f, 2.0f, 3.0f, 4.0f};
-    float32x4_t glv = vmlaq_n_f32(vdupq_n_f32(gl0), one4, dgl), grv = vmlaq_n_f32(vdupq_n_f32(gr0), one4, dgr);
-    const float32x4_t dgl4 = vdupq_n_f32(4.0f * dgl), dgr4 = vdupq_n_f32(4.0f * dgr);
-    for (; i + 4 <= n; i += 4) {   // as in renderOsc
-        const uint32_t i0 = ph >> shift, i1 = (ph + dph) >> shift, i2 = (ph + 2 * dph) >> shift, i3 = (ph + 3 * dph) >> shift;
-        const float32x4_t fr = vmulq_f32(vcvtq_f32_u32(vandq_u32(phv, maskv)), fracScale);
-        const float32x4x2_t pa = vuzpq_f32(vcombine_f32(vld1_f32(A + i0), vld1_f32(A + i1)),
-                                           vcombine_f32(vld1_f32(A + i2), vld1_f32(A + i3)));
-        const float32x4_t x = vmlaq_f32(pa.val[0], fr, vsubq_f32(pa.val[1], pa.val[0]));
-        vst1q_f32(L + i, vmlaq_f32(vld1q_f32(L + i), x, glv));
-        vst1q_f32(R + i, vmlaq_f32(vld1q_f32(R + i), x, grv));
-        phv = vaddq_u32(phv, step4);
-        ph += 4 * dph;
-        glv = vaddq_f32(glv, dgl4);
-        grv = vaddq_f32(grv, dgr4);
+    Play src;
+    src.level(mip);
+    src.f = cachedFrame(t, 0, 0, 0.0f, mip, v.cacheSlot[2 + o]);
+    if (src.f) {
+        v.subPhase[o] = play<PK_FLOAT>(src, v.subPhase[o], dph, gl0, dgl, gr0, dgr, L, R, n);
+    } else {
+        src.a = t.get(0, mip);
+        const float gs = t.scale[0];
+        v.subPhase[o] = play<PK_INT>(src, v.subPhase[o], dph, gl0 * gs, dgl * gs, gr0 * gs, dgr * gs, L, R, n);
     }
-#endif
-    for (; i < n; ++i) {
-        const float k = static_cast<float>(i + 1);
-        const uint32_t idx = ph >> shift;
-        const float fr = static_cast<float>(ph & mask) * kFrac;
-        const float x = A[idx] + fr * (A[idx + 1] - A[idx]);
-        L[i] += x * (gl0 + dgl * k);
-        R[i] += x * (gr0 + dgr * k);
-        ph += dph;
-    }
-    v.subPhase[o] = ph;
 }
+
 
 // Stereo noise with a colour tilt. Dark: a one-pole lowpass closing from white down to
 // ~100 Hz. Bright: white plus up to 1.5x its own highpassed part (an upward tilt). Both

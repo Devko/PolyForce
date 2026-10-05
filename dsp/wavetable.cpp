@@ -1,6 +1,7 @@
 #include "wavetable.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <complex>
 #include <cstdint>
@@ -9,6 +10,7 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <limits>
 
 namespace pf {
 namespace {
@@ -164,13 +166,35 @@ Spectrum measure(const std::function<double(double)>& f) {
     return s;
 }
 
+// Appends one frame (every level, as floats) as 16-bit samples with its own scale: the largest
+// value over all levels (a band-limited level can overshoot level 0) maps to 32767. A frame with
+// a non-finite value gets a NaN scale, for the caller to refuse.
+void appendFrame(Wavetable& t, const float* src) {
+    float peak = 0.0f;
+    bool finite = true;
+    for (int s = 0; s < kFrameStride; ++s) {
+        finite = finite && std::isfinite(src[s]);
+        peak = std::max(peak, std::fabs(src[s]));
+    }
+    const size_t base = t.data.size();
+    t.data.resize(base + kFrameStride, 0);
+    if (!finite) {
+        t.scale.push_back(std::numeric_limits<float>::quiet_NaN());
+        return;
+    }
+    t.scale.push_back(peak / 32767.0f);
+    if (peak <= 0.0f) return;   // silent: zeros, scale 0
+    const float inv = 32767.0f / peak;
+    for (int s = 0; s < kFrameStride; ++s)
+        t.data[base + static_cast<size_t>(s)] = static_cast<int16_t>(std::clamp(std::lrint(src[s] * inv), -32767L, 32767L));
+}
+
 // Renders up to two frames (b may be null) at every mip level, appended to t, one inverse
 // FFT per level for both. `normalise`: scale each frame by its level-0 peak, so built-in
 // frames don't jump in level as you morph.
 void addFrames(Wavetable& t, const Plans& plans, const Spectrum& sa, const Spectrum* sb, bool normalise) {
     const int count = sb ? 2 : 1;
-    const size_t base = t.data.size();
-    t.data.resize(base + static_cast<size_t>(count) * kFrameStride);
+    std::vector<float> f32(static_cast<size_t>(count) * kFrameStride);   // as floats, then appendFrame
     std::vector<cd> x(static_cast<size_t>(kTableSize));
     double gain[2] = {1.0, 1.0};
     for (int k = 0; k < kMipLevels; ++k) {
@@ -196,7 +220,7 @@ void addFrames(Wavetable& t, const Plans& plans, const Spectrum& sa, const Spect
             for (int f = 0; f < 2; ++f) gain[f] = peak[f] > 1e-9 ? 1.0 / peak[f] : 1.0;
         }
         for (int f = 0; f < count; ++f) {
-            float* dst = &t.data[base + static_cast<size_t>(f) * kFrameStride + static_cast<size_t>(mipOffset(k))];
+            float* dst = &f32[static_cast<size_t>(f) * kFrameStride + static_cast<size_t>(mipOffset(k))];
             for (int s = 0; s < n; ++s) {
                 const cd v = x[static_cast<size_t>(s)];
                 dst[s] = static_cast<float>((f ? v.imag() : v.real()) * gain[f]);
@@ -204,6 +228,7 @@ void addFrames(Wavetable& t, const Plans& plans, const Spectrum& sa, const Spect
             dst[n] = dst[0];
         }
     }
+    for (int f = 0; f < count; ++f) appendFrame(t, &f32[static_cast<size_t>(f) * kFrameStride]);
     t.frames += count;
 }
 
@@ -273,6 +298,8 @@ Tables build() {
     specs.clear();
     for (int f = 0; f < kPulseFrames; ++f) specs.push_back(pulse(0.5 - 0.47 * f / (kPulseFrames - 1)));
     addSpectra(out.classic[CW_PULSE], plans, specs, false);
+    for (auto& t : out.builtin) t.id = newTableId();
+    for (auto& t : out.classic) t.id = newTableId();
     return out;
 }
 
@@ -282,6 +309,11 @@ const Tables& tables() {
 }
 
 } // namespace
+
+uint32_t newTableId() {
+    static std::atomic<uint32_t> next{1};
+    return next.fetch_add(1, std::memory_order_relaxed);
+}
 
 const std::vector<Wavetable>& builtinTables() { return tables().builtin; }
 
@@ -382,6 +414,7 @@ bool loadWavetable(const std::string& path, Wavetable& out, std::string* err) {
     Wavetable t;
     t.name = stem(path);
     t.data.reserve(frames * kFrameStride);
+    t.scale.reserve(frames);
     std::vector<cd> x(static_cast<size_t>(frameSize));
     Spectrum sa, sb;
     for (size_t fr = 0; fr < frames; fr += 2) {
@@ -397,17 +430,20 @@ bool loadWavetable(const std::string& path, Wavetable& out, std::string* err) {
 
     float peak = 0.0f;
     for (int fr = 0; fr < t.frames; ++fr) {
-        const float* m0 = t.get(fr, 0);
-        for (int i = 0; i < kTableSize; ++i) peak = std::max(peak, std::fabs(m0[i]));
+        if (!std::isfinite(t.scale[static_cast<size_t>(fr)])) return fail(err, "bad sample values");   // never a NaN table on the audio thread
+        const int16_t* m0 = t.get(fr, 0);
+        int top = 0;
+        for (int i = 0; i < kTableSize; ++i) top = std::max(top, std::abs(static_cast<int>(m0[i])));
+        peak = std::max(peak, static_cast<float>(top) * t.scale[static_cast<size_t>(fr)]);
     }
-    if (!std::isfinite(peak)) return fail(err, "bad sample values");
     if (peak < 1e-6f) return fail(err, "silent");
     const float gain = 1.0f / peak;
-    for (float& v : t.data) {
-        v *= gain;
-        if (!std::isfinite(v)) return fail(err, "bad sample values");   // never a NaN table on the audio thread
+    for (float& sc : t.scale) {
+        sc *= gain;
+        if (!std::isfinite(sc)) return fail(err, "bad sample values");
     }
 
+    t.id = newTableId();
     out = std::move(t);
     return true;
 }

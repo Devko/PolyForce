@@ -252,6 +252,51 @@ void surfaceTexts() {
     CHECK(h.run(40) < 200.0f && h.finite);
 }
 
+// The frame cache (the tables are 16-bit; a position that holds still for a chunk plays a float
+// copy, two frames premixed) sounds like reading the table directly: a position between two frames,
+// one gliding there and stopping, and more frames, levels and subs than the cache holds at once
+// (slots evicted, the fill budget spent). Cache on and off agree to float rounding.
+void frameCache() {
+    auto take = [](const pf::Patch& p, bool cache, const std::vector<int>& notes) {
+        pf::Synth s;
+        s.setFrameCache(cache);
+        s.setPatch(p);
+        for (int n : notes) s.noteOn(n, 127);
+        std::vector<float> out;
+        float l[kBlock], r[kBlock];
+        for (int b = 0; b < 60; ++b) {
+            s.render(l, r, kBlock);
+            out.insert(out.end(), l, l + kBlock);
+            out.insert(out.end(), r, r + kBlock);
+        }
+        return out;
+    };
+    auto agree = [&](const pf::Patch& p, const std::vector<int>& notes) {
+        const auto a = take(p, true, notes), b = take(p, false, notes);
+        float peak = 0.0f, diff = 0.0f;
+        for (size_t i = 0; i < a.size(); ++i) {
+            peak = std::max(peak, std::fabs(a[i]));
+            diff = std::max(diff, std::fabs(a[i] - b[i]));
+        }
+        return peak > 0.05f && diff < 2e-5f * peak;
+    };
+    pf::Patch p = base();
+    p.osc[0].pos = 0.37f;   // Classic: between frames 5 and 6
+    p.osc[0].unison = 3;
+    p.osc[1].level = 0.6f;
+    p.osc[1].pos = 0.61f;
+    p.osc[1].unison = 2;
+    CHECK(agree(p, {36, 60, 84}));
+    p.env2Pos = 0.5f;   // gliding up while env 2 rises and falls, then holding at its sustain
+    p.env[1] = {0.05f, 0.05f, 0.5f, 0.3f};
+    CHECK(agree(p, {36, 60, 84}));
+    p.env2Pos = 0.0f;
+    p.osc[0].unison = p.osc[1].unison = 4;
+    p.osc[0].subLevel = p.osc[1].subLevel = 0.5f;
+    p.osc[1].subWave = pf::CW_SAW;
+    CHECK(agree(p, {24, 33, 45, 57, 69, 81, 93, 105}));
+}
+
 } // namespace
 
 void oscillatorTests() {
@@ -261,6 +306,7 @@ void oscillatorTests() {
     routingAndPan();
     noise();
     surfaceTexts();
+    frameCache();
 }
 
 } // namespace pft

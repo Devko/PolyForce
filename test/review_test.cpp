@@ -886,7 +886,7 @@ void pluginFixes2() {
         std::string err;
         if (pf::loadWavetable(path, t, &err)) {
             bool finite = true;
-            for (float v : t.data) finite = finite && std::isfinite(v);
+            for (float v : t.scale) finite = finite && std::isfinite(v);
             CHECK(finite);
         }
     }

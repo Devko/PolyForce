@@ -180,6 +180,8 @@ public:
         float level;       // amp envelope
     };
     VoiceInfo voiceInfo(int i) const;
+    // The frame cache (tests, diagnostics): off, every oscillator reads its 16-bit table directly.
+    void setFrameCache(bool on) { cacheOn_ = on; }
 
     static constexpr int kHeldMax = 16;   // keys remembered for Mono/Legato/Duo note priority
     static constexpr int kFadeSamples = 132;   // ~3 ms: a stolen voice fades before it restarts
@@ -213,6 +215,7 @@ private:
         Env      env[2];
         uint32_t phase[2][kMaxUnison] = {};
         uint32_t subPhase[2] = {};
+        int      cacheSlot[4] = {};   // the frame cache slot each oscillator, then each sub, used last (a hint)
         uint32_t noiseRng = 1;
         float    noiseLp[2] = {};          // noise colour filter state, per channel
         float    oscNoiseLp[2][2] = {};    // an oscillator set to Noise: its colour filter, [osc][ch]
@@ -313,8 +316,10 @@ private:
     void renderSources(int lane, int n);
     void finishLanes(float* outL, float* outR, int n, bool direct);
     void filterLanes(int f, float* busL, float* busR, int n);
-    void renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, float* R, int n) const;   // adds into L, R
-    void renderSub(Voice& v, int o, float pitch, float level, float* L, float* R, int n) const;
+    void renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, float* R, int n);   // adds into L, R
+    void renderSub(Voice& v, int o, float pitch, float level, float* L, float* R, int n);
+    const float* cachedFrame(const Wavetable& t, int fa, int fb, float morph, int mip, int& hint);
+    const float* findFrame(const Wavetable& t, int fa, int fb, float morph, int mip, int& hint);
     // gain glides from prevGain (unless !ramped) and is left there for the next chunk.
     void renderNoise(uint32_t& rng, float* lp, float color, float gain, float& prevGain, bool ramped, float* L, float* R, int n) const;
     struct Ctl { float hz, res, drive, pre, post, wet; };
@@ -352,6 +357,25 @@ private:
     alignas(16) float bus_[3][2][kChunk * kMaxVoices];
     Lane lanes_[kMaxVoices];
     int  nLanes_ = 0;
+
+    // The frame cache: float copies of what the oscillators play at a position that holds still
+    // for a chunk (one level of a frame, or of two frames premixed at the morph), shared by every
+    // voice; the tables themselves are 16-bit. At most kCacheBudget samples are (re)filled per
+    // chunk: past that an oscillator reads its table directly, as it does while the position moves.
+    static constexpr int kCacheSlots = 24;
+    static constexpr int kCacheBudget = 2 * (kTableSize + 1);
+    struct FrameSlot {
+        uint32_t id = 0;              // the table's (0: empty)
+        int      fa = 0, fb = 0, mip = 0;
+        float    morph = 0.0f;
+        uint32_t used = 0;            // cacheClock_ when last used (LRU)
+        alignas(16) float data[kTableSize + 1];
+        bool holds(uint32_t t, int a, int b, int m, float x) const { return id == t && fa == a && fb == b && mip == m && morph == x; }
+    };
+    FrameSlot cache_[kCacheSlots];
+    uint32_t  cacheClock_ = 0;
+    int       cacheLeft_ = 0;         // this chunk's fill budget left
+    bool      cacheOn_ = true;
 
     // modulation
     LfoState glfo_[2];               // Global-trigger LFOs, shared by every voice
