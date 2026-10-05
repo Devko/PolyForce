@@ -170,9 +170,12 @@ QEMU, profile-guided, with the test suite run against the objects the `.so` is l
 sanitizer suite runs on x86. The zip is checked with the catalog's own checker
 (`third_party/mpc-vst-plugins/tools/catalog_check.py --catalog`) and kept as the run's artifact.
 
-Pushing a tag `vX.Y.Z` also publishes it as a GitHub release, a prerelease while the version is 0.x
-(the catalog's beta channel). The catalog reads the major version as the parameter list's
-compatibility: bump X whenever parameter indices change.
+Pushing a tag `vX.Y.Z` also publishes it as a GitHub release, which the plugin catalog lists with a
+download button and its installers offer. A tag with a suffix (`v0.1.0-beta`) publishes a
+prerelease instead: the catalog's beta channel, which its site shows only when a visitor ticks
+"Show beta releases" and its installers never offer. The plugin's version is the tag without the
+suffix. The catalog reads the major version as the parameter list's compatibility: bump X whenever
+parameter indices change.
 
 The same build outside CI, in an ARM environment: `make ARM_PREFIX= ARM_RUN= PGO=1 plugin-package`
 (`ARM_PREFIX` empty: the native compiler; `ARM_RUN` empty: ARM programs run directly).
