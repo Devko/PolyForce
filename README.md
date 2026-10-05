@@ -7,10 +7,13 @@ and Q-Link sets. Its feature set tips its hat to a certain *buzzing* desktop wav
 squeezed into the CPU budget of a standalone groovebox. The name, DSP, wavetables and presets are
 all PolyForce's own.
 
+![PolyForce's WAVES page on an Akai Force: both oscillators' current frames as bars, with their table, position and level](docs/img/waves.png)
+
 > [!NOTE]
 > **Preview.** Milestones 1–7 are complete and pass the full test suite on x86 and under ARM
-> emulation, but this build has not been verified on hardware yet. The plugin ID (`PlFc`), the
-> file name (`polyforce.so`) and the parameter list may still change before v0.1.
+> emulation. It runs on an Akai Force (MPC OS 3.x): the pages, browser and buttons have been
+> checked on the device, a full on-device test round is still to come. The plugin ID (`PlFc`) and
+> the file name (`polyforce.so`) stay; the parameter list may still change before v0.1.
 
 ## Highlights
 

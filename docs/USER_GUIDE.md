@@ -27,6 +27,16 @@ starts with the [status line](#status-line).
 | **VOICE** | VOICE | Voice mode, steal mode, voices, volume, velocity, bend range · glide · preset and tuning, Save, Init, Random |
 | **SEQ** | ARP/SEQ · STEPS · SHAPES 1-2 · SHAPES 3-4 | Arpeggiator and sequencer settings · the 16 steps (note, velocity, mod) · the shape-sequencer lanes |
 
+The pages on a Force, with the factory preset *Vocal / Vowel Morph*:
+
+| | |
+|---|---|
+| ![OSC 1: the first oscillator's table, knobs, output and sub oscillator](img/osc1.png) **OSC → OSC 1** | ![WAVES: both oscillators' current frames as bars](img/waves.png) **OSC → WAVES** |
+| ![FILTER: both filters with type, cutoff, resonance, env amount, keytrack and drive](img/filter.png) **FILTER** | ![ENVELOPES: the amp and mod envelopes](img/envelopes.png) **MOD → ENVELOPES** |
+| ![LFOS: both LFOs with wave, sync, division, polarity and trigger](img/lfos.png) **MOD → LFOS** | ![MATRIX 1-4: LFO 1 and LFO 2 on the oscillators' positions, the mod wheel on the cutoff](img/matrix.png) **MATRIX → MATRIX 1-4** |
+| ![BROWSE: preset categories and the presets of VOCAL](img/browse.png) **BROWSE** | ![VOICE: voice and steal modes, glide, preset and tuning steppers, SAVE, INIT, RANDOM](img/voice.png) **VOICE** |
+| ![ARP/SEQ: arpeggiator and sequencer settings, the shape sequencer](img/arpseq.png) **SEQ → ARP/SEQ** | |
+
 ### Q-Links
 
 Every page has its own Q-Link set: the knobs follow the page that is up. The Force's eight knobs
