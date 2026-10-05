@@ -4,6 +4,7 @@
 - [Device measurements](#device-measurements)
 - [First pass: NEON](#first-pass-neon)
 - [Second pass: control rate, matrix, PGO](#second-pass-control-rate-matrix-pgo)
+- [Third pass: output stage, 16-bit tables, frame cache](#third-pass-output-stage-16-bit-tables-frame-cache)
 - [Open question: memory traffic](#open-question-memory-traffic)
 - [CPU guard](#cpu-guard)
 - [Wavetable import](#wavetable-import)
@@ -102,21 +103,68 @@ Also in this pass:
 | 8 voices × 1 | 232 k | 193 k (−17%) | 178 k (−23%) |
 | 8 voices × 8 unison, busy matrix | 567 k | 518 k (−9%) | 505 k (−11%) |
 
-Since then the output stage sums **four voices per vector** as well (envelope, gliding gains and the
-buses together): about −6% ARM instructions at 8 voices and −4% at 8 × 8 with a busy matrix, the
-output within 4.7e-7 of before (summation order).
+## Third pass: output stage, 16-bit tables, frame cache
+
+- **Output stage across voices.** The last pass (amp envelope, steal fade, gliding gains, the sum
+  into the output) runs **four voices per vector** like the filters, and four samples' sums are
+  reduced into one vector. Up to four voices the envelope's closed form `c1 + c2 · q^(i+1)` is
+  worked out inside the sum; with more voices, or in a chunk with a steal fade or a stage change,
+  it goes through a table (eight lanes of everything would not fit NEON's registers).
+- **16-bit wavetables.** Samples are `int16` with one float scale per frame (the largest value of
+  the frame over all its levels maps to 32767): a 256-frame table takes **4.5 MB instead of 9.0 MB**,
+  so the shared 96 MB table cache holds twice as many, and the built-ins shrink the same way. The
+  rounding sits about 96 dB under each frame's own peak, so a quiet frame keeps its resolution.
+  The importer quantises frame by frame (no full-size float copy while loading). While the
+  position moves, the oscillator reads the 16-bit frames directly: one 32-bit load per pair of
+  neighbouring samples, unzip, widen, convert, about as many instructions per sample as the float
+  tables took.
+- **Frame cache for positions that hold still.** A position that is the same as in the previous
+  chunk plays a float copy of its frame at that mip level, two frames premixed at the morph: one
+  table read per sample instead of two, nothing to convert. 24 slots per instance (about 200 KB),
+  shared by its voices, least recently used goes first, each voice remembering its last slot; at
+  most two full-size frames are (re)filled per 32-sample chunk, past that the oscillator reads the
+  table directly. Sub oscillators use it too.
+- **Comb filters** no longer clear their delay lines (64 KB per voice) when a note starts: a read
+  further back than the note has written counts as silence.
+- **The plugin copies the parameters** for the engine only when one was written since the last
+  block.
+
+ARM instructions per block, counted with the same patch before and after (both oscillators, F1
+LP24 with drive into F2 LP12, notes held; "moving": envelope 2 sweeps the position, "still": it
+stays put):
+
+| ARM instructions per block | Before | After | PGO before | PGO after |
+|---|---|---|---|---|
+| 1 voice, moving | 56.3 k | 49.3 k (−12%) | 52.8 k | 45.6 k (−14%) |
+| 1 voice, still | 57.0 k | 47.2 k (−17%) | 52.8 k | 43.2 k (−18%) |
+| 8 voices × 1, moving | 198.5 k | 183.3 k (−8%) | 184.8 k | 169.6 k (−8%) |
+| 8 voices × 1, still | 198.7 k | 164.7 k (−17%) | 183.2 k | 150.0 k (−18%) |
+| 8 × 8 unison, moving | 496.2 k | 477.3 k (−4%) | 483.2 k | 476.6 k (−1%) |
+| 8 × 8 unison, still | 497.3 k | 349.2 k (−30%) | 481.2 k | 332.7 k (−31%) |
+| 8 × 8 unison, busy matrix | 528.0 k | 440.8 k (−17%) | 509.3 k | 434.1 k (−15%) |
+
+(In the busy patch one oscillator's modulated position rests at the end of its table, so it plays
+from the cache.) qemu counts no memory stalls: what half the table memory does for cache misses
+only the device bench shows.
+
+The 16-bit samples are the one deliberate change in the sound: over the 132 test scenes the output
+is within about 1e-5 relative RMS of the float tables, 1.2e-4 in the quietest (LP24 into HP24 at
+3 kHz, little left but the rounding). The frame cache and the direct reads agree within 2.3e-6;
+the output stage matches the old one within 4.7e-7 (summation order). `test/m3_test.cpp` plays
+still, gliding and over-full cases with the frame cache on and off (`Synth::setFrameCache`).
 
 ## Open question: memory traffic
 
-At 8 × 8 the oscillators are now about 70% of the block. A 256-frame table is 9 MB; the Force's L2
-cache is about 1 MB. Whether the oscillators wait on memory is what the stage bench answers on the
-device: `make bench-device WAVETABLES=<folder>` runs a profiling build (`polyforce_stages.so`) that
+At 8 × 8 the oscillators are still about 70% of the block when the position moves. A 256-frame
+table is 4.5 MB now; the Force's L2 cache is about 1 MB. A position that holds still reads an 8 KB
+float copy whatever the table's size; a moving one reads the table itself. Whether that waits on
+memory is what the stage bench answers on the device: `make bench-device WAVETABLES=<folder>` runs a profiling build (`polyforce_stages.so`) that
 reports each pass's time per block, then plays the same voices with the positions swept on the
 built-in Classic table and on a 256-frame table from that folder.
 
-- If the sources pass grows clearly with the large table, **16-bit tables** (half the memory
-  traffic) are the next step.
-- If not, they would only cost precision.
+- If the sources pass still grows clearly with the large table, prefetching the frames a moving
+  position is heading for is the next thing to try.
+- If not, memory is not what limits the oscillators.
 
 The profiling build is a plain (not profile-guided) build, so its times read a little higher than
 the shipped `.so`'s.
@@ -144,13 +192,14 @@ A 256-frame table first took **582 ms and 22 MB** on the Force. Two changes (Mil
   instead of 2048 — 2.4× less memory, the audible levels 0–2 unchanged.
 - **Two frames per FFT:** two real frames share one complex FFT, halving the FFT count.
 
-Now about **120 ms and 9.0 MB** on x86 (`-O2`); `make bench-device` times it on the device.
+Since the third pass the samples are 16-bit with a scale per frame, quantised as each frame pair
+is built. Now about **120 ms and 4.5 MB** on x86 (`-O2`); `make bench-device` times it on the device.
 Loading always happens off the audio thread.
 
 ## Considered and left out
 
-- **Precomputed float frame pairs** for the oscillator reads: about one instruction in eleven saved
-  for twice the table memory, while the open question is memory traffic.
+- **Float copies for moving positions:** the frame cache only pays off for a position that stays
+  put; a moving one would need a new copy every chunk, and float tables would double the memory.
 - **Voices on a second core:** MPC already runs instances on its audio workers in parallel, and
   handing voices to another thread inside a 2.9 ms block risks dropouts that can't be tested
   without the device.

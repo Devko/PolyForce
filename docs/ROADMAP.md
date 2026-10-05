@@ -25,8 +25,6 @@ Status: ✅ done · 🔜 next · ⬜ planned · 💤 deferred
   tables' build times (Growl, the slowest, at 73 ms on x86).
 - 🔜 **Wave view on the device:** how quickly MPC redraws 48 meters at once, and that pushing them
   doesn't mark the project as changed.
-- ⬜ **16-bit tables** (half the memory traffic), only if the large table clearly costs more in the
-  sources pass on the device.
 - ⬜ **v0.1**, the first release: parameter list frozen (append-only from then on), catalog-style
   package.
 
@@ -67,8 +65,8 @@ Design record: [M1_DESIGN.md](M1_DESIGN.md).
   folder, shared name prefixes hidden, built-ins as *Built-in*
 - ✅ Per-instance loader thread, shared LRU cache (96 MB), lock-free handoff to the audio thread,
   150 ms debounce, `LOADING` / `MISSING` in the status line, a missing table's key kept
-- ✅ Faster, smaller import: per-level mip lengths and two frames per FFT; a 256-frame table now
-  takes ~120 ms and 9.0 MB on x86 (was 582 ms and 22 MB on the Force)
+- ✅ Faster, smaller import: per-level mip lengths, two frames per FFT, 16-bit samples; a
+  256-frame table now takes ~120 ms and 4.5 MB on x86 (was 582 ms and 22 MB on the Force)
 - ✅ Recall by key (`o1_table=plugin:Analog/…`), not by index
 - ✅ Browsing: table steppers, browser page, favorites, recent, random, copy / swap;
   `FRAME 37 / 256` on the position knob
@@ -168,6 +166,17 @@ matrix −11% ([details](PERFORMANCE.md#second-pass-control-rate-matrix-pgo)).
 - ✅ `pfbench`: per-pass times from a profiling build, a large table against one that fits the cache
 - ✅ CPU guard: sheds the quietest release tails when an instance runs over budget, never held notes
 
+### Third performance pass ✅ (2026-10-05)
+
+ARM instructions per block against the build before it: positions holding still −17% (1 and 8
+voices) to −30% (8 × 8), moving −4% (8 × 8) to −12% (1 voice), 8 × 8 with a busy matrix −17%
+([details](PERFORMANCE.md#third-pass-output-stage-16-bit-tables-frame-cache)).
+
+- ✅ Output stage four voices per vector
+- ✅ 16-bit wavetables with a scale per frame: half the memory (4.5 MB per 256 frames)
+- ✅ Frame cache: positions that hold still play a premixed float copy of their frame
+- ✅ Comb lines no longer cleared at note start; parameters copied only after a write
+
 ---
 
 ## Reviews
@@ -215,7 +224,7 @@ check (`test/review_test.cpp`, `m2`, `m5`). The larger ones:
 | Wavetable scripting | No text entry on the device; at most an offline desktop tool that writes WAVs |
 | MTS-ESP microtuning | Needs a tuning master plugin; none exists inside MPC |
 | MPE | Untested whether MPC passes per-note channels and pitch bend to a VST2; probe before planning |
-| Precomputed float frame pairs | About one instruction in eleven for twice the table memory |
+| Float tables, or float copies for moving positions | Twice the memory; the frame cache covers positions that hold still |
 | Voices on a second core | MPC already spreads instances over its audio workers; a voice thread inside a 2.9 ms block risks dropouts that can't be tested without the device |
 
 ---

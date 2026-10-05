@@ -37,8 +37,8 @@ flowchart LR
 |---|---|
 | `surface/surface.py` | Parameter list and touchscreen pages; generates everything the skin and the C++ side need |
 | `surface/skin_polish.py` | Redraws knob strips, buttons, stepper arrows and the wave view's bars after the generator |
-| `dsp/synth.*` | The engine: voices, oscillators (uint32 phase), sub, noise, Simper SVF, comb and vowel filters, ADSRs, LFOs, the mod matrix; 32-sample control rate with per-chunk glides |
-| `dsp/wavetable.*` | Band-limited tables (11 mip levels, 2048 down to 256 samples per frame, FFT-built two frames at a time), the 30 computed built-ins (Classic at load, the rest on first use), the Serum WAV loader |
+| `dsp/synth.*` | The engine: voices, oscillators (uint32 phase), sub, noise, Simper SVF, comb and vowel filters, ADSRs, LFOs, the mod matrix; 32-sample control rate with per-chunk glides; four voices per vector in the filters and the output; the frame cache (float copies of positions that hold still) |
+| `dsp/wavetable.*` | Band-limited tables (11 mip levels, 2048 down to 256 samples per frame, 16-bit with a scale per frame, FFT-built two frames at a time), the 30 computed built-ins (Classic at load, the rest on first use), the Serum WAV loader |
 | `dsp/simd.h` | Four-float vectors: NEON on the Force, SSE on x86, so the tests run the same code |
 | `dsp/stages.h` | Per-pass timers for the profiling build (`-DPF_STAGE_TIMING`) |
 | `dsp/mod.h` | LFO shapes, sync divisions, mod sources, targets and modifiers |
@@ -86,7 +86,8 @@ decides whether filter 1 feeds filter 2 or sits beside it.
 The engine renders in **chunks of 32 samples**, in passes over all sounding voices:
 
 1. **Control:** mod matrix, mod envelope, pitch; values for the chunk
-2. **Sources:** oscillators, subs and noise into per-voice buses
+2. **Sources:** oscillators, subs and noise into per-voice buses. The tables are 16-bit; a
+   position that holds still plays a float copy of its frame from the per-instance frame cache
 3. **Filter 1**, then **filter 2**, four voices per NEON vector, drive as its own pass
 4. **Output:** the buses, amp envelope, velocity, pan and a stolen voice's fade, summed four voices
    per vector
