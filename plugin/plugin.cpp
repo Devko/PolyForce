@@ -98,6 +98,7 @@ struct Plugin {
     // audio thread only
     float   snapshot[P_COUNT] = {};
     bool    havePatch = false;   // patch / seq below are built from snapshot
+    uint32_t seenWrites = 0;     // the surface's write count that snapshot is current for
     Patch   patch;
     SeqPatch seq;
     RawMidi midi[kMaxMidi] = {};
@@ -266,13 +267,21 @@ void updateWaveView(Plugin* p) {
 void runBlock(Plugin* p, float* L, float* R, int n) {
     // The sound only changes when a parameter or a loaded table does: then rebuild the patch
     // (a few hundred value conversions) and hand it to the engine; else keep both as they are.
-    float fresh[P_COUNT];
+    // Looked at only when something was written since the last look: copying and comparing every
+    // value is a few thousand instructions, every block, for nothing most of the time.
     bool changed = false;
-    if (p->surface.snapshot(fresh) && (!p->havePatch || std::memcmp(fresh, p->snapshot, sizeof fresh) != 0)) {   // mid-preset: false
-        std::memcpy(p->snapshot, fresh, sizeof fresh);
-        p->patch = patchFromParams(p->snapshot);
-        p->seq = seqFromParams(p->snapshot);
-        p->havePatch = changed = true;
+    const uint32_t writes = p->surface.writes();   // before the snapshot: a later write shows next block
+    if (!p->havePatch || writes != p->seenWrites) {
+        float fresh[P_COUNT];
+        if (p->surface.snapshot(fresh)) {   // mid-preset: false, look again next block
+            p->seenWrites = writes;
+            if (!p->havePatch || std::memcmp(fresh, p->snapshot, sizeof fresh) != 0) {
+                std::memcpy(p->snapshot, fresh, sizeof fresh);
+                p->patch = patchFromParams(p->snapshot);
+                p->seq = seqFromParams(p->snapshot);
+                p->havePatch = changed = true;
+            }
+        }
     }
     for (int o = 0; o < 2; ++o) {   // read once per block: valid until blockDone() below
         const auto* t = static_cast<const Wavetable*>(p->loader.live(o));

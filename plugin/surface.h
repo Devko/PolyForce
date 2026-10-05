@@ -70,6 +70,8 @@ public:
     // Every parameter's current 0..1 value. False (and `out` untouched) while a batch is
     // being written: keep using the previous snapshot.
     bool        snapshot(float* out) const;
+    // Moves on every value write: unchanged since a snapshot, the snapshot is still current.
+    uint32_t    writes() const { return changes_.load(std::memory_order_acquire); }
     // True once when a MISSING note in the status line has run its time (no lock, no allocation).
     bool        statusExpired();
 
