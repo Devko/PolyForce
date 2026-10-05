@@ -5,6 +5,7 @@
 // subs, noise and the classic waves. The profile only steers the compiler (which paths are hot);
 // what the trainer leaves out is still optimised as usual (-fprofile-partial-training).
 #include "../dsp/mod.h"
+#include "../dsp/synth.h"
 #include "../plugin/vst2.h"
 #include "param_ids.h"
 
@@ -17,7 +18,7 @@ extern "C" AEffect* VSTPluginMain(audioMasterCallback);
 
 namespace {
 
-constexpr int kFilterTypes = 11;   // dsp/synth.h FilterType: Off .. Vowel
+constexpr int kFilterTypes = pf::F_VOWEL + 1;   // Off .. Vowel
 VstTimeInfo g_time{};
 
 intptr_t master(AEffect*, int32_t op, int32_t, intptr_t, void*, float) {

@@ -906,6 +906,62 @@ void pluginFixes2() {
         std::ofstream(tri) << "tritave\n1\n3/1\n";
         CHECK(pf::loadTuning(tri, t) && std::fabs(t.pitch[61] - (60.0f + 12.0f * std::log2(3.0f))) < 1e-3f);
     }
+    // Option lists (surface.py) follow the C++ enums: the label MPC shows is the mode the
+    // engine runs. patch_map.cpp's static_asserts only compare counts; this pins the order.
+    {
+        struct Opt { int param, value; const char* text; };
+        const Opt opts[] = {
+            {pf::P_F1_TYPE, pf::F_OFF, "Off"}, {pf::P_F1_TYPE, pf::F_LP12, "LP12"}, {pf::P_F1_TYPE, pf::F_LP24, "LP24"},
+            {pf::P_F1_TYPE, pf::F_BP, "BP"}, {pf::P_F1_TYPE, pf::F_HP12, "HP12"}, {pf::P_F1_TYPE, pf::F_HP24, "HP24"},
+            {pf::P_F1_TYPE, pf::F_NOTCH, "Notch"}, {pf::P_F1_TYPE, pf::F_PEAK, "Peak"},
+            {pf::P_F1_TYPE, pf::F_COMB_PLUS, "Comb+"}, {pf::P_F1_TYPE, pf::F_COMB_MINUS, "Comb-"},
+            {pf::P_F1_TYPE, pf::F_VOWEL, "Vowel"},
+            {pf::P_ENGINE, pf::EN_CLEAN, "Clean"}, {pf::P_ENGINE, pf::EN_NORMAL, "Normal"}, {pf::P_ENGINE, pf::EN_DIRTY, "Dirty"},
+            {pf::P_O1_WAVE, pf::OW_TABLE, "Table"}, {pf::P_O1_WAVE, pf::OW_SINE, "Sine"},
+            {pf::P_O1_WAVE, pf::OW_TRIANGLE, "Triangle"}, {pf::P_O1_WAVE, pf::OW_SAW, "Saw"},
+            {pf::P_O1_WAVE, pf::OW_SQUARE, "Square"}, {pf::P_O1_WAVE, pf::OW_PULSE, "Pulse"}, {pf::P_O1_WAVE, pf::OW_NOISE, "Noise"},
+            {pf::P_O1_PHMODE, pf::PH_RESET, "Reset"}, {pf::P_O1_PHMODE, pf::PH_RANDOM, "Random"}, {pf::P_O1_PHMODE, pf::PH_FREE, "Free"},
+            {pf::P_O1_ROUTE, pf::RT_F1, "F1"}, {pf::P_O1_ROUTE, pf::RT_F2, "F2"}, {pf::P_O1_ROUTE, pf::RT_BOTH, "F1+F2"},
+            {pf::P_O1_ROUTE, pf::RT_DIRECT, "Direct"},
+            {pf::P_O1_SUB_WAVE, pf::CW_SINE, "Sine"}, {pf::P_O1_SUB_WAVE, pf::CW_TRIANGLE, "Triangle"},
+            {pf::P_O1_SUB_WAVE, pf::CW_SAW, "Saw"}, {pf::P_O1_SUB_WAVE, pf::CW_SQUARE, "Square"},
+            {pf::P_L1_WAVE, pf::LW_SINE, "Sine"}, {pf::P_L1_WAVE, pf::LW_TRIANGLE, "Triangle"},
+            {pf::P_L1_WAVE, pf::LW_SAW_UP, "Saw Up"}, {pf::P_L1_WAVE, pf::LW_SAW_DOWN, "Saw Down"},
+            {pf::P_L1_WAVE, pf::LW_SQUARE, "Square"}, {pf::P_L1_WAVE, pf::LW_SAMPLE_HOLD, "S&H"}, {pf::P_L1_WAVE, pf::LW_SMOOTH, "Smooth"},
+            {pf::P_L1_TRIG, pf::LT_RETRIG, "Retrig"}, {pf::P_L1_TRIG, pf::LT_FREE, "Free"}, {pf::P_L1_TRIG, pf::LT_GLOBAL, "Global"},
+            {pf::P_M1_MOD, pf::MM_NONE, "None"}, {pf::P_M1_MOD, pf::MM_CURVE, "Curve"}, {pf::P_M1_MOD, pf::MM_RECTIFY, "Rectify"},
+            {pf::P_M1_MOD, pf::MM_QUANTIZE, "Quantize"}, {pf::P_M1_MOD, pf::MM_SAMPLE_HOLD, "S&H"}, {pf::P_M1_MOD, pf::MM_SLEW, "Slew"},
+            {pf::P_ARP_DIR, pf::AD_UP, "Up"}, {pf::P_ARP_DIR, pf::AD_DOWN, "Down"}, {pf::P_ARP_DIR, pf::AD_UP_DOWN, "Up/Down"},
+            {pf::P_ARP_DIR, pf::AD_DOWN_UP, "Down/Up"}, {pf::P_ARP_DIR, pf::AD_PLAYED, "Played"},
+            {pf::P_ARP_DIR, pf::AD_RANDOM, "Random"}, {pf::P_ARP_DIR, pf::AD_CHORD, "Chord"},
+            {pf::P_SEQ_MODE, pf::SQ_OFF, "Off"}, {pf::P_SEQ_MODE, pf::SQ_ARP, "Arp"}, {pf::P_SEQ_MODE, pf::SQ_SEQ, "Seq"},
+            {pf::P_SH1_MODE, pf::SM_STEP, "Step"}, {pf::P_SH1_MODE, pf::SM_RAMP, "Ramp"}, {pf::P_SH1_MODE, pf::SM_SMOOTH, "Smooth"},
+            {pf::P_VMODE, pf::VM_POLY, "Poly"}, {pf::P_VMODE, pf::VM_DUO, "Duo"}, {pf::P_VMODE, pf::VM_MONO, "Mono"},
+            {pf::P_VMODE, pf::VM_LEGATO, "Legato"},
+            {pf::P_STEAL, pf::ST_OLDEST, "Oldest"}, {pf::P_STEAL, pf::ST_QUIETEST, "Quietest"},
+            {pf::P_STEAL, pf::ST_KEEP_LOW, "Keep low"}, {pf::P_STEAL, pf::ST_KEEP_HIGH, "Keep high"},
+            {pf::P_GLIDE_MODE, pf::GL_OFF, "Off"}, {pf::P_GLIDE_MODE, pf::GL_ALWAYS, "Always"}, {pf::P_GLIDE_MODE, pf::GL_LEGATO, "Legato"},
+        };
+        const char* sources[pf::MS_COUNT] = {"None", "Env 1", "Env 2", "LFO 1", "LFO 2", "Velocity", "Note", "Mod Wheel",
+                                             "Aftertouch", "Bend", "Random", "Alternate", "Gate", "Seq", "Shape 1", "Shape 2",
+                                             "Shape 3", "Shape 4", "X1", "Y1", "X2", "Y2", "X3", "Y3", "X4", "Y4", "Breath",
+                                             "Expression", "Constant"};
+        const char* targets[pf::MT_COUNT] = {
+            "Off", "Pitch", "Osc1 Pitch", "Osc2 Pitch", "Osc1 Pos", "Osc2 Pos", "Osc1 Level", "Osc2 Level", "Osc1 Pan",
+            "Osc2 Pan", "Osc1 Detune", "Osc2 Detune", "Sub1 Level", "Sub2 Level", "Noise Level", "Noise Colour",
+            "F1 Cutoff", "F2 Cutoff", "Cutoffs", "F1 Reso", "F2 Reso", "F1 Drive", "F2 Drive", "Env1 Attack",
+            "Env1 Decay", "Env1 Sustain", "Env1 Release", "Env2 Attack", "Env2 Decay", "Env2 Sustain", "Env2 Release",
+            "LFO1 Rate", "LFO2 Rate", "LFO1 Depth", "LFO2 Depth", "Volume", "Pan"};
+        static_assert(pf::MS_BREATH == 26 && pf::MT_VOLUME == 35, "update the lists above with the enums");
+        auto shows = [](int id, int value, const char* text) {
+            return pf::paramDisplay(id, pf::paramNorm(id, static_cast<float>(value))) == text;
+        };
+        int wrong = 0;
+        for (const Opt& o : opts) wrong += shows(o.param, o.value, o.text) ? 0 : 1;
+        for (int i = 0; i < pf::MS_COUNT; ++i) wrong += shows(pf::P_M1_SRC, i, sources[i]) && shows(pf::P_M1_VIA, i, sources[i]) ? 0 : 1;
+        for (int i = 0; i < pf::MT_COUNT; ++i) wrong += shows(pf::P_M1_T1, i, targets[i]) ? 0 : 1;
+        CHECK(wrong == 0);
+    }
     // Keys with control characters resolve to nothing ("..\0" passed the ".." check, and the
     // path then ended at the NUL: "<root>/..").
     {

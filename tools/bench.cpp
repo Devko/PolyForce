@@ -6,8 +6,10 @@
 //   pfbench <plugin.so> [-v 1,2,4,8] [-u 1,2,4,8] [-s seconds] [-c cpu] [-t table.wav] [-m 1]
 //
 // Patch under test: both oscillators on, filter 1 LP24 with drive, filter 2 LP12, serial.
-// -m 1 adds a busy modulation matrix: both LFOs on pitch, positions and cutoffs, env 2 and
-// velocity on more targets, a slewed and an S&H slot, envelope-stage modulation (8 slots).
+// -m 1 adds a busy modulation matrix (8 slots): LFO 1 on pitch and filter 1, LFO 2 on osc 1's
+// position, filter 2 and the amp attack (envelope coefficients recomputed as it moves), env 2
+// on osc 2's position, a slewed velocity and an S&H random slot.
+// Hermetic: the plugin reads no user folders and saves nothing (favorites, recent lists).
 // -t also times importing one wavetable WAV (the loader is linked in, not the .so's copy):
 // what picking a table on the touchscreen would cost on this CPU; then plays the largest voice
 // count with an LFO sweeping both positions, first on the built-in Classic table (fits the
@@ -52,6 +54,12 @@ intptr_t master(AEffect*, int32_t op, int32_t, intptr_t, void*, float) {
 double cpuUs() {
     timespec ts;
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+    return static_cast<double>(ts.tv_sec) * 1e6 + static_cast<double>(ts.tv_nsec) * 1e-3;
+}
+
+double wallUs() {
+    timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
     return static_cast<double>(ts.tv_sec) * 1e6 + static_cast<double>(ts.tv_nsec) * 1e-3;
 }
 
@@ -101,7 +109,7 @@ void midi(AEffect* e, uint8_t st, uint8_t d1, uint8_t d2) {
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: %s <plugin.so> [-v 1,2,4,8] [-u 1,2,4,8] [-s seconds] [-c cpu] [-t table.wav]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <plugin.so> [-v 1,2,4,8] [-u 1,2,4,8] [-s seconds] [-c cpu] [-t table.wav] [-m 1]\n", argv[0]);
         return 2;
     }
     std::vector<int> voices = {1, 2, 4, 8}, unison = {1, 2, 4, 8};
@@ -123,6 +131,12 @@ int main(int argc, char** argv) {
         CPU_SET(cpu, &set);
         if (sched_setaffinity(0, sizeof set, &set) != 0) std::printf("note: could not pin to cpu %d\n", cpu);
     }
+    // Empty roots and data dir: no scan of /media/AkaiForce, no favorites or recent written.
+    setenv("PF_DATA_DIR", "", 1);
+    setenv("PF_TABLE_ROOTS", "", 1);
+    setenv("PF_PRESET_ROOTS", "", 1);
+    setenv("PF_TUNING_ROOTS", "", 1);
+    bool failed = false;    // something the run was asked to do didn't happen
     std::string tableKey;   // the plugin's key for it, once it imports
     if (table) {
         pf::Wavetable t;
@@ -136,10 +150,17 @@ int main(int argc, char** argv) {
             // The plugin's only table root becomes the table's folder (its "plugin" root).
             const std::string path = table;
             const size_t slash = path.rfind('/');
-            setenv("PF_TABLE_ROOTS", slash == std::string::npos ? "." : path.substr(0, slash).c_str(), 1);
-            tableKey = "plugin:" + (slash == std::string::npos ? path : path.substr(slash + 1));
+            const std::string dir = slash == std::string::npos ? "." : path.substr(0, slash);
+            if (dir.find(':') != std::string::npos) {   // the roots variable is a ':' list
+                std::printf("table playback skipped: its folder name contains ':'\n");
+                failed = true;
+            } else {
+                setenv("PF_TABLE_ROOTS", dir.c_str(), 1);
+                tableKey = "plugin:" + (slash == std::string::npos ? path : path.substr(slash + 1));
+            }
         } else {
             std::printf("wavetable import failed: %s\n", err.c_str());
+            failed = true;
         }
     }
 
@@ -191,7 +212,7 @@ int main(int argc, char** argv) {
                             {pf::MS_ENV2, pf::MT_O2_POS, 0.5f, pf::MM_NONE},
                             {pf::MS_VELOCITY, pf::MT_CUT, 0.2f, pf::MM_SLEW},
                             {pf::MS_RANDOM, pf::MT_O1_PAN, 0.5f, pf::MM_SAMPLE_HOLD},
-                            {pf::MS_MODWHEEL, pf::MT_E1_A, 0.5f, pf::MM_NONE}};
+                            {pf::MS_LFO2, pf::MT_E1_A, 0.5f, pf::MM_NONE}};
         const int stride = pf::P_M2_SRC - pf::P_M1_SRC;
         for (int k = 0; k < 8; ++k) {
             set(pf::P_M1_SRC + k * stride, static_cast<float>(slots[k].src));
@@ -222,12 +243,12 @@ int main(int argc, char** argv) {
         const char* names[8];
         if (stages) stages(st, names, 8);   // drops the warm-up's
         std::vector<double> t(static_cast<size_t>(blocks));
-        double sum = 0.0;
+        double wall = 0.0;   // the stages are wall time: so is their "rest"
         for (int b = 0; b < blocks; ++b) {
-            const double a = cpuUs();
+            const double w = wallUs(), a = cpuUs();
             e->processReplacing(e, nullptr, out, kBlock);
             t[static_cast<size_t>(b)] = cpuUs() - a;
-            sum += t[static_cast<size_t>(b)];
+            wall += wallUs() - w;
         }
         const int ns = stages ? stages(st, names, 8) : 0;
         midi(e, 0xB0, 120, 0);   // all sound off before the next case
@@ -247,7 +268,7 @@ int main(int argc, char** argv) {
                 std::printf(" %s %.1f", names[i], st[i] / blocks);
                 staged += st[i] / blocks;
             }
-            std::printf("  rest %.1f\n", sum / blocks - staged);
+            std::printf("  rest %.1f\n", wall / blocks - staged);
         }
         std::fflush(stdout);
     };
@@ -275,17 +296,21 @@ int main(int argc, char** argv) {
         const std::string tables = state.substr(0, state.find('\n')) + "\no1_table=" + tableKey + "\no2_table=" + tableKey + "\n";
         const std::string before = display(e, pf::P_O1_TABLE);
         e->dispatcher(e, vst::effSetChunk, 0, static_cast<intptr_t>(tables.size()), const_cast<char*>(tables.data()), 0.0f);
-        auto loaded = [&](int id) {   // the loader imports it on its own thread ("LOADING ..." meanwhile)
+        // The loader imports it on its own thread: 0 = not yet ("LOADING ..."), 1 = loaded,
+        // -1 = failed (the stepper says MISSING; the plugin plays its fallback).
+        auto tableState = [&](int id) {
             const std::string d = display(e, id);
-            return d != before && d.find("LOADING") == std::string::npos;
+            if (d == before || d.find("LOADING") != std::string::npos) return 0;
+            return d.find("MISSING") != std::string::npos ? -1 : 1;
         };
         const double until = wallMs() + 20000.0;
-        while (!(loaded(pf::P_O1_TABLE) && loaded(pf::P_O2_TABLE)) && wallMs() < until) {
+        while ((tableState(pf::P_O1_TABLE) == 0 || tableState(pf::P_O2_TABLE) == 0) && wallMs() < until) {
             e->processReplacing(e, nullptr, out, kBlock);
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
-        if (!(loaded(pf::P_O1_TABLE) && loaded(pf::P_O2_TABLE))) {
-            std::printf("\nthe plugin did not load %s\n", tableKey.c_str());
+        if (tableState(pf::P_O1_TABLE) != 1 || tableState(pf::P_O2_TABLE) != 1) {
+            std::printf("\nthe plugin did not load %s (%s)\n", tableKey.c_str(), display(e, pf::P_O1_TABLE).c_str());
+            failed = true;
         } else {
             std::printf("\nplayback, positions swept, table %s\n", display(e, pf::P_O1_TABLE).c_str());
             std::printf("%s", header);
@@ -295,5 +320,5 @@ int main(int argc, char** argv) {
     std::printf("worst case: %s\n", worst == 0 ? "PASS" : worst == 1 ? "WARN" : "FAIL");
     e->dispatcher(e, vst::effClose, 0, 0, nullptr, 0.0f);
     dlclose(so);
-    return 0;
+    return failed ? 1 : 0;   // the run itself went wrong (a verdict is not a failure)
 }

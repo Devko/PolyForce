@@ -308,8 +308,13 @@ void loaderTests() {
         Host h;
         const auto before = pf::tableLibrary().recent();
         // A Q-Link spin: MPC sends its own running value + 1/128 per detent, 10 detents.
+        auto last = std::chrono::steady_clock::now();
+        auto maxGap = std::chrono::steady_clock::duration::zero();   // a stalled test machine
         for (int k = 1; k <= 10; ++k) {
             h.setN(pf::P_O1_TABLE, static_cast<float>(k) / 128.0f);
+            const auto now = std::chrono::steady_clock::now();
+            if (k > 1) maxGap = std::max(maxGap, now - last);
+            last = now;
             std::this_thread::sleep_for(std::chrono::milliseconds(30));
         }
         CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Unsorted / loose"; }));
@@ -318,7 +323,9 @@ void loaderTests() {
         int fresh = 0;   // file tables loaded by this scroll
         for (const std::string& k : after)
             fresh += std::find(before.begin(), before.end(), k) == before.end() ? 1 : 0;
-        CHECK(fresh == 1);
+        // A detent more than the debounce apart is a real stop: then that table loads too.
+        if (maxGap < std::chrono::milliseconds(140)) CHECK(fresh == 1);
+        else CHECK(fresh >= 1);
     }
     // The handoff under ASan: tables swap and get freed while another thread renders.
     {
@@ -369,7 +376,7 @@ void browserTests() {
     // A table loaded from elsewhere: the browser follows it to its category, its tile lit,
     // and MPC hears about the lit tile through audioMasterAutomate.
     CHECK(h.load("polyforce 3\no1_table=" + saw + "\n") == 1);
-    CHECK(h.get(pf::P_TBL_2) == 1.0f || h.until([&] { return h.get(pf::P_TBL_2) == 1.0f; }));   // lit at once
+    CHECK(h.get(pf::P_TBL_2) == 1.0f);   // lit at once (before the table has even loaded)
     CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Analog / Saw"; }));
     CHECK(h.get(catTile("ANALOG")) == 1.0f);
     CHECK(h.display(pf::P_TBL_1) == "Pulse" && h.display(pf::P_TBL_2) == "Saw" && h.display(pf::P_TBL_3) == "Square");

@@ -12,10 +12,12 @@ the first release. Effects are left to MPC's own insert effects.
 
 ## Status (2026-10-04): Milestones 1–7 built, not yet on the device
 
-Everything below passes the ASan/UBSan suite (774 checks) on x86 and the same suite
-cross-compiled for the Force under qemu. A full code review after Milestone 7 fixed about 60
-issues (voice stealing, envelope modulation, sequencer clock jumps, crash safety around files,
-browser state, packaging); each fix has a regression check in `test/review_test.cpp`. The skin and the device bench still have to be run on the user's machine
+Everything below passes the ASan/UBSan suite (828 checks) on x86 and the same suite
+cross-compiled for the Force under qemu (also against the profile-guided objects). A full code
+review after Milestone 7 fixed about 60 issues (voice stealing, envelope modulation, sequencer
+clock jumps, crash safety around files, browser state, packaging), a second one after the
+performance pass about 40 more (docs/ROADMAP.md); each fix has a regression check, most in
+`test/review_test.cpp`. The skin and the device bench still have to be run on the user's machine
 (`make skin`, `make preview`, `make bench-device`).
 
 - **Voices:** 8 voices · Poly / Duo / Mono / Legato · steal Oldest / Quietest / Keep low /
@@ -90,7 +92,11 @@ fused multiply-adds) relative RMS over 132 test scenes.
 - **Matrix:** slots resolved once per patch, shared sources once per chunk, polynomial LFO sine.
 - **Profile-guided build** (`make arm-plugin`, when `qemu-arm` is installed): an instrumented
   copy plays 132 patches under qemu (`tools/pgo_train.cpp`), then the .so is compiled with that
-  profile. `PGO=0` builds without.
+  profile. Functions the trainer never ran are optimised as usual; inside the ones it ran,
+  paths it never took (other LFO shapes, glide, mono) count as cold, so the trainer covers the
+  common patches broadly. `PGO=0` builds without; `make test-arm-pgo` runs the suite against the
+  shipped objects. The stage-timing build (`polyforce_stages.so`) is a plain build: its times
+  read a little higher than the shipped .so's.
 
 | Case (ARM instructions per block) | NEON pass | + control rate, matrix | + PGO |
 |---|---|---|---|
@@ -102,15 +108,17 @@ At 8 × 8 the oscillators are 70% of the block. Whether they wait on memory (a 2
 is 9 MB, the Force's L2 about 1 MB) is what the stage bench answers on the device:
 `make bench-device WAVETABLES=<folder>` runs a profiling build (`polyforce_stages.so`) that
 reports each pass's time per block, then plays the same voices with the positions swept on the
-built-in Classic table and on a 256-frame table. If the sources time grows clearly with the
+built-in Classic table and on the first table of 2 MB or more in that folder (256 frames). If the sources time grows clearly with the
 large table, 16-bit tables (half the memory traffic) are the next step; if not, they would
 only cost precision.
 
-**CPU guard:** after each block the plugin compares its own CPU time with the block's real-time
-budget. Two blocks in a row over 40%, or one over 65%, and the engine fades out the quietest
-voice that is only ringing out (two over 65%), with the 3 ms steal fade. Held and
-pedal-sustained notes are never touched, and a single costly block sheds nothing. The status
-line shows `GUARD n` while it acts. `PF_CPU_GUARD=0` turns it off (the test suite does).
+**CPU guard:** the plugin adds up the engine's own CPU time (not MPC's callbacks) against the
+real-time budget over windows of at least one 128-frame block, so `process()` sub-blocks and
+small host blocks are judged like MPC's. Two windows in a row over 40% and the engine fades out
+the quietest voice that is only ringing out; a window over 65% fades two at once (3 ms, the
+steal fade). Held and pedal-sustained notes are never touched; a single window between 40%
+and 65% (a patch rebuild, a burst of note-ons) sheds nothing. The status line shows `GUARD n`
+while it acts. `PF_CPU_GUARD=0` turns it off (the test suite does).
 
 Looked at and left out: precomputed float frame pairs for the oscillator reads (about one
 instruction in eleven saved for twice the table memory, while the open question is memory
@@ -203,11 +211,12 @@ wsl -e make -C /mnt/d/DEV/mockba/PolyForce test
 | `skin` / `preview` | the skin (TUI.json + PNGs) with sd88me's generator / the pages as `surface/build/page_*.png` |
 | `test` | ASan/UBSan suite; uses `$(WAVETABLES)` (default `../wavetables`) for the import check |
 | `test-arm` | the same suite built for the Force's CPU, run under `qemu-arm` |
+| `test-arm-pgo` | the suite linked against the profile-guided objects the shipped .so is made of |
 | `test-tables` | load + play every WAV under `$(WAVETABLES)` |
 | `bench` | x86 bench, only proves the bench and the profiling build work |
 | `arm-plugin` | `build/arm/polyforce.so` for the Force; profile-guided when `qemu-arm` is installed (`PGO=0`: plain) |
 | `arm-bench-stages` | `build/arm/polyforce_stages.so`: the profiling build pfbench reads per-pass times from (never shipped) |
-| `bench-device FORCE=root@<ip>` | copies both .so files, the bench and one 256-frame table from `$(WAVETABLES)` to `/tmp`, runs on core 1, deletes them |
+| `bench-device FORCE=root@<ip>` | copies both .so files, the bench and the first table of 2 MB or more under `$(WAVETABLES)` to `/tmp`, runs on core 1, deletes them; the bench reads no user folders and saves nothing; fails if a run fails |
 | `plugin-package` | `dist/PolyForce-<ver>-mpc-armv7.zip` with sd88me's installer; a reinstall keeps the user's Wavetables, Presets, Tunings and favorites/recent lists |
 | `plugin-install FORCE=root@<ip>` | **run by the user**: stops MPC, edits `MPC.settings`, restarts MPC |
 
@@ -227,7 +236,7 @@ wsl -e make -C /mnt/d/DEV/mockba/PolyForce test
   tuning and preset keys, so range changes don't remap saved projects; versions 1–3 are still read.
 - **Limits:** `kMaxVoices`/`kMaxUnison` in `dsp/synth.h` must equal `MAX_VOICES`/`MAX_UNISON` in
   `surface.py`; enum lists in `surface.py` must match the C++ enums (static_asserts in
-  `patch_map.cpp` check counts and order).
+  `patch_map.cpp` check the counts, `test/review_test.cpp` every label against its enum value).
 - **Real time:** nothing on the audio thread allocates, locks or throws; host callbacks only
   from `processReplacing`; a `try/catch` stands between every entry point and MPC. Files load
   on the instance's loader thread; the audio thread swaps a pointer.

@@ -340,6 +340,75 @@ void controlRate() {
     }
 }
 
+// The filters' controls glide too. A 40 Hz LFO on the cutoff: the output's second difference
+// (where a coefficient step shows) stays at what the gliding filters give; stepping the
+// coefficients once per chunk instead roughly doubles it (LP12 0.0031 -> 0.0057 one voice,
+// 0.0045 -> 0.0087 three; comb's first difference 0.31 -> 0.89; vowel 0.0008 -> 0.0015).
+void filterGlides() {
+    struct Case { int type, voices; bool d1; float limit; };
+    const Case cases[] = {{pf::F_LP12, 1, false, 0.0042f}, {pf::F_LP12, 3, false, 0.0065f},
+                          {pf::F_COMB_PLUS, 1, true, 0.55f}, {pf::F_VOWEL, 1, false, 0.0011f}};
+    for (const Case& c : cases) {
+        pf::Patch p = base();
+        p.osc[0].level = 0.5f;
+        p.flt[0].type = c.type;
+        p.flt[0].cutoffHz = 300.0f;
+        p.flt[0].env = 0.0f;
+        p.flt[0].key = 0.0f;
+        p.flt[0].res = 0.3f;
+        p.lfo[0].rateHz = 40.0f;
+        route(p, 0, pf::MS_LFO1, pf::MT_F1_CUT, 0.5f);
+        pf::Synth s;
+        s.setPatch(p);
+        for (int v = 0; v < c.voices; ++v) s.noteOn(36 + 12 * v, 127);
+        std::vector<float> L;
+        float l[kBlock], r[kBlock];
+        for (int b = 0; b < 170; ++b) {
+            s.render(l, r, kBlock);
+            L.insert(L.end(), l, l + kBlock);
+        }
+        float peak = 0.0f, d = 0.0f;
+        for (size_t i = 4410; i < L.size(); ++i) {
+            peak = std::max(peak, std::fabs(L[i]));
+            d = std::max(d, std::fabs(c.d1 ? L[i] - L[i - 1] : L[i] - 2.0f * L[i - 1] + L[i - 2]));
+        }
+        CHECK(peak > 0.01f);
+        CHECK(d < c.limit * peak);
+    }
+}
+
+// The matrix sources shared by all voices (set once per chunk): each one reaches its slot.
+// Source at 1 with amount -1 on the volume = silence; at 0 the note plays.
+void sharedSources() {
+    struct Src { int src; void (*set)(pf::Synth&, pf::Patch&, float); };
+    const Src srcs[] = {
+        {pf::MS_MODWHEEL, [](pf::Synth& s, pf::Patch&, float v) { s.controller(1, static_cast<int>(v * 127.0f)); }},
+        {pf::MS_BREATH, [](pf::Synth& s, pf::Patch&, float v) { s.controller(2, static_cast<int>(v * 127.0f)); }},
+        {pf::MS_EXPRESSION, [](pf::Synth& s, pf::Patch&, float v) { s.controller(11, static_cast<int>(v * 127.0f)); }},
+        {pf::MS_BEND, [](pf::Synth& s, pf::Patch&, float v) { s.pitchBend(v); }},
+        {pf::MS_SEQ, [](pf::Synth& s, pf::Patch&, float v) { const float sh[4] = {}; s.setSequencerSources(v, sh); }},
+        {pf::MS_SHAPE3, [](pf::Synth& s, pf::Patch&, float v) { const float sh[4] = {0.0f, 0.0f, v, 0.0f}; s.setSequencerSources(0.0f, sh); }},
+        {pf::MS_Y2, [](pf::Synth& s, pf::Patch& p, float v) { p.xy[3] = v; s.setPatch(p); }},
+    };
+    for (const Src& x : srcs) {
+        float level[2];
+        for (int k = 0; k < 2; ++k) {
+            pf::Patch p = base();
+            route(p, 0, x.src, pf::MT_VOLUME, -1.0f);
+            pf::Synth s;
+            s.setPatch(p);
+            x.set(s, p, k ? 1.0f : 0.0f);
+            s.noteOn(60, 127);
+            float l[kBlock], r[kBlock];
+            for (int b = 0; b < 8; ++b) s.render(l, r, kBlock);
+            double a = 0.0;
+            for (int i = 0; i < kBlock; ++i) a += static_cast<double>(l[i]) * l[i];
+            level[k] = static_cast<float>(std::sqrt(a / kBlock));
+        }
+        CHECK(level[0] > 0.05f && level[1] < 0.02f * level[0]);
+    }
+}
+
 } // namespace
 
 void modulationTests() {
@@ -347,6 +416,8 @@ void modulationTests() {
     globalLfo();
     targetsAndModifiers();
     controlRate();
+    filterGlides();
+    sharedSources();
     plugin();
 }
 

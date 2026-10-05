@@ -52,8 +52,9 @@ int main(int argc, char** argv) {
         for (int f = 0; f < t.frames; ++f)
             for (int k = 0; k < pf::kMipLevels; ++k) {
                 const float* m = t.get(f, k);
-                sane = sane && m[pf::kTableSize] == m[0];
-                for (int i = 0; i < pf::kTableSize; ++i) {
+                const int len = pf::mipLength(k);   // each level its own length (2048 .. 256)
+                sane = sane && m[len] == m[0];
+                for (int i = 0; i < len; ++i) {
                     sane = sane && std::isfinite(m[i]);
                     if (k == 0) peak = std::max(peak, std::fabs(m[i]));
                 }

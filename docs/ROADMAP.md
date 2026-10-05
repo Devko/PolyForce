@@ -46,8 +46,9 @@ Design record: [M1_DESIGN.md](M1_DESIGN.md).
   folder, shared prefixes stripped from names, built-ins as "Built-in"
 - ✅ Per-instance loader thread, shared LRU cache (96 MB), lock-free handoff to the audio
   thread, 150 ms debounce, `LOADING` / `MISSING` in the status line, missing key kept
-- ✅ Faster, smaller import: per-level mip lengths and two frames per FFT; 256-frame table
-  583 → 122 ms, 22 → 9.0 MB (x86, -O2)
+- ✅ Faster, smaller import: per-level mip lengths and two frames per FFT; a 256-frame table
+  now takes ~120 ms and 9.0 MB on x86 (-O2), was 582 ms and 22 MB on the Force (re-measure
+  there: `make bench-device` times it)
 - ✅ Recall by key (`o1_table=plugin:Analog/…`), not by index
 - ✅ Browsing A–F: table steppers, browser page, favorites, recent, random, copy / swap;
   `FRAME 37 / 256` on the position knob
@@ -148,6 +149,13 @@ busy matrix −11% (README, "The second pass").
 - ✅ Profile-guided device build, trained under qemu-arm (`PGO=0` for the plain one)
 - ✅ pfbench: per-pass times from a profiling build, a large table against one that fits the cache
 - ✅ CPU guard: sheds the quietest release tails when an instance runs over budget; never held notes
+- ✅ Second review (2026-10-05): four parallel reviews of the whole plugin after the pass; about
+  40 confirmed findings fixed, each with a regression check (`test/review_test.cpp`, m2, m5).
+  The larger ones: a 32-bit step index hung the audio thread on the Force at a large host song
+  position; a NaN from the host played NaN until reload; a float WAV near FLT_MAX built a NaN
+  table; stuck notes with more than 16 keys (record, Off → Arp); a step replayed after a swing
+  change; Play skipped step 0; levels going to 0 stepped instead of gliding; the loader thread
+  could end MPC on out-of-memory; `make test-tables` failed every table
 - 🔜 Device: `make bench-device WAVETABLES=<folder>`, add the row to the bench record, read the
   large-table result
 - ⬜ 16-bit tables (half the memory traffic), only if the large table clearly costs more in the
@@ -166,7 +174,7 @@ busy matrix −11% (README, "The second pass").
 | Drag-and-drop modulation, scopes, wavetable view | MPC skins can't draw dynamic graphics |
 | MTS-ESP microtuning | Needs a tuning master plugin; none exists inside MPC |
 | MPE | Untested whether MPC passes per-note channels/pitch bend to a VST2 — probe before planning |
-| 16 voices × 16 unison | Measured 45% of a block; 8 × 8 is the practical ceiling until 4.3 |
+| 16 voices × 16 unison | Measured 45% of a block before the NEON pass; 8 × 8 stays the ceiling until the device bench of this build says otherwise |
 | `.uhm` wavetable scripting on the device | No text entry; at most an offline tool |
 
 ---

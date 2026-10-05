@@ -17,7 +17,7 @@ MV       := third_party/mpc-vst-plugins
 SURF     := surface
 SURF_OUT := $(SURF)/build
 SKIN_DIR := $(SURF_OUT)/skin/Devko - VST - PolyForce
-GEN      := $(SURF_OUT)/param_ids.h
+GEN      := $(SURF_OUT)/param_ids.h $(SURF_OUT)/factory_presets.h
 SKIN     := $(SURF_OUT)/skin.stamp
 
 SRC      := $(wildcard dsp/*.cpp) $(wildcard plugin/*.cpp)
@@ -34,10 +34,11 @@ ARM_SO   := $(BUILD)/arm/polyforce.so
 ARM_SO_STAGES := $(BUILD)/arm/polyforce_stages.so
 ARM_BENCH := $(BUILD)/arm/pfbench
 
-.PHONY: all surface skin test test-arm test-tables bench arm-plugin arm-bench arm-bench-stages bench-device preview plugin-package plugin-install clean
+.PHONY: all surface skin test test-arm test-arm-pgo test-tables bench arm-plugin arm-bench arm-bench-stages bench-device preview plugin-package plugin-install clean FORCE
 # A recipe that fails leaves no half-written target behind for the next make to trust.
 .DELETE_ON_ERROR:
-all: test arm-plugin
+# The stage-timing build too: a -DPF_STAGE_TIMING break shows here, not at bench time.
+all: test arm-plugin $(BUILD)/polyforce_stages.so
 
 # --- generated --------------------------------------------------------------------------------
 # surface.py: params.json, layout.conf, vst.json and build/param_ids.h (the C++ side). Needs only
@@ -45,7 +46,7 @@ all: test arm-plugin
 # Q-Link sets, geometry) before writing anything.
 surface: $(GEN)
 # presets/Factory itself too: its time changes when a preset is deleted.
-$(GEN): $(SURF)/surface.py presets/Factory $(wildcard presets/Factory/*.pfp)
+$(GEN) &: $(SURF)/surface.py presets/Factory $(wildcard presets/Factory/*.pfp)   # one run writes both
 	python3 $(SURF)/surface.py
 
 # The skin (TUI.json + PNGs) and the plugin-list entry: sd88me's generator, Pillow and a host gcc.
@@ -120,29 +121,41 @@ ARM_SO_CMD   = $(ARM_CXX) $(ARM_SO_FLAGS) $(ARM_SO_LINK)
 # Profile-guided: on by default when qemu-arm is installed (as test-arm needs); PGO=0 builds
 # without. A copy of the plugin compiled with counters is linked into tools/pgo_train.cpp,
 # which plays a spread of patches under qemu-arm (about 10 s); then the .so is compiled from
-# the same sources with the same flags plus that profile, which only tells the compiler which
-# paths are hot (-fprofile-partial-training: what the trainer never reached is optimised as
-# usual). ARM instruction counts: 8 voices -7.7%, 1 voice -8.5%, 8 voices x 8 unison with the
-# busy matrix -2.3%. The objects keep one path in both rounds: GCC names the profile files after it.
+# the same sources with the same flags plus that profile, which tells the compiler which paths
+# are hot. -fprofile-partial-training keeps functions the trainer never ran optimised as usual;
+# inside a trained function, branches it never took (other LFO shapes, glide, mono, ...) are
+# treated as cold. ARM instruction counts: 8 voices -7.7%, 1 voice -8.5%, 8 voices x 8 unison
+# with the busy matrix -2.6%. Objects keep one path (dir_name.o) in both rounds: GCC names the
+# profile files after it. A missing profile fails the build instead of quietly building without.
 PGO      ?= auto
 QEMU_ARM := $(shell command -v qemu-arm 2>/dev/null)
 PGO_ON   := $(if $(filter auto,$(PGO)),$(if $(QEMU_ARM),1,0),$(PGO))
 PGO_DIR  := $(BUILD)/arm/pgo
 PGO_PROF := $(abspath $(PGO_DIR)/profile)
 PGO_OBJ  := $(PGO_DIR)/obj
+PGO_O    = $(PGO_OBJ)/$$(echo $$f | tr / _ | sed 's/\.cpp$$/.o/')
+
+# The .so is rebuilt when the way it is built changes (PGO on/off, flags), not only its sources.
+ARM_SO_STAMP := $(BUILD)/arm/so_flags
+$(ARM_SO_STAMP): FORCE
+	@mkdir -p $(dir $@)
+	@echo '$(PGO_ON) $(ARM_SO_FLAGS)' | cmp -s - $@ || echo '$(PGO_ON) $(ARM_SO_FLAGS)' > $@
+FORCE:
 
 arm-plugin: $(ARM_SO)
-$(ARM_SO): $(SRC) $(HDR) $(GEN) tools/pgo_train.cpp
+$(ARM_SO): $(SRC) $(HDR) $(GEN) tools/pgo_train.cpp $(ARM_SO_STAMP)
 	mkdir -p $(BUILD)/arm
 ifeq ($(PGO_ON),1)
 	rm -rf $(PGO_DIR) && mkdir -p $(PGO_OBJ) $(PGO_PROF)
 	for f in $(SRC); do $(ARM_CXX) $(ARM_SO_FLAGS) -fprofile-generate=$(PGO_PROF) -fprofile-update=prefer-atomic \
-		-c $$f -o $(PGO_OBJ)/$$(basename $$f .cpp).o || exit 1; done
+		-c $$f -o $(PGO_O) || exit 1; done
 	$(ARM_CXX) $(ARM_SO_FLAGS) -fprofile-generate -static tools/pgo_train.cpp $(PGO_OBJ)/*.o -o $(PGO_DIR)/train
 	PF_DATA_DIR=$(PGO_DIR) PF_TABLE_ROOTS=$(PGO_DIR) PF_PRESET_ROOTS=$(PGO_DIR) PF_TUNING_ROOTS=$(PGO_DIR) PF_CPU_GUARD=0 \
 		qemu-arm $(PGO_DIR)/train
-	for f in $(SRC); do $(ARM_CXX) $(ARM_SO_FLAGS) -fprofile-use=$(PGO_PROF) -fprofile-partial-training -Wno-missing-profile \
-		-c $$f -o $(PGO_OBJ)/$$(basename $$f .cpp).o || exit 1; done
+	@n=$$(ls $(PGO_PROF)/*.gcda 2>/dev/null | wc -l); [ $$n -eq $(words $(SRC)) ] || \
+		{ echo "PGO: $$n of $(words $(SRC)) profiles written (PGO=0 builds without)"; exit 1; }
+	for f in $(SRC); do $(ARM_CXX) $(ARM_SO_FLAGS) -fprofile-use=$(PGO_PROF) -fprofile-partial-training -Werror=missing-profile \
+		-c $$f -o $(PGO_O) || exit 1; done
 	$(ARM_CXX) $(ARM_SO_FLAGS) $(ARM_SO_LINK) $(PGO_OBJ)/*.o -o $@
 	@echo "profile-guided build"
 else
@@ -152,6 +165,15 @@ endif
 	arm-linux-gnueabihf-strip --strip-unneeded $@
 	@arm-linux-gnueabihf-readelf -V $@ | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1 | sed 's/^/needs /'
 	@arm-linux-gnueabihf-nm -D --defined-only $@ | grep -c ' T ' | sed 's/^/exported functions: /'
+
+# The suite against the objects the shipped .so is linked from (profile-guided), under qemu.
+test-arm-pgo: $(ARM_SO)
+ifeq ($(PGO_ON),1)
+	$(ARM_CXX) -std=c++17 $(ARM_OPT) -Wno-psabi -pthread $(INC) $(TESTS) $(PGO_OBJ)/*.o -o $(BUILD)/arm/plugin_test_pgo
+	PF_WAVETABLES="$(WAVETABLES)" qemu-arm -L /usr/arm-linux-gnueabihf $(BUILD)/arm/plugin_test_pgo
+else
+	@echo "test-arm-pgo: the .so is a plain build here (PGO=$(PGO)); test-arm covers it"
+endif
 
 # The profiling build: the same plugin with timers between the render passes (dsp/stages.h)
 # and one more export, PolyForceStageTimes, which pfbench reads. Never shipped.
@@ -176,10 +198,18 @@ BENCH_ARGS ?= -v 1,2,4,8 -u 1,2,4,8 -s 3
 BENCH_MATRIX_ARGS ?= -v 8 -u 1,8 -s 3 -m 1   # the same with a busy modulation matrix
 BENCH_STAGE_ARGS ?= -v 8 -u 1,8 -s 3
 TABLE      ?= $(shell find "$(WAVETABLES)" -name '*.wav' -size +2047k 2>/dev/null | sort | head -1)
+# The first table at least 2 MB (a 256-frame float table is 2 MB) under $(WAVETABLES); none:
+# the large-table run is skipped, and says so. The make fails if any pfbench run fails.
 bench-device: $(ARM_SO) $(ARM_SO_STAGES) $(ARM_BENCH)
+	$(SSH) $(FORCE) 'rm -f /tmp/pf_table.wav'
 	scp -q $(SSH_OPTS) $(ARM_SO) $(ARM_SO_STAGES) $(ARM_BENCH) $(FORCE):/tmp/
-	@if [ -n "$(TABLE)" ]; then scp -q $(SSH_OPTS) "$(TABLE)" $(FORCE):/tmp/pf_table.wav; fi
-	$(SSH) $(FORCE) 'T=; [ -f /tmp/pf_table.wav ] && T="-t /tmp/pf_table.wav"; /tmp/pfbench /tmp/polyforce.so $(BENCH_ARGS) -c 1; /tmp/pfbench /tmp/polyforce.so $(BENCH_MATRIX_ARGS) -c 1; /tmp/pfbench /tmp/polyforce_stages.so $(BENCH_STAGE_ARGS) -c 1 $$T; rm -f /tmp/pfbench /tmp/polyforce.so /tmp/polyforce_stages.so /tmp/pf_table.wav'
+	@if [ -n "$(TABLE)" ]; then scp -q $(SSH_OPTS) "$(TABLE)" $(FORCE):/tmp/pf_table.wav; \
+	 else echo "no table of 2 MB or more under WAVETABLES=$(WAVETABLES): the large-table run is skipped"; fi
+	$(SSH) $(FORCE) 'r=0; T=; [ -f /tmp/pf_table.wav ] && T="-t /tmp/pf_table.wav"; \
+		/tmp/pfbench /tmp/polyforce.so $(BENCH_ARGS) -c 1 || r=1; \
+		/tmp/pfbench /tmp/polyforce.so $(BENCH_MATRIX_ARGS) -c 1 || r=1; \
+		/tmp/pfbench /tmp/polyforce_stages.so $(BENCH_STAGE_ARGS) -c 1 $$T || r=1; \
+		rm -f /tmp/pfbench /tmp/polyforce.so /tmp/polyforce_stages.so /tmp/pf_table.wav; exit $$r'
 
 # Release zip: plugin + skin + sd88me's installer (stops MPC, backs up and edits
 # MPC.settings, restarts MPC).
