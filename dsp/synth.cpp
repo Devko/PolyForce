@@ -525,7 +525,7 @@ constexpr PlayFn kPlay[3] = {play<PK_FLOAT>, play<PK_INT>, play<PK_MORPH>};
 } // namespace
 
 Synth::Synth(float sampleRate) : sr_(sampleRate), invSr_(1.0f / sampleRate) {
-    builtinTables();   // build the shared tables now (UI thread), never on the audio thread
+    classicBuiltin();   // build the shared tables now (UI thread), never on the audio thread
     classicTable(0);
     combMem_.assign(static_cast<size_t>(kMaxVoices) * 2 * 2 * kCombLen, 0.0f);
     for (int i = 0; i < kMaxVoices; ++i) {
@@ -610,7 +610,7 @@ void Synth::updateOsc(int o, const OscPatch& p) {
         case OW_SQUARE: s.table = &classicTable(CW_SQUARE); break;
         case OW_PULSE: s.table = &classicTable(CW_PULSE); break;
         case OW_NOISE: s.table = nullptr; break;
-        default: s.table = p.table && p.table->frames > 0 ? p.table : &builtinTables()[0]; break;
+        default: s.table = p.table && p.table->frames > 0 ? p.table : &classicBuiltin(); break;
     }
 
     const int n = std::clamp(p.unison, 1, kMaxUnison);

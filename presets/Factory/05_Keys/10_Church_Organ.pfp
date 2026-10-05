@@ -1,0 +1,23 @@
+polyforce 4
+volume=-6.5
+o1_table=builtin:Organ
+o1_pos=1
+o1_oct=-1
+o2_table=builtin:Harmonics
+o2_pos=0.6
+o2_fine=0
+o2_level=0.4
+engine=0
+f1_type=1
+f1_cut=9000
+f1_res=0
+f1_env=0
+f1_key=0
+e1_a=0.08
+e1_d=0.1
+e1_s=1
+e1_r=0.6
+e1_vel=0
+m1_src=7
+m1_t1=16
+m1_a1=0.25

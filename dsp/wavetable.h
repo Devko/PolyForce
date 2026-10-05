@@ -48,12 +48,19 @@ struct Wavetable {
 
 uint32_t newTableId();   // 1, 2, 3, ... (thread-safe)
 
-// The library's built-in tables (Classic, PWM, Sync, Formant), built once per process on
-// first use and read-only afterwards, so all plugin instances share one copy.
-const std::vector<Wavetable>& builtinTables();
+// The library's built-in tables, all computed (no files): Classic, PWM, Sync, Formant and the
+// families after them (analog, FM, digital, vocal, acoustic; see wavetable.cpp), in browser
+// order. Classic is built once per process on first use and kept (it is every table slot's
+// fallback and the engine's default); the others are built on demand by buildBuiltin(), at
+// load time (the loader thread caches them like imported files).
+int builtinCount();
+const char* builtinName(int i);                   // "" out of range
+int builtinIndex(const std::string& name);        // -1 if there is no such built-in
+const Wavetable& classicBuiltin();                // built-in 0
+bool buildBuiltin(int i, Wavetable& out);         // false out of range
 
 // The classic oscillator shapes as one-frame tables, plus the pulse table (32 frames, width
-// 50% -> 3%; position = width). Same lifetime as builtinTables().
+// 50% -> 3%; position = width). Same lifetime as classicBuiltin().
 enum ClassicWave : int { CW_SINE, CW_TRIANGLE, CW_SAW, CW_SQUARE, CW_PULSE, CW_COUNT };
 const Wavetable& classicTable(int wave);
 

@@ -561,7 +561,7 @@ void surfaceFixes() {
         h.setN(pf::P_CAT_1, 1.0f);   // FAVORITES
         CHECK(h.get(pf::P_CAT_1) == 1.0f && h.display(pf::P_TBL_1) == "Acid Bass");
         h.setN(pf::P_TBL_1, 1.0f);
-        CHECK(h.display(pf::P_PRESET) == "PRESET  Factory / Acid Bass");
+        CHECK(h.display(pf::P_PRESET) == "PRESET  Bass / Acid Bass");
         CHECK(h.get(pf::P_CAT_1) == 1.0f);
         pf::presetLibrary().setFavorite("builtin:Acid Bass", false);
     }
@@ -570,11 +570,11 @@ void surfaceFixes() {
         Host h;
         const auto L = pf::presetLibrary().listing();
         for (int k = 0; k < 12; ++k) h.press(pf::P_PRESET_NEXT);   // the first press picks item 0
-        CHECK(h.display(pf::P_PRESET) == "PRESET  Factory / " + L->items[11].name);
+        CHECK(h.display(pf::P_PRESET) == "PRESET  " + L->items[11].category + " / " + L->items[11].name);
         h.press(pf::P_PRE_RAND);
         CHECK(h.display(pf::P_PRESET) == "PRESET  -");
         h.setN(pf::P_PRESET, h.get(pf::P_PRESET) - 1.0f / 128.0f);   // one detent left
-        CHECK(h.display(pf::P_PRESET) == "PRESET  Factory / " + L->items[10].name);
+        CHECK(h.display(pf::P_PRESET) == "PRESET  " + L->items[10].category + " / " + L->items[10].name);
     }
     // RANDOM: the main filter stays a filter, the sub oscillator's wave is left alone.
     {

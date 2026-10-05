@@ -1,0 +1,23 @@
+polyforce 4
+volume=-2.5
+o1_table=builtin:Chip
+o1_pos=0.142857
+o1_level=0.85
+o2_level=0
+engine=0
+f1_type=0
+e1_a=0.001
+e1_d=0.1
+e1_s=0.85
+e1_r=0.05
+l1_rate=6
+l1_delay=0.25
+l1_fade=0.2
+m1_src=3
+m1_t1=1
+m1_a1=0.07
+m2_src=3
+m2_via=7
+m2_t1=1
+m2_a1=0.1
+vmode=2

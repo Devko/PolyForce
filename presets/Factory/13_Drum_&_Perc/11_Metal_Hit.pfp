@@ -1,0 +1,24 @@
+polyforce 4
+volume=2.5
+o1_table=builtin:Bell
+o1_pos=1
+o1_oct=-3
+o1_semi=-12
+o2_table=builtin:Bell
+o2_pos=0.9
+o2_oct=-3
+o2_semi=-12
+o2_fine=37
+noise_level=0.2
+noise_color=0.5
+engine=0
+f1_type=4
+f1_cut=300
+f1_res=0
+f1_env=0
+f1_key=0
+f1_drive=0.3
+e1_a=0.001
+e1_d=0.9
+e1_s=0
+e1_r=0.6

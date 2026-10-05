@@ -95,12 +95,12 @@ bool loadState(Surface& s, const std::string& textIn, bool asPreset) {
             continue;
         }
         if (version < 3 && (key == "o1_wave" || key == "o2_wave")) {   // v2: a built-in table by index
-            const auto& b = builtinTables();
+            constexpr int kV2Builtins = 4;   // Classic, PWM, Sync, Formant: all there was then
             float v = 0.0f;
             parse(val, v);
             const int idx = std::clamp(static_cast<int>(normalised ? std::lround(v * 3.0f) : std::lround(v)), 0,
-                                       static_cast<int>(b.size()) - 1);
-            tables[key[1] - '1'] = "builtin:" + b[static_cast<size_t>(idx)].name;
+                                       kV2Builtins - 1);
+            tables[key[1] - '1'] = std::string("builtin:") + builtinName(idx);
             sawTable[key[1] - '1'] = true;
             continue;
         }

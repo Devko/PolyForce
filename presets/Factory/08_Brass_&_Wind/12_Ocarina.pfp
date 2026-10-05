@@ -1,0 +1,27 @@
+polyforce 4
+volume=-7
+o1_wave=1
+o2_wave=2
+o2_fine=0
+o2_level=0.12
+noise_level=0.04
+noise_color=0.2
+engine=0
+f1_type=0
+e1_a=0.05
+e1_d=0.3
+e1_s=0.95
+e1_r=0.1
+l1_rate=5
+l1_delay=0.25
+l1_fade=0.5
+m1_src=3
+m1_t1=1
+m1_a1=0.05
+m2_src=3
+m2_via=7
+m2_t1=1
+m2_a1=0.1
+vmode=3
+glide_mode=2
+glide=0.03

@@ -1,0 +1,19 @@
+polyforce 4
+volume=-9
+engine=2
+o1_wave=3
+o2_wave=4
+o2_fine=-10
+o2_level=0.5
+f1_type=1
+f1_cut=600
+f1_res=0.95
+f1_env=0.5
+f1_drive=0.5
+e2_a=0.001
+e2_d=0.35
+e2_s=0.1
+e2_r=0.2
+e1_d=0.6
+e1_s=0.5
+e1_r=0.3

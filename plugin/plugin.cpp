@@ -4,10 +4,9 @@
 // plugin/surface.* decides what every parameter does, plugin/loader.* loads wavetables in the
 // background, and the status line carries a CPU meter so the cost can be read on the device.
 //
-// Threads (RackForcePlugin's MPC_PLUGIN_SPEC.md §2.7): processReplacing runs on one of MPC's
-// audio workers (which one changes between calls, instances run concurrently); parameters,
-// display text and chunks come from MPC's UI side; the loader has its own worker. Host
-// callbacks are only made from processReplacing.
+// Threads: processReplacing runs on one of MPC's audio workers (which one changes between
+// calls, instances run concurrently); parameters, display text and chunks come from MPC's UI
+// side; the loader has its own worker. Host callbacks are only made from processReplacing.
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif

@@ -1,0 +1,24 @@
+polyforce 4
+volume=-10
+o1_table=builtin:Square Sync
+o1_pos=0.2
+o2_wave=4
+o2_fine=6
+o2_level=0.4
+f1_cut=3500
+f1_res=0.1
+f1_env=0
+e1_a=0.005
+e1_d=0.8
+e1_s=0.7
+e1_r=0.4
+e2_d=0.8
+e2_r=0.4
+e2_pos=0.4
+l1_rate=0.2
+m1_src=3
+m1_t1=4
+m1_a1=0.2
+m2_src=7
+m2_t1=16
+m2_a1=0.25

@@ -1,16 +1,27 @@
 # PolyForce: wavetable synth as a VST2 instrument for MPC OS (Force / MPC standalone).
-# Build in WSL. Native: g++ (tests, x86 bench). Device: arm-linux-gnueabihf-g++ 13 (the
+# Builds on Linux or WSL. Native: g++ (tests, x86 bench). Device: arm-linux-gnueabihf-g++ 13 (the
 # Force ships GCC 13's libstdc++, so the .so links it dynamically).
+# Your own settings (FORCE, SSH_KEY, PY, WAVETABLES, ...) go in local.mk, which git ignores.
+-include local.mk
+
 CXX      ?= g++
 ARM_CXX  ?= arm-linux-gnueabihf-g++
 BUILD    := build
-FORCE    ?= root@192.168.1.133
-SSH_KEY  ?= $(HOME)/.ssh/mockba_force
-PY       ?= $(HOME)/.venvs/rackforce/bin/python
+# FORCE: the device, root@<ip>, for bench-device and plugin-install. SSH_KEY: the private key for
+# it (empty: ssh's own defaults). PY: a Python 3 with Pillow, for skin, preview and plugin-package.
+FORCE    ?=
+SSH_KEY  ?=
+PY       ?= python3
+
+ifneq ($(filter bench-device plugin-install,$(MAKECMDGOALS)),)
+ifeq ($(strip $(FORCE)),)
+$(error set FORCE=root@<device-ip> (on the command line or in local.mk))
+endif
+endif
 
 # -n: ssh otherwise inherits make's stdin and hangs. No host-key checks: the Force's DHCP
 # address changes on every restart, so its key is never in known_hosts.
-SSH_OPTS := -i $(SSH_KEY) -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+SSH_OPTS := $(if $(strip $(SSH_KEY)),-i $(SSH_KEY) -o IdentitiesOnly=yes) -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
 SSH      := ssh -n $(SSH_OPTS)
 
 MV       := third_party/mpc-vst-plugins
@@ -45,8 +56,9 @@ all: test arm-plugin $(BUILD)/polyforce_stages.so
 # python3, so tests and the .so build anywhere. It also checks the layout (keys, options, when=,
 # Q-Link sets, geometry) before writing anything.
 surface: $(GEN)
-# presets/Factory itself too: its time changes when a preset is deleted.
-$(GEN) &: $(SURF)/surface.py presets/Factory $(wildcard presets/Factory/*.pfp)   # one run writes both
+# The preset folders themselves too: their times change when a preset is deleted. wavetable.cpp:
+# the presets' table names are checked against its built-ins.
+$(GEN) &: $(SURF)/surface.py dsp/wavetable.cpp presets/Factory $(wildcard presets/Factory/*) $(wildcard presets/Factory/*/*.pfp)   # one run writes both
 	python3 $(SURF)/surface.py
 
 # The skin (TUI.json + PNGs) and the plugin-list entry: sd88me's generator, Pillow and a host gcc.
@@ -69,7 +81,7 @@ preview: $(SKIN)
 # --- native -----------------------------------------------------------------------------------
 # Sample wavetables for the tests (Serum-layout WAVs). Kept OUTSIDE this repo: third-party
 # content, never committed or packaged.
-WAVETABLES ?= $(firstword $(wildcard ../wavetables ../../wavetables /mnt/d/DEV/mockba/wavetables) ../wavetables)
+WAVETABLES ?= $(firstword $(wildcard ../wavetables ../../wavetables) ../wavetables)
 
 # The whole plugin through its VST2 entry points, under ASan/UBSan.
 test: $(BUILD)/plugin_test
@@ -193,7 +205,7 @@ $(ARM_BENCH): tools/bench.cpp dsp/wavetable.cpp $(HDR) $(GEN)
 # while MPC keeps running, then deletes them. Touches nothing else on the device. Verdicts come
 # from the plain .so; the stage build then shows where the time goes, and with a table how
 # much a multi-MB table costs over one that fits the cache.
-#   wsl -e make -C /mnt/d/DEV/mockba/PolyForce bench-device FORCE=root@<ip> WAVETABLES=<folder>
+#   make bench-device FORCE=root@<ip> WAVETABLES=<folder>
 BENCH_ARGS ?= -v 1,2,4,8 -u 1,2,4,8 -s 3
 BENCH_MATRIX_ARGS ?= -v 8 -u 1,8 -s 3 -m 1   # the same with a busy modulation matrix
 BENCH_STAGE_ARGS ?= -v 8 -u 1,8 -s 3
@@ -219,14 +231,14 @@ plugin-package: $(ARM_SO) $(SKIN)
 	@! grep -l "$$(printf '\r')" $(MV)/tools/release/* || { echo "error: CRLF in a shipped script"; exit 1; }
 	$(PY) $(MV)/tools/release.py --so $(ARM_SO) --skin "$(SKIN_DIR)" --entry $(SURF_OUT)/pluginlist-entry.xml \
 		--version $(PLUGIN_VERSION) --repo Devko/PolyForce --license MIT \
-		--about "PolyForce wavetable synth (preview): 8 voices, 2 wavetable oscillators with 8x unison and subs, 2 filters with comb and vowel, 2 LFOs, a 12-slot mod matrix, arpeggiator and sequencers, presets, microtuning." \
+		--about "PolyForce wavetable synth (preview): 8 voices, 2 wavetable oscillators with 8x unison and subs, 30 built-in wavetables, 2 filters with comb and vowel, 2 LFOs, a 12-slot mod matrix, arpeggiator and sequencers, 205 presets, microtuning." \
 		--requires "root SSH (MockbaMod)" \
 		--user-data Wavetables --user-data Presets --user-data Tunings \
 		--user-data favorites.txt --user-data recent.txt --user-data preset_favorites.txt --user-data preset_recent.txt \
 		-o dist
 
 # Install on a device: stops MPC, backs up + edits MPC.settings, restarts MPC. Save the MPC
-# project first. Usage (any shell): wsl -e make -C /mnt/d/DEV/mockba/PolyForce plugin-install FORCE=root@<ip>
+# project first. Usage: make plugin-install FORCE=root@<ip>
 PKG_TMP := /tmp/pfpkg
 plugin-install: plugin-package
 	rm -rf $(PKG_TMP) && mkdir -p $(PKG_TMP)

@@ -1,0 +1,21 @@
+polyforce 4
+volume=3
+o1_table=builtin:Sync
+o1_pos=0.1
+o2_wave=3
+o2_oct=-1
+o2_fine=0
+o2_level=0.3
+f1_cut=5000
+f1_res=0
+f1_env=0.1
+e1_a=0.002
+e1_s=0.3
+e1_r=0.2
+e2_d=0.3
+e2_s=0.1
+e2_r=0.2
+e2_pos=0.6
+m1_src=7
+m1_t1=16
+m1_a1=0.25

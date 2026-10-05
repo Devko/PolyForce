@@ -1,8 +1,9 @@
 # Vendored: sd88me/mpc-vst-plugins (MIT)
 
-Copied unmodified from https://github.com/sd88me/mpc-vst-plugins at commit
+Copied from https://github.com/sd88me/mpc-vst-plugins at commit
 `670b20b9ab655140f324f9d093aa5c6f35929f73` (2026-10-04). License: see `LICENSE`
 (MIT, Copyright (c) 2026 sd88me); `tools/vendor/force-shadow/` carries its own MIT LICENSE.
+Unmodified apart from the marked local patches listed below.
 
 What we use it for (we do NOT link their `vst2_wrap.c` / `engine.h` wrapper — our plugin glue is
 `plugin/` in this repo):
@@ -14,8 +15,8 @@ What we use it for (we do NOT link their `vst2_wrap.c` / `engine.h` wrapper — 
 | `tools/release.py`, `tools/release/*` | release zip + on-device `install.sh` / `uninstall.sh` (stop MPC, back up and edit `MPC.settings`) |
 | `wrapper/popup.h`, `wrapper/plugin_dir.h` | popup-picker param helpers; find the plugin's own folder at runtime |
 
-Device-verified facts behind these tools are summarised in `../../docs/MPC_PLUGIN_SPEC.md`.
-Do not edit files here; patch around them so an upgrade stays a plain re-copy.
+Do not edit files here beyond the marked patches; patch around them so an upgrade stays a plain
+re-copy.
 
 ## Local patches (PolyForce)
 

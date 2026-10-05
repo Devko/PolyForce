@@ -1,0 +1,20 @@
+polyforce 4
+volume=6
+o1_wave=4
+o1_oct=3
+o1_level=0.2
+o2_level=0
+noise_level=1
+noise_color=0.8
+engine=0
+f1_type=5
+f1_cut=7000
+f1_res=0.1
+f1_env=0
+f1_key=0
+f1_drive=0.7
+e1_a=0.001
+e1_d=0.06
+e1_s=0
+e1_r=0.05
+e1_vel=0.7

@@ -1,0 +1,23 @@
+polyforce 4
+volume=4
+o1_table=builtin:Pluck
+o1_pos=1
+o2_table=builtin:Pluck
+o2_pos=0.6
+o2_fine=4
+o2_level=0.3
+engine=0
+f1_cut=1800
+f1_res=0.05
+f1_env=0.3
+f1_key=0.7
+e1_a=0.001
+e1_d=2
+e1_s=0
+e1_vel=0.6
+e2_d=0.8
+e2_s=0
+e2_pos=-0.8
+m1_src=7
+m1_t1=16
+m1_a1=0.25

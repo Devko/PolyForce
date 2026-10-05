@@ -1,0 +1,21 @@
+polyforce 4
+volume=-10.5
+o1_wave=2
+o1_uni=3
+o1_detune=0.15
+o1_width=0.7
+o2_wave=1
+o2_oct=1
+o2_fine=0
+o2_level=0.3
+f1_type=1
+f1_cut=2500
+f1_res=0
+f1_env=0
+e1_a=0.9
+e1_d=2
+e1_s=0.9
+e1_r=2
+m1_src=7
+m1_t1=16
+m1_a1=0.25

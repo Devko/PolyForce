@@ -1,0 +1,21 @@
+polyforce 4
+volume=-1.5
+o1_table=builtin:FM Ratio 2
+o1_pos=0.25
+o2_level=0
+engine=0
+f1_type=0
+e1_a=0.001
+e1_d=1
+e1_s=0
+e1_r=0.5
+e2_d=0.15
+e2_s=0
+e2_r=0.1
+e2_pos=0.3
+m1_src=2
+m1_t1=1
+m1_a1=0.04
+m2_src=7
+m2_t1=4
+m2_a1=0.35
