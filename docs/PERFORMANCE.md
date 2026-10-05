@@ -36,16 +36,20 @@ RMS on x86, 1.8e-4 on ARM (reciprocal estimates and fused multiply-adds), over 1
 |---|---|---|---|---|---|---|
 | 2026-10-04 | Phase 0 (16-voice engine) | 8.1 | 11.5 | 15.5 | 45.1 | 582 ms, 22 MB |
 | 2026-10-04 | v0.0.2 (8 × 8 cap) | 8.2 | 11.4 | 15.2 | — | (same code) |
+| 2026-10-05 | v0.0.3 release build (CI: GCC 11, glibc 2.31, profile-guided; all three passes) | 5.3 | 7.7 | 11.1 | — | — |
 
-By voice count, v0.0.2:
+By voice count:
 
-| Voices | × 1 unison | × 4 | × 8 |
-|---|---|---|---|
-| 4 | 4.3 | 5.8 | 7.8 |
-| 8 | 8.2 | 11.4 | 15.2 |
+| Voices | v0.0.2 × 1 | × 4 | × 8 | v0.0.3 × 1 | × 4 | × 8 |
+|---|---|---|---|---|---|---|
+| 1 | | | | 1.7 | 1.9 | 2.3 |
+| 2 | | | | 2.4 | 3.0 | 3.7 |
+| 4 | 4.3 | 5.8 | 7.8 | 2.9 | 4.2 | 5.9 |
+| 8 | 8.2 | 11.4 | 15.2 | 5.3 | 7.7 | 11.1 |
 
-Both passes below came after these measurements; the current build is still to be measured on the
-device.
+v0.0.3 with a busy matrix (8 slots, both LFOs): 6.2 at 8 × 1, 11.2 at 8 × 8; the worst single block
+11.9%. Every case passes. The release `.so` loads (`VSTPluginMain`, Classic built) in 42 ms. The
+three passes below came between the two builds: at 8 × 8 the block costs 27% less than v0.0.2's.
 
 Other Phase 0 numbers: `VSTPluginMain` (then building the four built-in tables) took 163 ms on the
 Force; it now builds only Classic and the classic oscillator shapes, the other built-ins on first

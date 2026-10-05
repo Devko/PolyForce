@@ -49,12 +49,14 @@ Effects are deliberately left out: use MPC's insert effects on the track.
 - An **Akai Force**. Other first-generation (32-bit ARM) MPC OS devices may work but are untested.
 - **Root SSH access** to the device (for example through MockbaMod). Stock MPC OS has no way to
   install third-party plugins.
-- A recent MPC OS: the plugin needs glibc 2.38, which MPC OS 2.x doesn't have.
+- **MPC OS 3.x** for the touchscreen pages. Release builds need glibc 2.30, so MPC OS 2.x loads them
+  too, but it doesn't draw third-party plugin pages yet.
 
 ## Installation
 
-Use a release package (`PolyForce-<version>-mpc-armv7.zip`), or build one with
-`make plugin-package` (see [Building](docs/BUILDING.md)). Unzip it and follow the `INSTALL.md`
+Use a release package (`PolyForce-<version>-mpc-armv7.zip`, built by CI: every run of the
+[build workflow](.github/workflows/build.yml) keeps one), or build one with `make plugin-package`
+(see [Building](docs/BUILDING.md)). Unzip it and follow the `INSTALL.md`
 inside. In short:
 
 ```sh
@@ -94,7 +96,10 @@ Toolchain, every make target and the on-device bench are described in
 | Milestone 7 — presets, microtuning, interface redesign | ✅ |
 | Factory content — 30 built-in wavetables, 205 presets | ✅ |
 | Second performance pass — control rate, PGO, CPU guard | ✅ |
-| Skin render, on-device check and bench | 🔜 |
+| Third performance pass — output stage, 16-bit tables, frame cache | ✅ |
+| On a Force: pages, browser, wave view; device bench (11.1% at 8 × 8) | ✅ |
+| Release build in CI (glibc 2.31, PGO), passing the plugin catalog's check | ✅ |
+| Full on-device test round: Q-Links, project save and reload | 🔜 |
 | v0.1 — first release, parameter list frozen | ⬜ |
 
 Details in the [roadmap](docs/ROADMAP.md).

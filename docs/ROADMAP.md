@@ -13,11 +13,15 @@ Status: ✅ done · 🔜 next · ⬜ planned · 💤 deferred
 
 ## What's next
 
-- 🔜 **Skin render and page check** (`make skin`, `make preview`): the first real run of
-  `skin_polish.py` and of the wave view's meter patch.
-- 🔜 **On the device:** install, play every page, `make bench-device WAVETABLES=<folder>`; add the
-  result to the [device measurements](PERFORMANCE.md#device-measurements) and read the large-table
-  run.
+- ✅ **Skin render and page check** (2026-10-05, on a Force): every page draws and the sub-pages
+  switch; the browser, selectors, a button and the wave view were checked. The first run found
+  buttons dead after one press, steppers stalling in a turn (both fixed and covered by tests that
+  send what the Force sends) and sub-pages showing one screen (fixed, see the
+  [interface](INTERFACE.md#design) notes).
+- ✅ **Release build** in CI against glibc 2.31, profile-guided, passing the plugin catalog's check;
+  device bench of it: 11.1% p99 at 8 × 8 ([measurements](PERFORMANCE.md#device-measurements)).
+- 🔜 **On the device:** play every page with Q-Links, save and reload a project, the large-table
+  bench run (`make bench-device WAVETABLES=<folder>`).
 - 🔜 **Milestone 1 device checks:** a large library (379 tables) reachable, CPU ≤ 15% at 8 × 8,
   project reload restores the tables; trace whether MPC calls `setParameter` right after restoring
   a project's state.
