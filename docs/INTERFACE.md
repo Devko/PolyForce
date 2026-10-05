@@ -63,8 +63,8 @@ cycle, so narrow peaks show.
 ## Building the skin
 
 ```sh
-make skin PY=python3      # the skin: TUI.json + PNGs
-make preview PY=python3   # every page as surface/build/page_*.png
+make skin      # the skin: TUI.json + PNGs
+make preview   # every page as surface/build/page_*.png
 ```
 
 `make skin` runs the vendored generator (`gen_vst.py`), then `surface/skin_polish.py`, which

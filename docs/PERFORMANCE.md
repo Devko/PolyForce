@@ -100,6 +100,10 @@ Also in this pass:
 | 8 voices × 1 | 232 k | 193 k (−17%) | 178 k (−23%) |
 | 8 voices × 8 unison, busy matrix | 567 k | 518 k (−9%) | 505 k (−11%) |
 
+Since then the output stage sums **four voices per vector** as well (envelope, gliding gains and the
+buses together): about −6% ARM instructions at 8 voices and −4% at 8 × 8 with a busy matrix, the
+output within 4.7e-7 of before (summation order).
+
 ## Open question: memory traffic
 
 At 8 × 8 the oscillators are now about 70% of the block. A 256-frame table is 9 MB; the Force's L2

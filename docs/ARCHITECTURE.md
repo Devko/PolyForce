@@ -88,7 +88,8 @@ The engine renders in **chunks of 32 samples**, in passes over all sounding voic
 1. **Control:** mod matrix, mod envelope, pitch; values for the chunk
 2. **Sources:** oscillators, subs and noise into per-voice buses
 3. **Filter 1**, then **filter 2**, four voices per NEON vector, drive as its own pass
-4. **Output:** the buses, amp envelope, velocity, pan and a stolen voice's fade
+4. **Output:** the buses, amp envelope, velocity, pan and a stolen voice's fade, summed four voices
+   per vector
 
 Every control value glides across the chunk it applies to instead of stepping. How and why:
 [Performance](PERFORMANCE.md).

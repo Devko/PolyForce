@@ -1,16 +1,27 @@
 # PolyForce: wavetable synth as a VST2 instrument for MPC OS (Force / MPC standalone).
 # Builds on Linux or WSL. Native: g++ (tests, x86 bench). Device: arm-linux-gnueabihf-g++ 13 (the
 # Force ships GCC 13's libstdc++, so the .so links it dynamically).
+# Your own settings (FORCE, SSH_KEY, PY, WAVETABLES, ...) go in local.mk, which git ignores.
+-include local.mk
+
 CXX      ?= g++
 ARM_CXX  ?= arm-linux-gnueabihf-g++
 BUILD    := build
-FORCE    ?= root@192.168.1.133
-SSH_KEY  ?= $(HOME)/.ssh/mockba_force
-PY       ?= $(HOME)/.venvs/rackforce/bin/python
+# FORCE: the device, root@<ip>, for bench-device and plugin-install. SSH_KEY: the private key for
+# it (empty: ssh's own defaults). PY: a Python 3 with Pillow, for skin, preview and plugin-package.
+FORCE    ?=
+SSH_KEY  ?=
+PY       ?= python3
+
+ifneq ($(filter bench-device plugin-install,$(MAKECMDGOALS)),)
+ifeq ($(strip $(FORCE)),)
+$(error set FORCE=root@<device-ip> (on the command line or in local.mk))
+endif
+endif
 
 # -n: ssh otherwise inherits make's stdin and hangs. No host-key checks: the Force's DHCP
 # address changes on every restart, so its key is never in known_hosts.
-SSH_OPTS := -i $(SSH_KEY) -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+SSH_OPTS := $(if $(strip $(SSH_KEY)),-i $(SSH_KEY) -o IdentitiesOnly=yes) -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
 SSH      := ssh -n $(SSH_OPTS)
 
 MV       := third_party/mpc-vst-plugins

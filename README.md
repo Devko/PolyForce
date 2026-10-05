@@ -93,6 +93,11 @@ Toolchain, every make target and the on-device bench are described in
 
 Details in the [roadmap](docs/ROADMAP.md).
 
+## License
+
+PolyForce is released under the [MIT License](LICENSE). Third-party components keep their own
+licenses (below).
+
 ## Credits
 
 - Skin generator, previews and installer:

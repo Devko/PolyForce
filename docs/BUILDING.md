@@ -37,8 +37,8 @@ sudo apt install g++ g++-arm-linux-gnueabihf make python3 python3-pil qemu-user
 ```sh
 make test                      # the full suite under ASan/UBSan
 make arm-plugin                # build/arm/polyforce.so
-make skin preview PY=python3   # the skin, and every page as surface/build/page_*.png
-make plugin-package PY=python3 # dist/PolyForce-<version>-mpc-armv7.zip
+make skin preview              # the skin, and every page as surface/build/page_*.png
+make plugin-package            # dist/PolyForce-<version>-mpc-armv7.zip
 ```
 
 `surface/surface.py` is the single source of the parameter list and the touchscreen pages. Every
@@ -70,17 +70,24 @@ changes; it checks the layout and every factory preset before writing anything.
 
 | Variable | Meaning |
 |---|---|
-| `FORCE` | The device's SSH address, `root@<ip>`, for `bench-device` and `plugin-install` |
-| `SSH_KEY` | Private key for the device's root login |
-| `PY` | Python 3 with Pillow, for `skin`, `preview` and `plugin-package` |
+| `FORCE` | The device's SSH address, `root@<ip>`; required by `bench-device` and `plugin-install` |
+| `SSH_KEY` | Private key for the device's root login (default: ssh's own keys and config) |
+| `PY` | Python 3 with Pillow, for `skin`, `preview` and `plugin-package` (default `python3`) |
 | `WAVETABLES` | Folder of sample wavetables for the tests and the bench (default `../wavetables`) |
 | `PGO` | `auto` (default): profile-guided when `qemu-arm` is installed; `1`: always; `0`: plain build |
 | `PLUGIN_VERSION` | Version in the package name |
 | `BENCH_ARGS`, `BENCH_MATRIX_ARGS`, `BENCH_STAGE_ARGS` | `pfbench` arguments for the three `bench-device` runs |
 | `TABLE` | The large table for the bench (default: the first WAV of 2 MB or more under `WAVETABLES`) |
 
-`FORCE`, `SSH_KEY` and `PY` default to the original developer's setup; set them to yours, for
-example `make bench-device FORCE=root@192.168.0.10 SSH_KEY=~/.ssh/force`.
+Pass variables on the command line, or keep your own in `local.mk` next to the Makefile (git
+ignores it):
+
+```make
+FORCE      = root@192.168.0.10
+SSH_KEY    = $(HOME)/.ssh/force
+PY         = $(HOME)/.venvs/polyforce/bin/python
+WAVETABLES = $(HOME)/wavetables
+```
 
 ## Tests
 
@@ -136,7 +143,7 @@ Results and what they mean: [Performance](PERFORMANCE.md).
 ## Packaging and installing
 
 ```sh
-make plugin-package PY=python3
+make plugin-package
 ```
 
 Builds `dist/PolyForce-<version>-mpc-armv7.zip`: the plugin and its skin as one folder, the
