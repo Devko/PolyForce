@@ -1,21 +1,28 @@
 #pragma once
 // The CPU guard: keeps one instance from running the audio thread past what MPC can afford.
-// After a block that cost too much of its real-time budget (the thread's own CPU time, as the
-// meter measures it), the engine fades out the quietest release tails (Synth::shedTails, ~3 ms
-// each): notes already let go, so nothing being played stops. Held and pedal-sustained notes
-// are never touched. One costly block on its own (a patch rebuild, a burst of note-ons) sheds
-// nothing; a sustained overload sheds one tail per block, a heavy one two.
+// The plugin reports the engine's own CPU time per call (thread clock, host callbacks not
+// included); calls are added up to at least one 128-frame block, so process() sub-blocks and
+// small host blocks are judged like MPC's. When that window cost too much of its real-time
+// budget, the engine fades out the quietest release tails (Synth::shedTails, ~3 ms each): notes
+// already let go, so nothing being played stops. Held and pedal-sustained notes are never
+// touched. A single window over kHigh (a patch rebuild, a burst of note-ons) sheds nothing; two
+// in a row shed one tail, and any window over kHeavy sheds two.
 
 namespace pf {
 
 class CpuGuard {
 public:
-    static constexpr double kHigh = 0.40;    // two blocks in a row over this: shed one tail
-    static constexpr double kHeavy = 0.65;   // a block over this: shed two at once
+    static constexpr double kHigh = 0.40;
+    static constexpr double kHeavy = 0.65;
+    static constexpr double kWindowUs = 2900.0;   // one 128-frame block at 44.1 kHz (2902 us)
 
-    // How many tails to shed after a block that took `us` of a `budgetUs` budget.
+    // After a call that took `us` of a `budgetUs` budget: how many tails to shed now.
     int afterBlock(double us, double budgetUs) {
-        const double load = budgetUs > 0.0 ? us / budgetUs : 0.0;
+        us_ += us;
+        budget_ += budgetUs;
+        if (budget_ < kWindowUs) return 0;
+        const double load = us_ / budget_;
+        us_ = budget_ = 0.0;
         const bool over = load > kHigh;
         const int shed = load > kHeavy ? 2 : (over && wasOver_) ? 1 : 0;
         wasOver_ = over;
@@ -23,7 +30,8 @@ public:
     }
 
 private:
-    bool wasOver_ = false;
+    double us_ = 0.0, budget_ = 0.0;
+    bool   wasOver_ = false;
 };
 
 } // namespace pf

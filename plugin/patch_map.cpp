@@ -102,7 +102,7 @@ static_assert(PARAM_INFO[P_L1_TRIG].nopts == LT_GLOBAL + 1 && PARAM_INFO[P_SEQ_M
 float paramValue(int id, float n) {
     if (id < 0 || id >= P_COUNT) return 0.0f;
     const ParamSpec& s = PARAM_SPECS[id];
-    n = std::clamp(n, 0.0f, 1.0f);
+    n = n > 0.0f ? (n < 1.0f ? n : 1.0f) : 0.0f;   // NaN-safe (std::clamp passes NaN through)
     switch (s.curve) {
         case Curve::Lin:  return s.lo + n * (s.hi - s.lo);
         case Curve::Log:  return s.lo * std::pow(s.hi / s.lo, n);

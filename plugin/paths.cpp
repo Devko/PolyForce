@@ -76,6 +76,8 @@ std::string resolveKey(const std::string& key, const std::vector<Root>& rs) {
     const std::string label = key.substr(0, colon), rel = key.substr(colon + 1);
     // Keys come from saved state text: never a way out of the root ("Lead...wav" is fine).
     if (rel.empty() || rel[0] == '/') return {};
+    for (const char c : rel)   // a NUL would cut the path short ("x/..\0" = "x/.."), a newline breaks lists
+        if (static_cast<unsigned char>(c) < 0x20) return {};
     for (size_t at = 0; at <= rel.size();) {
         const size_t slash = std::min(rel.find('/', at), rel.size());
         const std::string part = rel.substr(at, slash - at);

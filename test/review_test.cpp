@@ -697,6 +697,55 @@ void fileFixes() {
     }
 }
 
+// --- second review (after the performance pass) ---------------------------------------------
+
+void pluginFixes2() {
+    // A NaN from the host is read as 0: kept, it reached the engine's smoothers (cutoff,
+    // volume) and the instance played NaN until it was reloaded.
+    {
+        Host h;
+        h.bare();
+        h.set(pf::P_F1_TYPE, pf::F_LP12);
+        const float nan = std::numeric_limits<float>::quiet_NaN();
+        h.setN(pf::P_F1_CUT, nan);
+        h.setN(pf::P_VOLUME, nan);
+        h.on(60);
+        h.run(10);
+        CHECK(std::isfinite(h.get(pf::P_VOLUME)) && h.display(pf::P_VOLUME).find("nan") == std::string::npos);
+        h.set(pf::P_VOLUME, -6.0f);
+        h.set(pf::P_F1_CUT, 2000.0f);
+        h.on(64);
+        const float peak = h.run(20);
+        CHECK(h.finite && peak > 0.01f);
+    }
+    // A chunk far bigger than any state is refused, not copied and parsed.
+    {
+        Host h;
+        CHECK(h.load("polyforce 4\n" + std::string(2u << 20, '#')) == 0);
+    }
+    // A flood of events in one block still has room for the note-off (it used to be dropped
+    // with everything past 512 events: a stuck note).
+    {
+        Host h;
+        h.bare();
+        h.set(pf::P_E1_R, 0.005f);
+        h.on(60);
+        h.run(4);
+        for (int i = 0; i < 600; ++i) h.midi(0xB0, 1, static_cast<uint8_t>(i & 127));
+        h.off(60);
+        h.run(10);
+        CHECK(h.run(4) < 1e-4f);
+    }
+    // Keys with control characters resolve to nothing ("..\0" passed the ".." check, and the
+    // path then ended at the NUL: "<root>/..").
+    {
+        const std::vector<pf::Root> roots = {{"plugin", "/nonexistent"}};
+        CHECK(pf::resolveKey(std::string("plugin:..\0", 10), roots).empty());
+        CHECK(pf::resolveKey("plugin:a\nb.wav", roots).empty());
+        CHECK(pf::resolveKey("plugin:a b.wav", roots) == "/nonexistent/a b.wav");
+    }
+}
+
 } // namespace
 
 void reviewTests() {
@@ -704,6 +753,7 @@ void reviewTests() {
     noteGenFixes();
     surfaceFixes();
     fileFixes();
+    pluginFixes2();
 }
 
 } // namespace pft

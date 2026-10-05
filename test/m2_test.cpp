@@ -278,11 +278,23 @@ void sameNoteAndRanges() {
 void cpuGuard() {
     {
         pf::CpuGuard g;
-        CHECK(g.afterBlock(500.0, 1000.0) == 0);    // one block over 40%: a spike
-        CHECK(g.afterBlock(500.0, 1000.0) == 1);    // the next one too: shed
-        CHECK(g.afterBlock(100.0, 1000.0) == 0);
-        CHECK(g.afterBlock(800.0, 1000.0) == 2);    // over 65%: at once
-        CHECK(g.afterBlock(300.0, 1000.0) == 0);
+        const double b = 2902.0;                    // one 128-frame block
+        CHECK(g.afterBlock(0.5 * b, b) == 0);       // one block over 40%: a spike
+        CHECK(g.afterBlock(0.5 * b, b) == 1);       // the next one too: shed
+        CHECK(g.afterBlock(0.1 * b, b) == 0);
+        CHECK(g.afterBlock(0.8 * b, b) == 2);       // over 65%: at once
+        CHECK(g.afterBlock(0.3 * b, b) == 0);
+        // Small calls add up to a block first: process(513) = 4 x 128 frames at 20% plus a
+        // 1-frame remainder that pays a whole chunk (100 us: 440% of its own 22.7 us budget).
+        pf::CpuGuard s;
+        int shed = 0;
+        for (int blk = 0; blk < 10; ++blk) {
+            for (int c = 0; c < 4; ++c) shed += s.afterBlock(0.2 * b, b);
+            shed += s.afterBlock(100.0, b / 128.0);
+        }
+        CHECK(shed == 0);
+        for (int c = 0; c < 256; ++c) shed += s.afterBlock(0.5 * b / 128.0, b / 128.0);   // 1-frame calls at 50%
+        CHECK(shed == 1);                           // two full windows over 40%: one tail
     }
     pf::Patch p = plain();
     p.env[0].r = 4.0f;   // long tails

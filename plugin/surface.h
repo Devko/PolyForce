@@ -70,6 +70,8 @@ public:
     // Every parameter's current 0..1 value. False (and `out` untouched) while a batch is
     // being written: keep using the previous snapshot.
     bool        snapshot(float* out) const;
+    // True once when a MISSING note in the status line has run its time (no lock, no allocation).
+    bool        statusExpired();
 
     static int  kFine;   // ranges with this many steps or more follow MPC's value
 
@@ -114,6 +116,7 @@ private:
     std::atomic<float>    shown_[P_COUNT];
     std::atomic<bool>     release_[P_COUNT];
     std::atomic<uint32_t> textGen_{0};
+    std::atomic<long long> statusUntil_{0};   // when the status line's MISSING note ends (ms), 0 = none
     std::atomic<uint32_t> batchSeq_{0};    // odd while a batch is being written (a seqlock)
     std::atomic<uint32_t> changes_{0};     // bumped by every write to want_ / shown_ (notify's cue)
     std::atomic<int>      batchDepth_{0};

@@ -63,16 +63,20 @@ void walk(const Root& root, const std::vector<std::string>& exts, std::vector<Fo
             continue;
         }
         const fs::directory_entry& e = *it;
-        if (e.is_symlink(ec)) {   // never follow links: no loops, no surprises
-            if (e.is_directory(ec)) it.disable_recursion_pending();
+        std::error_code fe;   // one entry's trouble skips that entry; `ec` is the walk's own
+        if (e.is_symlink(fe)) {   // never follow links: no loops, no surprises
+            if (e.is_directory(fe)) it.disable_recursion_pending();
             continue;
         }
-        if (!e.is_regular_file(ec)) continue;
+        if (!e.is_regular_file(fe)) continue;
         const std::string ext = lower(e.path().extension().string());
         if (std::find(exts.begin(), exts.end(), ext) == exts.end()) continue;
-        const std::string rel = fs::relative(e.path(), root.dir, ec).generic_string();
-        if (ec || rel.empty()) continue;
+        const std::string rel = fs::relative(e.path(), root.dir, fe).generic_string();
+        if (fe || rel.empty()) continue;
         if (rel[0] == '.' || rel.find("/.") != std::string::npos) continue;   // hidden files, "._" macOS junk
+        // A control character (a newline) would break the one-key-per-line lists and state
+        // text, and resolveKey refuses such keys anyway.
+        if (std::any_of(rel.begin(), rel.end(), [](char c) { return static_cast<unsigned char>(c) < 0x20; })) continue;
         const size_t slash = rel.find('/');
         out.push_back({root.label + ":" + rel, e.path().string(),
                        slash == std::string::npos ? "Unsorted" : rel.substr(0, slash), stemOf(rel)});

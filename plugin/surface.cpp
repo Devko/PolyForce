@@ -42,7 +42,8 @@ long long nowMs() {
                std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
-float clamp01(float v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
+// NaN from the host becomes 0: kept, it would reach the engine's smoothers and never leave.
+float clamp01(float v) { return v > 0.0f ? (v < 1.0f ? v : 1.0f) : 0.0f; }
 int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
 int stepsOf(int i) {   // whole steps of a stepped parameter, 0 = continuous
@@ -136,7 +137,13 @@ void Surface::beginBatch() {
 }
 
 void Surface::endBatch() {
-    if (batchDepth_.fetch_sub(1) == 1) batchSeq_.fetch_add(1, std::memory_order_release);   // even: done
+    if (batchDepth_.fetch_sub(1) == 1) {
+        batchSeq_.fetch_add(1, std::memory_order_release);   // even: done
+        // Many values at once (a preset, randomize, auto-assign): texts that depend on others
+        // (frame / width, amounts in a target's unit) may have changed with no text of their
+        // own changing, and MPC only re-reads texts when told.
+        textGen_.fetch_add(1, std::memory_order_release);
+    }
 }
 
 int Surface::stepperCur(int i, const Listing& L, const std::string& key) const {
@@ -542,6 +549,7 @@ std::string Surface::amountText(int i) const {
 // XY auto-assign: every pad axis that no slot uses yet gets a free slot and the first target
 // on its list that nothing modulates yet.
 void Surface::autoAssignXy() {
+    Batch batch(*this);   // a slot is source, target and amount: never seen half-written
     struct Pick { int target; float amount; };
     static const Pick prefs[kXyAxes][3] = {
         {{MT_F1_CUT, 0.5f}, {MT_CUT, 0.5f}, {MT_F2_CUT, 0.5f}},
@@ -743,6 +751,21 @@ void Surface::refresh() {
         textHash_ = h;
         textGen_.fetch_add(1, std::memory_order_release);
     }
+    // A MISSING note in the status line ends by itself: tell the audio thread when, so it has
+    // MPC re-read the line then (nothing else may change to prompt it).
+    const long long now = nowMs();
+    long long until = 0;
+    for (int slot : {0, 1, kTuningSlot}) {
+        const Loader::View v = loader_.view(slot);
+        if (v.state == Loader::Missing && v.ageMs < kMissingShowMs) until = std::max(until, now + kMissingShowMs - v.ageMs + 1);
+    }
+    if (until > 0) statusUntil_.store(until, std::memory_order_release);
+}
+
+bool Surface::statusExpired() {
+    long long until = statusUntil_.load(std::memory_order_acquire);
+    if (until == 0 || nowMs() < until) return false;
+    return statusUntil_.compare_exchange_strong(until, 0, std::memory_order_acq_rel);
 }
 
 // --- state --------------------------------------------------------------------------------
@@ -815,7 +838,8 @@ void Surface::notify(AutomateFn automate, UpdateFn update, void* ctx) {
         scanPending_ = n < P_COUNT;   // stopped at the per-block cap: go on next block
         if (!scanPending_) scanned_ = changes;
     }
-    if (++sinceText_ >= kTextEveryBlocks) {
+    if (sinceText_ < kTextEveryBlocks) ++sinceText_;   // saturates: no overflow in a long session
+    if (sinceText_ >= kTextEveryBlocks) {
         const uint32_t g = textGen_.load(std::memory_order_acquire);
         if (g != textSeen_) {
             textSeen_ = g;

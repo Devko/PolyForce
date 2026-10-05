@@ -191,70 +191,76 @@ void Loader::publish(Slot& s, std::shared_ptr<const void> obj, const std::string
 void Loader::run() {
     std::unique_lock<std::mutex> lk(mtx_);
     while (!quit_) {
-        cv_.wait_for(lk, std::chrono::milliseconds(20), [this] { return quit_ || kick_; });
-        kick_ = false;
-        if (quit_) break;
+        // Nothing may leave this thread (std::terminate would end MPC): an out-of-memory
+        // here is a round skipped; the next one, 20 ms on, tries again.
+        try {
+            cv_.wait_for(lk, std::chrono::milliseconds(20), [this] { return quit_ || kick_; });
+            kick_ = false;
+            if (quit_) break;
 
-        // Free what no block can still be using: a block ended since the swap, or none is
-        // running now (the next one reads the new pointers; read after every swap below).
-        const bool idle = !inBlock_.load(std::memory_order_seq_cst);
-        const uint32_t e = epoch_.load(std::memory_order_seq_cst);
-        std::vector<std::shared_ptr<const void>> dead;
-        graveyard_.erase(std::remove_if(graveyard_.begin(), graveyard_.end(),
-                                        [&](Grave& g) {
-                                            if (!idle && static_cast<int32_t>(e - g.epoch) <= 0) return false;
-                                            dead.push_back(std::move(g.obj));
-                                            return true;
-                                        }),
-                         graveyard_.end());
+            // Free what no block can still be using: a block ended since the swap, or none is
+            // running now (the next one reads the new pointers; read after every swap below).
+            const bool idle = !inBlock_.load(std::memory_order_seq_cst);
+            const uint32_t e = epoch_.load(std::memory_order_seq_cst);
+            std::vector<std::shared_ptr<const void>> dead;
+            graveyard_.erase(std::remove_if(graveyard_.begin(), graveyard_.end(),
+                                            [&](Grave& g) {
+                                                if (!idle && static_cast<int32_t>(e - g.epoch) <= 0) return false;
+                                                dead.push_back(std::move(g.obj));
+                                                return true;
+                                            }),
+                             graveyard_.end());
 
-        const auto now = std::chrono::steady_clock::now();
-        for (size_t i = 0; i < slots_.size(); ++i) {
-            Slot& s = slots_[i];
-            if (s.want == s.loadedKey || s.missing) continue;
-            if (!s.now && now - s.wantAt < std::chrono::milliseconds(kDebounceMs)) continue;
-            const std::string key = s.want;
-            const LoadFn load = s.type.load;
-            const std::string fallback = s.type.fallbackKey;
-            lk.unlock();
-            dead.clear();   // free outside the lock too
-            std::string err;
-            int info = 0;
-            std::shared_ptr<const void> obj;
-            try {   // an exception here would end MPC (std::terminate): a throw is a failed load
-                obj = load(key, &err, &info);
-            } catch (...) {
-                obj = nullptr;
-                err = "could not load";
-            }
-            bool ok = obj != nullptr;
-            if (!ok && !fallback.empty()) {
-                std::string ignored;
-                try {
-                    obj = load(fallback, &ignored, &info);
+            const auto now = std::chrono::steady_clock::now();
+            for (size_t i = 0; i < slots_.size(); ++i) {
+                Slot& s = slots_[i];
+                if (s.want == s.loadedKey || s.missing) continue;
+                if (!s.now && now - s.wantAt < std::chrono::milliseconds(kDebounceMs)) continue;
+                const std::string key = s.want;
+                const LoadFn load = s.type.load;
+                const std::string fallback = s.type.fallbackKey;
+                lk.unlock();
+                dead.clear();   // free outside the lock too
+                std::string err;
+                int info = 0;
+                std::shared_ptr<const void> obj;
+                try {   // an exception here would end MPC (std::terminate): a throw is a failed load
+                    obj = load(key, &err, &info);
                 } catch (...) {
                     obj = nullptr;
+                    err = "could not load";
                 }
+                bool ok = obj != nullptr;
+                if (!ok && !fallback.empty()) {
+                    std::string ignored;
+                    try {
+                        obj = load(fallback, &ignored, &info);
+                    } catch (...) {
+                        obj = nullptr;
+                    }
+                }
+                lk.lock();
+                if (s.want != key) continue;   // picked something else meanwhile: next round loads that
+                publish(s, std::move(obj), ok ? key : fallback);
+                s.missing = !ok;
+                s.error = ok ? "" : err;
+                s.info = info;
+                s.doneAt = std::chrono::steady_clock::now();
+                loads_.fetch_add(1);
+                Listener l = listener_;
+                lk.unlock();
+                try {
+                    if (l) l(static_cast<int>(i), key, ok);
+                } catch (...) {
+                }
+                lk.lock();
             }
-            lk.lock();
-            if (s.want != key) continue;   // picked something else meanwhile: next round loads that
-            publish(s, std::move(obj), ok ? key : fallback);
-            s.missing = !ok;
-            s.error = ok ? "" : err;
-            s.info = info;
-            s.doneAt = std::chrono::steady_clock::now();
-            loads_.fetch_add(1);
-            Listener l = listener_;
             lk.unlock();
-            try {
-                if (l) l(static_cast<int>(i), key, ok);
-            } catch (...) {
-            }
+            dead.clear();
             lk.lock();
+        } catch (...) {
+            if (!lk.owns_lock()) lk.lock();
         }
-        lk.unlock();
-        dead.clear();
-        lk.lock();
     }
     graveyard_.clear();   // after the audio thread is gone (effClose joins us first)
 }

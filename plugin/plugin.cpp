@@ -288,10 +288,12 @@ void runBlock(Plugin* p, float* L, float* R, int n) {
     }
 }
 
-void meter(Plugin* p, double us, int n) {
+// us: the whole call; engineUs: runBlock alone, what the guard judges (MPC's own callbacks
+// from notify() are not ours to shed for).
+void meter(Plugin* p, double us, double engineUs, int n) {
     const double budget = static_cast<double>(n) * 1e6 / kSampleRate;
     if (p->guardOn)
-        if (const int k = p->guard.afterBlock(us, budget)) p->winShed += p->synth.shedTails(k);
+        if (const int k = p->guard.afterBlock(engineUs, budget)) p->winShed += p->synth.shedTails(k);
     p->winUs += us;
     p->winBudgetUs += budget;
     p->winPeak = std::max(p->winPeak, us / budget);
@@ -306,7 +308,8 @@ void meter(Plugin* p, double us, int n) {
     p->shownPeak.store(peak);
     p->shownVoices.store(voices);
     p->shownShed.store(shed);
-    if (avg != p->lastAvg || peak != p->lastPeak || voices != p->lastVoices || shed != p->lastShed) {
+    const bool expired = p->surface.statusExpired();   // a MISSING note ran its time: show the meter again
+    if (expired || avg != p->lastAvg || peak != p->lastPeak || voices != p->lastVoices || shed != p->lastShed) {
         p->lastAvg = avg;
         p->lastPeak = peak;
         p->lastVoices = voices;
@@ -337,9 +340,10 @@ void processReplacing(AEffect* e, float** /*in*/, float** out, int32_t n) {
         std::memset(out[0], 0, sizeof(float) * static_cast<size_t>(n));
         std::memset(out[1], 0, sizeof(float) * static_cast<size_t>(n));
     }
+    const double t1 = threadCpuUs();
     p->loader.blockDone();   // the tables read at block start are no longer in use
     p->surface.notify(hostAutomate, hostUpdate, p);
-    meter(p, threadCpuUs() - t0, n);
+    meter(p, threadCpuUs() - t0, t1 - t0, n);
 }
 
 // Legacy accumulating entry point (MPC uses processReplacing): sub-blocks of kScratch, each
@@ -372,14 +376,22 @@ void process(AEffect* e, float** in, float** out, int32_t n) {
     p->ppqOffset = 0;
 }
 
+// The last kEndReserve slots only take what ends notes (note-off, pedal, all notes/sound off):
+// a flood of note-ons or controllers must not leave a note stuck by crowding out its note-off.
+constexpr int kEndReserve = 64;
+
 void onMidi(Plugin* p, const VstEvents* evs) {
     if (!evs) return;
     for (int32_t i = 0; i < evs->numEvents && p->nMidi < kMaxMidi; ++i) {
         const VstEvent* ev = evs->events[i];
         if (!ev || ev->type != vst::kVstMidiType) continue;
         const auto* me = reinterpret_cast<const VstMidiEvent*>(ev);
-        p->midi[p->nMidi++] = {me->deltaFrames, static_cast<uint8_t>(me->midiData[0]),
-                               static_cast<uint8_t>(me->midiData[1] & 0x7F), static_cast<uint8_t>(me->midiData[2] & 0x7F)};
+        const uint8_t st = static_cast<uint8_t>(me->midiData[0]);
+        const uint8_t d1 = static_cast<uint8_t>(me->midiData[1] & 0x7F), d2 = static_cast<uint8_t>(me->midiData[2] & 0x7F);
+        const int type = st & 0xF0;
+        const bool ends = type == 0x80 || (type == 0x90 && d2 == 0) || (type == 0xB0 && (d1 == 64 || d1 == 120 || d1 == 123));
+        if (!ends && p->nMidi >= kMaxMidi - kEndReserve) continue;
+        p->midi[p->nMidi++] = {me->deltaFrames, st, d1, d2};
     }
 }
 
@@ -422,7 +434,7 @@ intptr_t dispatch(Plugin* p, int32_t op, int32_t idx, intptr_t val, void* ptr) {
             *static_cast<void**>(ptr) = const_cast<char*>(p->chunk.c_str());
             return static_cast<intptr_t>(p->chunk.size() + 1);
         case vst::effSetChunk: {
-            if (!ptr || val <= 0) return 0;
+            if (!ptr || val <= 0 || val > (1 << 20)) return 0;   // a state is ~10 KB; more is not ours
             std::string s(static_cast<const char*>(ptr), static_cast<size_t>(val));
             while (!s.empty() && s.back() == '\0') s.pop_back();
             return loadState(p->surface, s, false) ? 1 : 0;
@@ -477,12 +489,12 @@ extern "C" __attribute__((visibility("default"))) AEffect* VSTPluginMain(audioMa
 // the last call, in microseconds, with the passes' names; tools/bench.cpp reads it with dlsym.
 // Returns the number of passes written.
 extern "C" __attribute__((visibility("default"))) int PolyForceStageTimes(double* us, const char** names, int max) {
-    const int n = std::min<int>(max, pf::STG_COUNT);
-    for (int i = 0; i < n; ++i) {
+    if (!us || !names || max < pf::STG_COUNT) return 0;   // all passes or none (each read starts them over)
+    for (int i = 0; i < pf::STG_COUNT; ++i) {
         us[i] = static_cast<double>(pf::g_stageNs[i]) * 1e-3;
         names[i] = pf::kStageNames[i];
+        pf::g_stageNs[i] = 0;
     }
-    for (auto& t : pf::g_stageNs) t = 0;
-    return n;
+    return pf::STG_COUNT;
 }
 #endif

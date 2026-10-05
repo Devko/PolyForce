@@ -71,7 +71,8 @@ std::string nextUserPreset(std::string* key) {
     for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
         int n = 0;
         char tail[8] = {};
-        if (std::sscanf(it->path().filename().string().c_str(), "User %d.pf%1s", &n, tail) == 2 && tail[0] == 'p')
+        // %8d: a huge number in a file name can't overflow n, or top + 100 below.
+        if (std::sscanf(it->path().filename().string().c_str(), "User %8d.pf%1s", &n, tail) == 2 && tail[0] == 'p' && n > 0)
             top = std::max(top, n);
     }
     for (int n = top + 1; n < top + 100; ++n) {
