@@ -1,25 +1,31 @@
 # Milestone 1 design: wavetable library, browsing, steal modes
 
-Status: **built** (Milestone 1, 2026-10-04); kept as the design record. Decisions behind it are
-in [ROADMAP.md](ROADMAP.md#decisions): all browsing options A–F, tables from the plugin folder
-**and** the SSD, all four steal modes. Every touchscreen mechanic below is copied from
-RackForcePlugin (`plugin/surface.{h,cpp}`), where it is device-proven.
+> **Status: built** (Milestone 1, 2026-10-04). This is the design record as planned; the
+> differences in the built version are listed below. For the current overview, see
+> [Architecture](ARCHITECTURE.md).
+
+Decisions behind it are in the [roadmap](ROADMAP.md#decisions): all browsing options (§6–7),
+tables from the plugin folder **and** the SSD, all four steal modes. The touchscreen
+mechanics (stepping, pushes to MPC, the tile bounce rule) come from RackForce, an earlier Force
+plugin, where they are proven on the device.
 
 What changed after this design:
-- §5 Quietest is written (released voices first, then the quietest held one), and stealing
-  fades the old voice out over 3 ms (Milestone 2).
-- §6.2 `br_osc` became `br_target` with a third option, PRESETS: the same page browses presets
-  (Milestone 7). Presets and tunings use the same library and loader code (`FileLibrary`,
-  `Loader::SlotType`) with their own roots and favorites/recent files.
-- §8 the state is now `polyforce 4` (real values, per-oscillator routes, tuning and preset keys);
-  see `plugin/state.h`.
-- §1 the plugin folder comes from our own `plugin/paths.cpp` (`/proc/self/maps`), not the
-  toolkit's wrapper header.
-- §3 the loader has three slots (osc 1, osc 2, tuning); it also frees replaced tables while no
+
+- **§1** The plugin folder comes from PolyForce's own `plugin/paths.cpp` (`/proc/self/maps`), not
+  the toolkit's wrapper header.
+- **§3** The loader has three slots (osc 1, osc 2, tuning); it also frees replaced tables while no
   block runs, and catches anything a load throws. MISSING shows in the status line for 5 s, then
   only in the stepper text.
-- Still to do on the device: step 7 (all 379 tables reachable, CPU, project reload) and the
-  `setParameter`-after-`effSetChunk` trace from §8.
+- **§5** Stealing fades the old voice out over 3 ms (Milestone 2); since the interface redesign
+  (Milestone 7) STEAL sits on the VOICE tab.
+- **§6.2** `br_osc` became `br_target` with a third option, PRESETS: the same page browses presets
+  (Milestone 7). Presets and tunings use the same library and loader code (`FileLibrary`,
+  `Loader::SlotType`) with their own roots and favorites/recent files.
+- **§8** The state is now `polyforce 4` (real values, per-oscillator routes, tuning and preset
+  keys); see `plugin/state.h`.
+
+Still to do on the device: step 7 (all 379 tables reachable, CPU, project reload) and the
+`setParameter`-after-`effSetChunk` trace from §8 (see the [roadmap](ROADMAP.md#whats-next)).
 
 Build order (each step ends green on `make test`; steps 1 and 7 also run `make bench-device`):
 
@@ -138,12 +144,11 @@ New enum parameter `steal`, options `Oldest · Quietest · Keep low · Keep high
 | Mode | Picks |
 |---|---|
 | Oldest | the voice started first (`age`, wrap-safe `int32_t(a - b) < 0`) |
-| Quietest | **TODO(you)**: released voices (`!gate && !sustained`) first, quietest `env[0].v`; else the quietest held voice |
+| Quietest | released voices (`!gate && !sustained`) first, the quietest `env[0].v`; else the quietest held voice |
 | Keep low | oldest among all except the lowest-sounding note |
 | Keep high | oldest among all except the highest-sounding note |
 
-The Quietest scoring (released vs level vs age) is the piece left for the user; it falls
-back to Oldest until written. UI: an `enum_v` "STEAL" in the ENV page's OUTPUT frame
+UI: an `enum_v` "STEAL" in the ENV page's OUTPUT frame
 (VOLUME and VOICES knobs side by side at cx ≈ 1013 / 1168, the enum below).
 Tests (on `Synth` directly): Oldest steals the first note; Keep low/high keep a held low/high
 note through 9 more notes; Quietest steals a released voice before any held one.

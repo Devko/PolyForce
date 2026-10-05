@@ -1,5 +1,5 @@
 # PolyForce: wavetable synth as a VST2 instrument for MPC OS (Force / MPC standalone).
-# Build in WSL. Native: g++ (tests, x86 bench). Device: arm-linux-gnueabihf-g++ 13 (the
+# Builds on Linux or WSL. Native: g++ (tests, x86 bench). Device: arm-linux-gnueabihf-g++ 13 (the
 # Force ships GCC 13's libstdc++, so the .so links it dynamically).
 CXX      ?= g++
 ARM_CXX  ?= arm-linux-gnueabihf-g++
@@ -69,7 +69,7 @@ preview: $(SKIN)
 # --- native -----------------------------------------------------------------------------------
 # Sample wavetables for the tests (Serum-layout WAVs). Kept OUTSIDE this repo: third-party
 # content, never committed or packaged.
-WAVETABLES ?= $(firstword $(wildcard ../wavetables ../../wavetables /mnt/d/DEV/mockba/wavetables) ../wavetables)
+WAVETABLES ?= $(firstword $(wildcard ../wavetables ../../wavetables) ../wavetables)
 
 # The whole plugin through its VST2 entry points, under ASan/UBSan.
 test: $(BUILD)/plugin_test
@@ -193,7 +193,7 @@ $(ARM_BENCH): tools/bench.cpp dsp/wavetable.cpp $(HDR) $(GEN)
 # while MPC keeps running, then deletes them. Touches nothing else on the device. Verdicts come
 # from the plain .so; the stage build then shows where the time goes, and with a table how
 # much a multi-MB table costs over one that fits the cache.
-#   wsl -e make -C /mnt/d/DEV/mockba/PolyForce bench-device FORCE=root@<ip> WAVETABLES=<folder>
+#   make bench-device FORCE=root@<ip> WAVETABLES=<folder>
 BENCH_ARGS ?= -v 1,2,4,8 -u 1,2,4,8 -s 3
 BENCH_MATRIX_ARGS ?= -v 8 -u 1,8 -s 3 -m 1   # the same with a busy modulation matrix
 BENCH_STAGE_ARGS ?= -v 8 -u 1,8 -s 3
@@ -226,7 +226,7 @@ plugin-package: $(ARM_SO) $(SKIN)
 		-o dist
 
 # Install on a device: stops MPC, backs up + edits MPC.settings, restarts MPC. Save the MPC
-# project first. Usage (any shell): wsl -e make -C /mnt/d/DEV/mockba/PolyForce plugin-install FORCE=root@<ip>
+# project first. Usage: make plugin-install FORCE=root@<ip>
 PKG_TMP := /tmp/pfpkg
 plugin-install: plugin-package
 	rm -rf $(PKG_TMP) && mkdir -p $(PKG_TMP)
