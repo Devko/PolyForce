@@ -1,60 +1,80 @@
-# PolyForce roadmap
-
-A Hive 2-class wavetable synth running inside MPC on the Akai Force (VST2, see
-`docs/MPC_PLUGIN_SPEC.md` in the RackForcePlugin project). Our own name, DSP, presets and tables: the
-feature set is the reference, nothing of u-he's is copied.
-
-**Effects are out of scope for now:** MPC's own insert effects follow the plugin on its track.
-The filter drive stays (it is part of the voice, not an effect).
+# Roadmap
 
 Status: ✅ done · 🔜 next · ⬜ planned · 💤 deferred
 
----
-
-## Ground rules from the device
-
-These numbers and limits decide most of the design below.
-
-| Fact | Consequence |
-|---|---|
-| 2902 µs per 128-frame block, per instance; catalog PASS = p99 ≤ 15% | Every milestone ends with `make bench-device`; 8 voices × 8 unison must stay ≤ 15% |
-| Measured 2026-10-04: 8 voices × 8 unison × 2 osc = 15.2%; filters ≈ 55% of a voice's cost | Filters were the first target (NEON, four voices per vector); since then the oscillators are ~70% at 8 × 8 (ARM instruction counts) |
-| 256-frame table import on the Force: 582 ms, 22 MB | Loading must be off the audio thread; memory per table must shrink |
-| Skins: static PNGs only, no text entry, no drawn waveforms | No wavetable display, no scopes, no drag-and-drop; text + knobs + tiles |
-| `list` tiles and `stepper` text can change at runtime (dynamic name/display) | File names, folders, frame numbers can be shown as text |
-| Popup option text is baked into PNGs | Popups only for fixed lists (filter types, mod sources, steal modes), never for files |
-| Data wheel = 0.01 per click, Q-Link = 1/128 per detent, MPC sends "its value + delta" | Stepped params need `settle()` stepping (RackForce has it) to move exactly one step |
-| Projects store parameter values by index | Parameter list becomes append-only at the first release (v0.1); until then free to change |
-| Saved state = real values by key (`polyforce 4`) | Ranges can change without remapping saved projects |
+- [What's next](#whats-next)
+- [Constraints](#constraints)
+- [Milestones](#milestones)
+- [Reviews](#reviews)
+- [Deferred and not planned](#deferred-and-not-planned)
+- [Decisions](#decisions)
 
 ---
 
-## Phase 0 — spike ✅ (2026-10-04)
+## What's next
+
+- 🔜 **Skin render and page check** (`make skin`, `make preview`): the first real run of
+  `skin_polish.py` and of the wave view's meter patch.
+- 🔜 **On the device:** install, play every page, `make bench-device WAVETABLES=<folder>`; add the
+  result to the [device measurements](PERFORMANCE.md#device-measurements) and read the large-table
+  run.
+- 🔜 **Milestone 1 device checks:** a large library (379 tables) reachable, CPU ≤ 15% at 8 × 8,
+  project reload restores the tables; trace whether MPC calls `setParameter` right after restoring
+  a project's state.
+- 🔜 **Wave view on the device:** how quickly MPC redraws 48 meters at once, and that pushing them
+  doesn't mark the project as changed.
+- 🔜 **Factory content on the device:** a listening pass through every preset category, and how long
+  the slowest built-in tables take to build (*Growl*: 73 ms on x86).
+- ⬜ **16-bit tables** (half the memory traffic), only if the large table clearly costs more in the
+  sources pass on the device.
+- ⬜ **v0.1**, the first release: parameter list frozen (append-only from then on), catalog-style
+  package.
+
+## Constraints
+
+What the device allows decides most of the design:
+
+- **CPU:** 2902 µs per 128-frame block and instance; p99 ≤ 15% to pass. Every milestone ends with
+  `make bench-device`. → [Performance](PERFORMANCE.md)
+- **Skins:** static images, no text entry, no drawn graphics; popups only for fixed lists.
+  → [Interface](INTERFACE.md#what-mpc-skins-can-do)
+- **Projects** store parameter values by index: the parameter list becomes append-only at v0.1.
+  Saved state uses real values by key, so ranges can still change.
+  → [Architecture](ARCHITECTURE.md#parameters-and-saved-state)
+- **Loading** a 256-frame table took 582 ms and 22 MB on the Force: loading must be off the audio
+  thread, and tables must shrink. → [Performance](PERFORMANCE.md#wavetable-import)
+- **Effects** are out of scope for now: MPC's insert effects follow the plugin on its track. The
+  filter drive stays, as part of the voice.
+
+---
+
+## Milestones
+
+### Phase 0 — spike ✅ (2026-10-04)
 
 - ✅ 8 voices, 2 wavetable oscillators, unison up to 8 (detune, stereo width), level
 - ✅ 4 built-in tables (Classic, PWM, Sync, Formant), 11 band-limited mip levels
 - ✅ 2 filters (LP12/24, BP, HP12/24, notch, peak), drive, keytrack, serial/parallel
-- ✅ Amp + mod envelope; env 2 → cutoff and wavetable position
-- ✅ Serum-format WAV import (all 379 sample tables load and play)
+- ✅ Amp and mod envelope; env 2 → cutoff and wavetable position
+- ✅ Serum-format WAV import (a 379-table library loads and plays)
 - ✅ CPU meter in the status line, device bench, ASan test suite, install package
 
-## Milestone 1 — wavetable library and browsing ✅
+### Milestone 1 — wavetable library and browsing ✅
 
 Design record: [M1_DESIGN.md](M1_DESIGN.md).
 
-- ✅ Library: `<plugin dir>/Wavetables` and `/media/AkaiForce/Wavetables`, category = top
-  folder, shared prefixes stripped from names, built-ins as "Built-in"
-- ✅ Per-instance loader thread, shared LRU cache (96 MB), lock-free handoff to the audio
-  thread, 150 ms debounce, `LOADING` / `MISSING` in the status line, missing key kept
-- ✅ Faster, smaller import: per-level mip lengths and two frames per FFT; a 256-frame table
-  now takes ~120 ms and 9.0 MB on x86 (-O2), was 582 ms and 22 MB on the Force (re-measure
-  there: `make bench-device` times it)
+- ✅ Library: `<plugin folder>/Wavetables` and `/media/AkaiForce/Wavetables`; category = top
+  folder, shared name prefixes hidden, built-ins as *Built-in*
+- ✅ Per-instance loader thread, shared LRU cache (96 MB), lock-free handoff to the audio thread,
+  150 ms debounce, `LOADING` / `MISSING` in the status line, a missing table's key kept
+- ✅ Faster, smaller import: per-level mip lengths and two frames per FFT; a 256-frame table now
+  takes ~120 ms and 9.0 MB on x86 (was 582 ms and 22 MB on the Force)
 - ✅ Recall by key (`o1_table=plugin:Analog/…`), not by index
-- ✅ Browsing A–F: table steppers, browser page, favorites, recent, random, copy / swap;
+- ✅ Browsing: table steppers, browser page, favorites, recent, random, copy / swap;
   `FRAME 37 / 256` on the position knob
-- ⬜ On the device: all 379 sample tables reachable, CPU ≤ 15% at 8 × 8, project reload
+- 🔜 On the device: see [What's next](#whats-next)
 
-## Milestone 2 — voices ✅
+### Milestone 2 — voices ✅
 
 - ✅ Steal modes Oldest · Quietest (released first) · Keep low · Keep high
 - ✅ Click-free stealing: a stolen voice fades out over 3 ms before restarting
@@ -62,183 +82,150 @@ Design record: [M1_DESIGN.md](M1_DESIGN.md).
 - ✅ Glide: time or rate, always or legato only
 - ✅ Same note again: retrigger or new voice
 - ✅ Bend range up / down (0–24), velocity curve
-- 💤 More than 8 voices: NEON filters are done; decide from the device bench of this build
 
-## Milestone 3 — oscillators ✅
+### Milestone 3 — oscillators ✅
 
 - ✅ Sub oscillator per oscillator: sine / triangle / saw / square, −36..+12 st, level
-- ✅ Wave per oscillator: Table · Sine · Triangle · Saw · Square · Pulse (pulse width =
-  position) · Noise
+- ✅ Wave per oscillator: Table · Sine · Triangle · Saw · Square · Pulse (pulse width = position) ·
+  Noise
 - ✅ Phase offset, Reset / Random / Free
-- ✅ Per-source routing (osc 1, osc 2, noise): F1 · F2 · F1+F2 · Direct; Serial/Parallel only
+- ✅ Per-source routing (osc 1, osc 2, noise): F1 · F2 · F1+F2 · Direct; Serial / Parallel only
   decides whether F1 feeds F2
 - ✅ Noise source with a continuous colour (dark … white … bright), loudness-compensated
-- 💤 Wavetable scripting (Hive's `.uhm`): as an offline desktop tool that writes WAVs, if ever
 
-## Milestone 4 — filters and engine modes ✅
+### Milestone 4 — filters and engine modes ✅
 
 - ✅ Comb+ / Comb− (feedback comb, cutoff = pitch) and Vowel (3 formants, cutoff morphs A-E-I-O-U)
-- ✅ Engines Clean (no drift, linear) · Normal · Dirty (analog drift, saturation inside the
-  filter loop per sample)
-- ✅ Cutoff, resonance, drive as mod targets (Milestone 5)
-- ✅ **NEON voice-parallel filters**: four voices per vector (lane-packed buses), drive as its
-  own pass; with NEON oscillator reads, fast pitch/cutoff math and per-block caching about
-  −45% ARM instructions at 8 voices (README, "The NEON pass"). Device numbers: `make bench-device`.
+- ✅ Engines Clean (no drift, linear) · Normal · Dirty (analog drift, saturation inside the filter
+  loop per sample)
+- ✅ Cutoff, resonance, drive as mod targets (with Milestone 5)
+- ✅ NEON voice-parallel filters, four voices per vector; with the rest of the
+  [NEON pass](PERFORMANCE.md#first-pass-neon) about −45% ARM instructions at 8 voices
 
-## Milestone 5 — modulation ✅
+### Milestone 5 — modulation ✅
 
-- ✅ 2 LFOs: 7 shapes, free (0.02–40 Hz) or synced to MPC's tempo (17 divisions), phase,
-  delay, fade-in, Retrig / Free / Global, unipolar switch, depth
-- ✅ Mod matrix, 12 slots × 2 targets: source, via (amount scaled by a second source),
-  modifier (curve, rectify, quantize, S&H, slew) with its amount; popups for the lists
-- ✅ 29 sources: envelopes, LFOs, velocity, note, mod wheel, aftertouch (channel and poly),
-  bend, random, alternate, gate, step sequencer, 4 shapes, 4 XY pads, breath, expression,
+- ✅ 2 LFOs: 7 shapes, free (0.02–40 Hz) or synced to MPC's tempo (17 divisions), phase, delay,
+  fade-in, Retrig / Free / Global, unipolar switch, depth
+- ✅ Mod matrix, 12 slots × 2 targets: source, via (amount scaled by a second source), modifier
+  (curve, rectify, quantize, S&H, slew) with its amount
+- ✅ 28 sources: envelopes, LFOs, velocity, note, mod wheel, aftertouch (channel and poly), bend,
+  random, alternate, gate, step sequencer, 4 shapes, 4 XY pads (X and Y), breath, expression,
   constant
-- ✅ 37 targets including every envelope stage, LFO rate and depth, oscillator pitch /
-  position / level / pan / detune, sub and noise levels, cutoff / resonance / drive, volume, pan
+- ✅ 36 targets, including every envelope stage, LFO rate and depth, oscillator pitch / position /
+  level / pan / detune, sub and noise levels, cutoff / resonance / drive, volume, pan
 - ✅ 4 XY pads (8 Q-Link-friendly knobs) with auto-assign to free matrix slots
 
-## Milestone 6 — sequencing ✅
+### Milestone 6 — sequencing ✅
 
-- ✅ Arpeggiator: Up, Down, Up/Down, Down/Up, Played, Random, Chord; 1–4 octaves; latch;
-  optional step pattern (rests, velocity and transposition from the step sequencer)
-- ✅ 16-step sequencer: notes (transpose from the held key), velocity and a mod lane (a mod
+- ✅ Arpeggiator: Up, Down, Up/Down, Down/Up, Played, Random, Chord; 1–4 octaves; latch; optional
+  step pattern (rests, velocity and transposition from the step sequencer)
+- ✅ 16-step sequencer: notes (transposed from the held key), velocity and a mod lane (a mod
   source); record steps from the keys
 - ✅ 4 × 8-step shape sequencer (Step / Ramp / Smooth) as mod sources
-- ✅ Rate, gate, swing; locked to MPC's transport (`audioMasterGetTime` ppq) when it plays
+- ✅ Rate, gate, swing; locked to MPC's transport when it plays
 
-## Milestone 7 — presets and finish ✅ (release ⬜)
+### Milestone 7 — presets and finish ✅
 
-- ✅ 21 factory presets (embedded in the .so, validated by `surface.py` at build time); 205 since
-  the factory content below
+- ✅ 21 factory presets (embedded in the `.so`, validated by `surface.py` at build time); 205 since
+  the [factory content](#factory-content--2026-10-04)
 - ✅ Preset stepper and the browser page in PRESETS mode (categories, favorites, recent)
 - ✅ Save preset: `<first preset root>/User/User NNN.pfp` (there is no text entry)
 - ✅ Init patch, Randomize with an amount (volume and voicing untouched, attacks kept playable)
 - ✅ Microtuning from `.tun` and `.scl` files (tuning stepper, saved with project and preset)
-- ✅ Interface redesign: rounded cards on one dark ground, a teal accent, arc knobs (bipolar
-  from the centre), short parameter names for MPC's labels, BROWSE in the first five tabs, both
-  LFOs on one page, two shape lanes per page; `surface/skin_polish.py` redraws knobs, buttons and
-  stepper arrows after the generator (README, "Interface")
-- ✅ Wave view (OSC tab, WAVES): both oscillators' current frames as 48 bars each (display-only
-  meters the plugin sets while the page shows; PolyForce patch 5 to the generator, the bars drawn by
-  skin_polish.py). On the device: how quickly MPC redraws 48 meters at once, and that pushing them
-  doesn't mark the project as changed
-- ⬜ Skin render and page check on the user's machine (`make skin`, `make preview`; the first
-  real run of skin_polish.py and of the meter patch), then the device: install, play every page,
-  `make bench-device`
-- ⬜ First release v0.1: parameter list frozen (append-only from then on), catalog-style package
+- ✅ Interface redesign: rounded cards on one dark ground, a teal accent, arc knobs (bipolar from the
+  centre), short parameter names, both LFOs on one page, two shape lanes per page; post-build skin
+  polish ([Interface](INTERFACE.md))
+- ✅ Wave view (OSC → WAVES): both oscillators' current frames as 48 bars each
 
-## Factory content ✅ (2026-10-04)
+### Second performance pass ✅ (2026-10-04)
 
-README, "Factory content", lists the tables and the preset categories.
+ARM instructions per block against the NEON pass: 1 voice −16%, 8 voices −23%, 8 × 8 with a busy
+matrix −11% ([details](PERFORMANCE.md#second-pass-control-rate-matrix-pgo)).
 
-- ✅ 26 more built-in wavetables, 30 in all, computed (no sample data): analog (Square Sync, Reso Saw /
-  Square, Harmonics, Comb Saw), digital (Fold, Phase Dist, CZ Reso, FM Ratio 1-3, FM Tine, Digital,
-  Bitcrush, Chip), vocal (Vowels, Choir, Growl) and acoustic (Organ, E-Piano, Strings, Brass, Reed,
-  Pluck, Mallet, Bell). The four originals are unchanged (bit for bit; Sync to 4e-16)
-- ✅ Built on demand: Classic is built when the plugin loads (every slot's fallback); the others on the
-  loader thread the first time a patch uses one, then cached like a file (evicted when unused). Plugin
-  load now builds one table instead of four. 6-73 ms per table on x86; the slowest (Growl) needs a
-  device check
-- ✅ 184 new factory presets, 205 in all, in 14 categories: one folder per category under
-  `presets/Factory/`, the preset browser's categories (a user folder of the same name lists as
-  "<name> (files)"). `surface.py` checks names (unique, short enough for a tile) and that every table a
-  preset names is a built-in
-- ✅ Level-matched: every preset rendered through the plugin on a phrase that suits it, its volume set
-  for the loudest 3 s at -19 LUFS (one-shots: loudest 400 ms at -17 LUFS), peaks at most -3 dBFS; the
-  first 21 kept their sound (Comb Pluck and Noise Sweep got some filter drive to get there)
-- ✅ The mod wheel does something on every new preset but the drums (filter, vibrato or position)
-- ⬜ On the device: a listening pass through every category, table build times
-
----
-
-## Review after Milestone 7 ✅ (2026-10-04)
-
-Four parallel reviews (engine, sequencer + glue, surface + files, layout + build + docs); every
-confirmed finding fixed with a regression check in `test/review_test.cpp`. The larger ones:
-chords into a full voice pool kept only their last note; envelope knobs froze once the matrix
-touched an envelope stage; generated notes hung on transport jumps, loops and new phrases; a rate
-change stopped the arp or fired hundreds of steps; a huge `*.wav` or a throw on the loader thread
-could end MPC; `make plugin-install` deleted the user's tables, presets and favorites; preset
-loads could reach the audio thread half applied. Layout findings (popup lists past the screen
-edge, controls in frame title bands, knob names) go into the interface redesign.
-
----
-
-## Performance, second pass ✅ (2026-10-04)
-
-ARM instructions per block against the NEON pass: 1 voice −16%, 8 voices −23%, 8 × 8 with a
-busy matrix −11% (README, "The second pass").
-
-- ✅ 32-sample control rate; every control value glides across its chunk (no zipper from the
-  coarser rate; a regression check holds a 40 Hz LFO on level, volume and pan to the waveform's
-  own slope)
+- ✅ 32-sample control rate; every control value glides across its chunk
 - ✅ Cheaper matrix and LFOs: slots resolved per patch, shared sources per chunk, polynomial sine
-- ✅ Profile-guided device build, trained under qemu-arm (`PGO=0` for the plain one)
-- ✅ pfbench: per-pass times from a profiling build, a large table against one that fits the cache
-- ✅ CPU guard: sheds the quietest release tails when an instance runs over budget; never held notes
-- ✅ Second review (2026-10-05): four parallel reviews of the whole plugin after the pass; about
-  40 confirmed findings fixed, each with a regression check (`test/review_test.cpp`, m2, m5).
-  The larger ones: a 32-bit step index hung the audio thread on the Force at a large host song
-  position; a NaN from the host played NaN until reload; a float WAV near FLT_MAX built a NaN
-  table; stuck notes with more than 16 keys (record, Off → Arp); a step replayed after a swing
-  change; Play skipped step 0; levels going to 0 stepped instead of gliding; the loader thread
-  could end MPC on out-of-memory; `make test-tables` failed every table
-- 🔜 Device: `make bench-device WAVETABLES=<folder>`, add the row to the bench record, read the
-  large-table result
-- ⬜ 16-bit tables (half the memory traffic), only if the large table clearly costs more in the
-  sources pass on the device
-- 💤 Precomputed float frame pairs: about one instruction in eleven for twice the table memory
-- 💤 Voices on a second core: MPC already spreads instances over its audio workers; a voice
-  thread inside a 2.9 ms block risks dropouts that can't be tested without the device
+- ✅ Profile-guided device build, trained under `qemu-arm`
+- ✅ `pfbench`: per-pass times from a profiling build, a large table against one that fits the cache
+- ✅ CPU guard: sheds the quietest release tails when an instance runs over budget, never held notes
+
+### Factory content ✅ (2026-10-04)
+
+The tables and the preset categories: [user guide](USER_GUIDE.md#built-in-tables).
+
+- ✅ 26 more built-in wavetables, 30 in all, computed (no sample data): analog (Square Sync, Reso Saw
+  and Square, Harmonics, Comb Saw), digital (Fold, Phase Dist, CZ Reso, FM Ratio 1–3, FM Tine,
+  Digital, Bitcrush, Chip), vocal (Vowels, Choir, Growl) and acoustic (Organ, E-Piano, Strings,
+  Brass, Reed, Pluck, Mallet, Bell). The four originals are unchanged (bit for bit; Sync to 4e-16)
+- ✅ Built on demand: *Classic* at plugin load (every slot's fallback); the others on the loader
+  thread the first time a sound uses one, then cached like a file (evicted when unused). Plugin load
+  builds one table instead of four. 6–73 ms per table on x86
+- ✅ 184 new factory presets, 205 in all, in 14 categories: a folder per category under
+  `presets/Factory/`, which is the preset browser's category. `surface.py` checks names (unique,
+  short enough for a tile) and that every table a preset names is a built-in
+- ✅ Level-matched: every preset rendered through the plugin on a phrase that suits it and its volume
+  set for the loudest 3 s at −19 LUFS (one-shots: the loudest 400 ms at −17 LUFS), peaks at most
+  −3 dBFS; the first 21 kept their sound (Comb Pluck and Noise Sweep got some filter drive)
+- ✅ The mod wheel does something on every new preset but the drums (filter, vibrato or position)
 
 ---
 
-## Deferred / not planned 💤
+## Reviews
 
-| Hive 2 feature | Why not (now) |
+### After Milestone 7 ✅ (2026-10-04)
+
+Four parallel reviews (engine, sequencer and glue, surface and files, layout, build and docs);
+about 60 confirmed findings fixed, each with a regression check, most in `test/review_test.cpp`.
+The larger ones:
+
+- chords into a full voice pool kept only their last note
+- envelope knobs froze once the matrix touched an envelope stage
+- generated notes hung on transport jumps, loops and new phrases
+- a rate change stopped the arpeggiator or fired hundreds of steps
+- a huge `*.wav` or a throw on the loader thread could take MPC down
+- `make plugin-install` deleted the user's tables, presets and favorites
+- preset loads could reach the audio thread half applied
+
+Layout findings (popup lists past the screen edge, controls in card title bands, knob names) went
+into the interface redesign.
+
+### After the second performance pass ✅ (2026-10-05)
+
+Four parallel reviews of the whole plugin; about 40 confirmed findings fixed, each with a regression
+check (`test/review_test.cpp`, `m2`, `m5`). The larger ones:
+
+- a 32-bit step index hung the audio thread on the Force at a large host song position
+- a NaN from the host played NaN until reload
+- a float WAV near `FLT_MAX` built a NaN table
+- stuck notes with more than 16 keys (record, Off → Arp)
+- a step replayed after a swing change; Play skipped step 0
+- levels going to 0 stepped instead of gliding
+- the loader thread could take MPC down on out-of-memory
+- `make test-tables` failed every table
+
+---
+
+## Deferred and not planned
+
+| Feature | Why not (now) |
 |---|---|
-| 7 built-in effects | MPC's insert effects do the job |
-| Drag-and-drop modulation, scopes, wavetable view | MPC skins can't draw dynamic graphics |
+| Built-in effects | MPC's insert effects do the job |
+| More than 8 voices / 8 unison | 16 × 16 measured 45% of a block before the NEON pass; 8 × 8 stays the ceiling until the device bench of the current build says otherwise |
+| Drag-and-drop modulation, scopes, a drawn wavetable display | MPC skins can't draw dynamic graphics (the wave view's bars are the workaround) |
+| Wavetable scripting | No text entry on the device; at most an offline desktop tool that writes WAVs |
 | MTS-ESP microtuning | Needs a tuning master plugin; none exists inside MPC |
-| MPE | Untested whether MPC passes per-note channels/pitch bend to a VST2 — probe before planning |
-| 16 voices × 16 unison | Measured 45% of a block before the NEON pass; 8 × 8 stays the ceiling until the device bench of this build says otherwise |
-| `.uhm` wavetable scripting on the device | No text entry; at most an offline tool |
-
----
-
-## Bench record (Force, `make bench-device`, p99 % of the 2902 µs block)
-
-Patch: both oscillators, F1 LP24 + drive → F2 LP12, held chords, bench pinned to core 1 with
-MPC running. PASS ≤ 15%, WARN ≤ 35%.
-
-| Date | Build | 8v ×1 | 8v ×4 | 8v ×8 | 16v ×16 | 256-frame import |
-|---|---|---|---|---|---|---|
-| 2026-10-04 | Phase 0 (16-voice engine) | 8.1 | 11.5 | 15.5 | 45.1 | 582 ms, 22 MB |
-| 2026-10-04 | v0.0.2 (8 × 8 cap) | 8.2 | 11.4 | 15.2 | — | (same code) |
-
-Other Phase 0 numbers: `VSTPluginMain` (builds the 4 built-in tables; since the factory content only
-Classic and the classic shapes) 163 ms on the Force;
-x86 sweep of all 379 ESW tables: all load and play, 334 ms average import, worst 468 ms.
-
----
-
-## Housekeeping
-
-- ✅ Own repository: Devko/PolyForce (2026-10-05). The history before that came over from
-  `PolyForce/` in Devko/RackForce (same commits, new hashes); the toolkit patches are now
-  marked "PolyForce local patch".
-- ⬜ Add a row to the bench record for the M1–M7 build (`make bench-device`).
-- ⬜ Install on the device and confirm it plays (user: `make plugin-install`).
-- The ESW sample tables (`D:\DEV\mockba\wavetables`) are third-party test data: never committed,
-  never packaged.
+| MPE | Untested whether MPC passes per-note channels and pitch bend to a VST2; probe before planning |
+| Precomputed float frame pairs | About one instruction in eleven for twice the table memory |
+| Voices on a second core | MPC already spreads instances over its audio workers; a voice thread inside a 2.9 ms block risks dropouts that can't be tested without the device |
 
 ---
 
 ## Decisions
 
 - 2026-10-04 — **Voices and unison capped at 8** (played on the device: 16 not needed; 8 × 8 = 15.2%).
-- 2026-10-04 — **Browsing: all of 1.5 A–F** (knob scroll, browser page, favorites + recent,
-  random + copy/swap).
-- 2026-10-04 — **Table roots: plugin folder + SSD** (`/media/AkaiForce/Wavetables`; absent drive = no tables from it).
-- 2026-10-04 — **Steal modes: Oldest, Quietest (released first), Keep lowest, Keep highest.**
+- 2026-10-04 — **Browsing: all options** (knob scroll, browser page, favorites and recent, random,
+  copy / swap).
+- 2026-10-04 — **Table roots: plugin folder and SSD** (`/media/AkaiForce/Wavetables`; an absent
+  drive just means no tables from it).
+- 2026-10-04 — **Steal modes: Oldest, Quietest (released first), Keep low, Keep high.**
+- 2026-10-05 — **Own repository** for PolyForce, with its full history.
+- Sample wavetables used for testing are third-party content: never committed, never packaged.
