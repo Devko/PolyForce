@@ -514,6 +514,12 @@ void Synth::noteOnMono(int note, int velocity) {
     Voice& v = voices_[0];
     for (int i = 1; i < kMaxVoices; ++i)   // leftovers from a poly patch ring out
         if (voices_[i].active && (voices_[i].gate || voices_[i].sustained)) release(voices_[i]);
+    if (v.active && v.fade > 0) {   // fading out (a steal, the CPU guard): the note starts after it
+        v.pendingNote = note;
+        v.pendingVel = velocity;
+        v.pendingUp = false;
+        return;
+    }
     const bool overlap = v.active && (v.gate || v.sustained) && v.pendingNote < 0;
     if (overlap && patch_.voiceMode == VM_LEGATO) {
         glideTo(v, note, true);
@@ -648,6 +654,8 @@ void Synth::start(Voice& v, int note, int velocity, bool legato) {
                 for (auto& st : ch) st = Svf{};
         v.combLive[0] = v.combLive[1] = false;   // a comb clears its lines when it first runs
         v.ramp = Voice::Ramp{};                   // a fresh note's control values start where they are
+        v.lfoRateMul[0] = v.lfoRateMul[1] = 1.0f;  // not the last note's matrix values for its first chunk
+        v.lfoDepthAdd[0] = v.lfoDepthAdd[1] = 0.0f;
         v.drift = 0.0f;
         resetPhases(v);
     }
@@ -1142,9 +1150,14 @@ void Synth::renderSources(int lane, int n) {
         float (*d)[kChunk] = bus(route == RT_F2 ? 1 : (route == RT_DIRECT ? 2 : 0));
         render(d[0], d[1]);   // the renderers add into what is there
     };
+    // A source turned down to 0 still renders one chunk, gliding to silence from where the last
+    // one ended; after that it is skipped until it comes back, fading in from 0.
+    const bool was = v.ramp.valid;
     for (int o = 0; o < 2; ++o) {
-        const bool osc = m.level[o] > 0.0f, sub = m.subLevel[o] > 0.0f;
-        if (!osc) {   // silent this chunk: a later one fades in from silence
+        const bool osc = m.level[o] > 0.0f ||
+                         (was && (v.ramp.oscGain[o][0] != 0.0f || v.ramp.oscGain[o][1] != 0.0f || v.ramp.oscNoiseGain[o] != 0.0f));
+        const bool sub = m.subLevel[o] > 0.0f || (was && v.ramp.subGain[o] != 0.0f);
+        if (!osc) {   // silent: a later chunk fades in from silence
             v.ramp.oscGain[o][0] = v.ramp.oscGain[o][1] = v.ramp.oscNoiseGain[o] = 0.0f;
             v.ramp.frame[o] = -1;
         }
@@ -1155,7 +1168,7 @@ void Synth::renderSources(int lane, int n) {
             if (sub) renderSub(v, o, pitch + m.pitch[o], m.subLevel[o], l, r, n);
         });
     }
-    if (m.noiseLevel > 0.0f)
+    if (m.noiseLevel > 0.0f || (was && v.ramp.noiseGain != 0.0f))
         source(patch_.noise.route, [&](float* l, float* r) {
             renderNoise(v.noiseRng, v.noiseLp, m.noiseColor, 0.5f * m.noiseLevel, v.ramp.noiseGain, v.ramp.valid, l, r, n);
         });
@@ -1238,12 +1251,15 @@ void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, flo
     const OscState& s = osc_[o];
     const OscPatch& p = patch_.osc[o];
     if (!s.table) {   // Noise: the position knob is its colour, unison doesn't apply
+        v.ramp.oscGain[o][0] = v.ramp.oscGain[o][1] = 0.0f;   // a later switch back to a table fades in
+        v.ramp.frame[o] = -1;
         const float level = m.level[o];
         renderNoise(v.noiseRng, v.oscNoiseLp[o], 2.0f * clampf(p.pos + m.pos[o], 0.0f, 1.0f) - 1.0f, 0.5f * level,
                     v.ramp.oscNoiseGain[o], v.ramp.valid, L, R, n);
         return;
     }
     const Wavetable& t = *s.table;
+    v.ramp.oscNoiseGain[o] = 0.0f;   // a later switch to Noise fades in
 
     const float pos = clampf(p.pos + m.pos[o], 0.0f, 1.0f);
     const float fpos = pos * static_cast<float>(t.frames - 1);

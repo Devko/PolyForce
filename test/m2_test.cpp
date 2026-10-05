@@ -309,6 +309,32 @@ void cpuGuard() {
     r.run(4);
     CHECK(r.s.activeVoices() == 2 && r.sounds(67) && r.sounds(72));
     CHECK(r.s.shedTails(4) == 0);
+
+    // Mono: a key pressed while the shed tail fades waits for the fade (no jump back to the
+    // tail's level), then plays.
+    {
+        pf::Patch m = plain();
+        m.voiceMode = pf::VM_MONO;
+        m.env[0].r = 4.0f;
+        Rig r(m);
+        r.s.noteOn(48, 100);
+        r.run(20);
+        r.s.noteOff(48);
+        r.run(2);
+        CHECK(r.s.shedTails(1) == 1);
+        float L[256], R[256];
+        r.s.render(L, R, 96);
+        r.s.noteOn(55, 100);
+        r.s.render(L + 96, R + 96, 160);
+        float peak = 0.0f, jump = 0.0f;
+        for (int i = 1; i < 256; ++i) {
+            peak = std::max(peak, std::fabs(L[i]));
+            jump = std::max(jump, std::fabs(L[i] - L[i - 1]));
+        }
+        CHECK(jump < 0.25f * peak);
+        r.run(2);
+        CHECK(r.sounds(55) && r.s.voiceInfo(0).gate);
+    }
 }
 
 } // namespace

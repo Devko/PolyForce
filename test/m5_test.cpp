@@ -292,11 +292,16 @@ void plugin() {
 // jump beyond about the sine's own slope (0.0047 of its peak; stepping every 16 samples, the
 // engine before the glides jumped 0.02 .. 0.045).
 void controlRate() {
-    for (int tgt : {pf::MT_O1_LEVEL, pf::MT_VOLUME, pf::MT_PAN, pf::MT_O1_PAN}) {
+    struct Case { int tgt; float amt; bool sub; };
+    // 0.9 on a level of 0.5 reaches 0: going down to silence glides too.
+    const Case cases[] = {{pf::MT_O1_LEVEL, 0.5f, false}, {pf::MT_O1_LEVEL, 0.9f, false}, {pf::MT_VOLUME, 0.3f, false},
+                          {pf::MT_PAN, 0.5f, false},      {pf::MT_O1_PAN, 0.5f, false},   {pf::MT_SUB1_LEVEL, 0.9f, true}};
+    for (const Case& c : cases) {
         pf::Patch p = base();
-        p.osc[0].level = 0.5f;
+        p.osc[0].level = c.sub ? 0.0f : 0.5f;
+        p.osc[0].subLevel = c.sub ? 0.5f : 0.0f;
         p.lfo[0].rateHz = 40.0f;
-        route(p, 0, pf::MS_LFO1, tgt, tgt == pf::MT_VOLUME ? 0.3f : 0.5f);
+        route(p, 0, pf::MS_LFO1, c.tgt, c.amt);
         const Rec r = play(p, 0.5, 24);
         float peak = 0.0f, jump = 0.0f;
         for (size_t i = 4410; i < r.L.size(); ++i) {
@@ -305,6 +310,33 @@ void controlRate() {
         }
         CHECK(peak > 0.05f);
         CHECK(jump < 0.008f * peak);
+    }
+    // An oscillator switched Noise -> Sine -> Noise at a much lower level: the noise comes back
+    // from silence, not from its old level (no burst in the first chunk).
+    {
+        pf::Patch p = base();
+        p.osc[0].wave = pf::OW_NOISE;
+        p.osc[0].level = 1.0f;
+        pf::Synth s;
+        s.setPatch(p);
+        s.noteOn(60, 127);
+        float L[kBlock], R[kBlock];
+        for (int b = 0; b < 10; ++b) s.render(L, R, kBlock);
+        p.osc[0].wave = pf::OW_SINE;
+        s.setPatch(p);
+        for (int b = 0; b < 10; ++b) s.render(L, R, kBlock);
+        p.osc[0].wave = pf::OW_NOISE;
+        p.osc[0].level = 0.02f;
+        s.setPatch(p);
+        auto rms = [&](int n) {
+            double a = 0.0;
+            for (int i = 0; i < n; ++i) a += static_cast<double>(L[i]) * L[i];
+            return std::sqrt(a / n);
+        };
+        s.render(L, R, 32);
+        const double first = rms(32);
+        for (int b = 0; b < 10; ++b) s.render(L, R, kBlock);
+        CHECK(first < 2.0 * rms(kBlock));
     }
 }
 
