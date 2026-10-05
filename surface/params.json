@@ -421,7 +421,8 @@
    "options": [
     "OSC 1",
     "OSC 2",
-    "NOISE"
+    "NOISE",
+    "WAVES"
    ],
    "default": "OSC 1"
   },
@@ -5558,6 +5559,774 @@
    "max": 1,
    "momentary": true,
    "type": "trigger"
+  },
+  {
+   "key": "o1_wv01",
+   "name": "O1 Wave 01",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv02",
+   "name": "O1 Wave 02",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv03",
+   "name": "O1 Wave 03",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv04",
+   "name": "O1 Wave 04",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv05",
+   "name": "O1 Wave 05",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv06",
+   "name": "O1 Wave 06",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv07",
+   "name": "O1 Wave 07",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv08",
+   "name": "O1 Wave 08",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv09",
+   "name": "O1 Wave 09",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv10",
+   "name": "O1 Wave 10",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv11",
+   "name": "O1 Wave 11",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv12",
+   "name": "O1 Wave 12",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv13",
+   "name": "O1 Wave 13",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv14",
+   "name": "O1 Wave 14",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv15",
+   "name": "O1 Wave 15",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv16",
+   "name": "O1 Wave 16",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv17",
+   "name": "O1 Wave 17",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv18",
+   "name": "O1 Wave 18",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv19",
+   "name": "O1 Wave 19",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv20",
+   "name": "O1 Wave 20",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv21",
+   "name": "O1 Wave 21",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv22",
+   "name": "O1 Wave 22",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv23",
+   "name": "O1 Wave 23",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv24",
+   "name": "O1 Wave 24",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv25",
+   "name": "O1 Wave 25",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv26",
+   "name": "O1 Wave 26",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv27",
+   "name": "O1 Wave 27",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv28",
+   "name": "O1 Wave 28",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv29",
+   "name": "O1 Wave 29",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv30",
+   "name": "O1 Wave 30",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv31",
+   "name": "O1 Wave 31",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv32",
+   "name": "O1 Wave 32",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv33",
+   "name": "O1 Wave 33",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv34",
+   "name": "O1 Wave 34",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv35",
+   "name": "O1 Wave 35",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv36",
+   "name": "O1 Wave 36",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv37",
+   "name": "O1 Wave 37",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv38",
+   "name": "O1 Wave 38",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv39",
+   "name": "O1 Wave 39",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv40",
+   "name": "O1 Wave 40",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv41",
+   "name": "O1 Wave 41",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv42",
+   "name": "O1 Wave 42",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv43",
+   "name": "O1 Wave 43",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv44",
+   "name": "O1 Wave 44",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv45",
+   "name": "O1 Wave 45",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv46",
+   "name": "O1 Wave 46",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv47",
+   "name": "O1 Wave 47",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o1_wv48",
+   "name": "O1 Wave 48",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv01",
+   "name": "O2 Wave 01",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv02",
+   "name": "O2 Wave 02",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv03",
+   "name": "O2 Wave 03",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv04",
+   "name": "O2 Wave 04",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv05",
+   "name": "O2 Wave 05",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv06",
+   "name": "O2 Wave 06",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv07",
+   "name": "O2 Wave 07",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv08",
+   "name": "O2 Wave 08",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv09",
+   "name": "O2 Wave 09",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv10",
+   "name": "O2 Wave 10",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv11",
+   "name": "O2 Wave 11",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv12",
+   "name": "O2 Wave 12",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv13",
+   "name": "O2 Wave 13",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv14",
+   "name": "O2 Wave 14",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv15",
+   "name": "O2 Wave 15",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv16",
+   "name": "O2 Wave 16",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv17",
+   "name": "O2 Wave 17",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv18",
+   "name": "O2 Wave 18",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv19",
+   "name": "O2 Wave 19",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv20",
+   "name": "O2 Wave 20",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv21",
+   "name": "O2 Wave 21",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv22",
+   "name": "O2 Wave 22",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv23",
+   "name": "O2 Wave 23",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv24",
+   "name": "O2 Wave 24",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv25",
+   "name": "O2 Wave 25",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv26",
+   "name": "O2 Wave 26",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv27",
+   "name": "O2 Wave 27",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv28",
+   "name": "O2 Wave 28",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv29",
+   "name": "O2 Wave 29",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv30",
+   "name": "O2 Wave 30",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv31",
+   "name": "O2 Wave 31",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv32",
+   "name": "O2 Wave 32",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv33",
+   "name": "O2 Wave 33",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv34",
+   "name": "O2 Wave 34",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv35",
+   "name": "O2 Wave 35",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv36",
+   "name": "O2 Wave 36",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv37",
+   "name": "O2 Wave 37",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv38",
+   "name": "O2 Wave 38",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv39",
+   "name": "O2 Wave 39",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv40",
+   "name": "O2 Wave 40",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv41",
+   "name": "O2 Wave 41",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv42",
+   "name": "O2 Wave 42",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv43",
+   "name": "O2 Wave 43",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv44",
+   "name": "O2 Wave 44",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv45",
+   "name": "O2 Wave 45",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv46",
+   "name": "O2 Wave 46",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv47",
+   "name": "O2 Wave 47",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
+  },
+  {
+   "key": "o2_wv48",
+   "name": "O2 Wave 48",
+   "min": 0,
+   "max": 1,
+   "default": 0.5,
+   "display": "string"
   }
  ]
 }

@@ -969,6 +969,32 @@ int Synth::activeVoices() const {
     return n;
 }
 
+void Synth::waveView(int o, float* out, int n) const {
+    if (n <= 0) return;
+    const Wavetable* t = osc_[o].table;
+    if (!t) {   // Noise
+        uint32_t r = 0x2545F491u;
+        for (int c = 0; c < n; ++c) out[c] = 0.8f * randomBipolar(r);
+        return;
+    }
+    const float pos = clampf(patch_.osc[o].pos, 0.0f, 1.0f);   // as renderOsc, without the modulation
+    const float fpos = pos * static_cast<float>(t->frames - 1);
+    const int fa = std::min(static_cast<int>(fpos), std::max(t->frames - 2, 0));
+    const int fb = std::min(fa + 1, t->frames - 1);
+    const float morph = fpos - static_cast<float>(fa);
+    const float* A = t->get(fa, 0);
+    const float* B = t->get(fb, 0);
+    const int len = mipLength(0);
+    for (int c = 0; c < n; ++c) {
+        float best = 0.0f;
+        for (int s = c * len / n, e = (c + 1) * len / n; s < e; ++s) {
+            const float v = A[s] + morph * (B[s] - A[s]);
+            if (std::fabs(v) > std::fabs(best)) best = v;
+        }
+        out[c] = clampf(best, -1.0f, 1.0f);
+    }
+}
+
 int Synth::shedTails(int max) {
     int shed = 0;
     while (shed < max) {

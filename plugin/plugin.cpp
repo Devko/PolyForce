@@ -113,10 +113,25 @@ struct Plugin {
     std::atomic<int> shownVoices{0}, shownAvg{0}, shownPeak{0}, shownShed{0};   // percent; tails shed
     int              lastVoices = -1, lastAvg = -1, lastPeak = -1, lastShed = -1;
     CpuGuard         guard;
+
     const bool       guardOn = [] {   // PF_CPU_GUARD=0 turns it off (the tests: emulated or sanitized
         const char* e = std::getenv("PF_CPU_GUARD");   // blocks are slow, and must stay deterministic)
         return !e || std::strcmp(e, "0") != 0;
     }();
+    // The wave view (OSC tab, WAVES): what each oscillator's meters were last set to, and for what. A
+    // table's address alone could be a new table in a freed one's place: its name and size count too.
+    struct WaveKey {
+        const void* table = nullptr;
+        size_t name = 0;
+        int frames = 0, wave = -1;
+        float pos = -1.0f;
+        bool operator==(const WaveKey& o) const {
+            return table == o.table && name == o.name && frames == o.frames && wave == o.wave && pos == o.pos;
+        }
+    };
+    WaveKey waveKey[2];
+    float   waveShown[2][kWaveCols] = {};
+    bool    waveValid[2] = {};
 
     Plugin() {
         // Loaded tables show in the stepper texts and the browser; a fresh one goes on the
@@ -220,9 +235,37 @@ void renderTo(Plugin* p, float* L, float* R, int& pos, int to) {
     }
 }
 
+// The WAVES page: each oscillator's current frame as kWaveCols meter values, each one of the strip's 128
+// levels. Only while the page shows (an automated position would otherwise keep MPC busy with values it
+// isn't drawing; switching to the page catches up at once), and only when a table, wave or position
+// changed (a few thousand reads then, nothing otherwise). MPC hears the columns that moved via notify().
+constexpr int kWavesPage = 3;   // ui_osc: OSC 1, OSC 2, NOISE, WAVES
+static_assert(PARAM_INFO[P_UI_OSC].nopts == kWavesPage + 1, "WAVES is the OSC tab's last page");
+static_assert(P_O2_WV01 == P_O1_WV01 + kWaveCols, "the wave view's parameters: two runs of kWaveCols");
+void updateWaveView(Plugin* p) {
+    if (std::lround(paramValue(P_UI_OSC, p->surface.get(P_UI_OSC))) != kWavesPage) return;
+    for (int o = 0; o < 2; ++o) {
+        const Wavetable* t = p->synth.oscTable(o);
+        const Plugin::WaveKey key{t, t ? std::hash<std::string>{}(t->name) : 0, t ? t->frames : 0,
+                                  p->patch.osc[o].wave, p->patch.osc[o].pos};
+        if (p->waveValid[o] && key == p->waveKey[o]) continue;
+        float cols[kWaveCols];
+        p->synth.waveView(o, cols, kWaveCols);
+        const int first = o ? P_O2_WV01 : P_O1_WV01;
+        for (int c = 0; c < kWaveCols; ++c) {
+            const float v = std::round((cols[c] + 1.0f) * 63.5f) / 127.0f;
+            if (p->waveValid[o] && v == p->waveShown[o][c]) continue;
+            p->waveShown[o][c] = v;
+            p->surface.setValue(first + c, v);
+        }
+        p->waveKey[o] = key;
+        p->waveValid[o] = true;
+    }
+}
+
 void runBlock(Plugin* p, float* L, float* R, int n) {
     // The sound only changes when a parameter or a loaded table does: then rebuild the patch
-    // (436 value conversions) and hand it to the engine; else keep both as they are.
+    // (a few hundred value conversions) and hand it to the engine; else keep both as they are.
     float fresh[P_COUNT];
     bool changed = false;
     if (p->surface.snapshot(fresh) && (!p->havePatch || std::memcmp(fresh, p->snapshot, sizeof fresh) != 0)) {   // mid-preset: false
@@ -241,6 +284,7 @@ void runBlock(Plugin* p, float* L, float* R, int n) {
     changed = changed || pitches != p->patch.tuning;
     p->patch.tuning = pitches;
     if (changed) p->synth.setPatch(p->patch);
+    updateWaveView(p);
     if (p->panic.exchange(false)) {
         p->gen.panic(p->synth);
         p->synth.reset();

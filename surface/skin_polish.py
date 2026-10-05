@@ -13,6 +13,9 @@ renderer can't draw the way the design wants. `make skin` runs it right after ge
 3. Stepper arrows sh_arrow_<tab>_<key>_{prev,next}.png: shadow_skin crops them from the canvas as it stands
    after the LAST page mode was drawn, so a stepper inside a when= panel gets the wrong pixels. Redrawn: the
    h x h box rounded 5 of render_conf_preview.c's widget_stepper() with the design's centred triangle.
+4. Wave view columns sh_meter_<w>x<h>.png (a look-less meter, drawn by shadow_art as a slider strip: RackForce
+   patch 5): 128 frames of max(w,h)^2, transparent around the w x h column; frame k is a bar from the zero line
+   for the value k/127 (up above 0.5, down below), the zero line across the full width.
 
 The file names and sizes stay (TUI.json names them). Everything is checked first (the files exist, TUI.json uses
 them, the sizes are the generator's, no unknown button/arrow/knob images) and nothing is written unless all of it
@@ -124,6 +127,7 @@ class Skin:
         pal = style["palette"]
         self.under = pal["box"] if self.td3 else pal["bg"]   # shadow_skin under()
         self.knobs = sorted({w["r"] for t in self.tabs for w in t["widgets"] if w["kind"] == "knob"})
+        self.meters = sorted({(w["w"], w["h"]) for t in self.tabs for w in t["widgets"] if w["kind"] == "meter"})
         self.buttons = {}   # image stem -> (key, label)
         self.arrows = {}    # file name -> (side, h)
         for t, tab in enumerate(self.tabs):
@@ -210,6 +214,34 @@ def knob_frame(r, t, look, pal, under, min_arc=0.5):
     return im.resize((s, s), _resample(Image, "BOX"))
 
 
+def meter_name(w, h):   # shadow_skin: "sh_meter_%dx%d%s" % (w, h, sfx), no look = no suffix
+    return "sh_meter_%dx%d.png" % (w, h)
+
+
+def meter_strip(w, h, pal, under, frames):
+    """frames x max(w,h)^2 stacked vertically (shadow_skin square_strip()), transparent around the w x h
+    column. The column is the display colour (a row of them, side by side, is one screen). Frame k: the
+    value k/(frames-1) as a bar from the middle (2 px clear each side, so the bars stand apart), the zero
+    line over the full width (one axis across the row)."""
+    Image, ImageDraw, _ = _pil()
+    sq = max(w, h)
+    im = Image.new("RGBA", (sq, sq * frames), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    x0, y0 = (sq - w) // 2, (sq - h) // 2
+    mid, half = y0 + h // 2, h // 2 - 2
+    card, bar, axis = rgb(pal["lcd"]) + (255,), rgb(pal["accent"]) + (255,), rgb(pal["line"]) + (255,)
+    for k in range(frames):
+        oy = k * sq
+        d.rectangle([x0, oy + y0, x0 + w - 1, oy + y0 + h - 1], fill=card)
+        v = 2.0 * k / (frames - 1) - 1.0
+        n = int(round(abs(v) * half))
+        if n:
+            top, bot = (mid - n, mid - 1) if v > 0 else (mid + 1, mid + n)
+            d.rectangle([x0 + 2, oy + top, x0 + w - 3, oy + bot], fill=bar)
+        d.line([x0, oy + mid, x0 + w - 1, oy + mid], fill=axis)
+    return im
+
+
 def button_image(w, h, label, primary, on, pal, under, font_path):
     """A rounded button 2 px inside the image (48 px tall in a td3 skin's 52), a 2 px ring, the label centred."""
     Image, ImageDraw, ImageFont = _pil()
@@ -279,7 +311,8 @@ def plan(skin_dir, layout_path, style):
     on_disk = set(os.listdir(skin_dir))
     for prefix, known in (("sh_knob_r", {"sh_knob_r%d.png" % r for r in sk.knobs}),
                           ("sh_btn_", {"%s_%s.png" % (b, s) for b in sk.buttons for s in ("on", "off")}),
-                          ("sh_arrow_", set(sk.arrows))):
+                          ("sh_arrow_", set(sk.arrows)),
+                          ("sh_meter_", {meter_name(w, h) for w, h in sk.meters})):
         for f in sorted(on_disk):
             if f.startswith(prefix) and f.endswith(".png") and f not in known:
                 errors.append("%s: not in the layout (wrong layout for this skin?)" % f)
@@ -307,6 +340,11 @@ def plan(skin_dir, layout_path, style):
         if image(name, (h, h)):
             out.append((name, lambda h=h, side=side: arrow_image(h, side, pal, sk.under)))
 
+    for w, h in sk.meters:
+        sq = max(w, h)
+        if image(meter_name(w, h), (sq, sq * frames)):
+            out.append((meter_name(w, h), lambda w=w, h=h: meter_strip(w, h, pal, sk.under, frames)))
+
     if errors:
         raise PolishError("skin polish refused, nothing written:\n  " + "\n  ".join(errors))
     return out, sk
@@ -327,8 +365,8 @@ def polish(skin_dir, layout_path, style_path):
         path = os.path.join(skin_dir, name)
         im.save(path + ".tmp.png")
         os.replace(path + ".tmp.png", path)
-    return "skin polish: %d knob strips, %d button images, %d stepper arrows" % (
-        len(sk.knobs), 2 * len(sk.buttons), len(sk.arrows))
+    return "skin polish: %d knob strips, %d button images, %d stepper arrows, %d meter strips" % (
+        len(sk.knobs), 2 * len(sk.buttons), len(sk.arrows), len(sk.meters))
 
 
 # --- self-test ----------------------------------------------------------------------------------
@@ -366,6 +404,7 @@ def selftest(samples=None):
             for stem, (_, label) in sk.buttons.items():
                 names += [("%s_%s.png" % (stem, st), sk.button_size(label)) for st in ("on", "off")]
             names += [(n, (h, h)) for n, (_, h) in sk.arrows.items()]
+            names += [(meter_name(w, h), (max(w, h), max(w, h) * style["frames"])) for w, h in sk.meters]
             names += [("sh_bg_0.png", (1280, 628)), ("sh_seg_ui_osc_0_on.png", (122, 33))]   # left alone
             for n, size in names:
                 Image.new("RGB", size, dummy).save(os.path.join(folder, n))
@@ -430,6 +469,25 @@ def selftest(samples=None):
                 back, front = (h - 1 - back[0], back[1]), (h - 1 - front[0], front[1])
             check(im.getpixel(back) == glyph and im.getpixel(front) == line, "%s: points the wrong way" % n)
 
+        check(len(sk.meters) >= 1, "the layout has no wave view meters")
+        for mw, mh in sk.meters:
+            sq, fr_n = max(mw, mh), style["frames"]
+            strip = Image.open(os.path.join(skin, meter_name(mw, mh))).convert("RGBA")
+            x0, y0 = (sq - mw) // 2, (sq - mh) // 2
+            cx, mid = x0 + mw // 2, y0 + mh // 2
+
+            def px(k, x, y):
+                return strip.getpixel((x, k * sq + y))
+            check(sq == mw or px(0, 0, 0)[3] == 0, "meter %dx%d: padding is not transparent" % (mw, mh))
+            check(near(px(fr_n - 1, cx, mid - mh // 4)[:3], accent), "meter %dx%d: value 1: no bar above the line" % (mw, mh))
+            check(near(px(0, cx, mid + mh // 4)[:3], accent), "meter %dx%d: value 0: no bar below the line" % (mw, mh))
+            check(not near(px(fr_n - 1, cx, mid + mh // 4)[:3], accent), "meter %dx%d: value 1 has a bar below" % (mw, mh))
+            check(not any(near(px(fr_n // 2, cx, y)[:3], accent) for y in range(y0, mid - 2)),
+                  "meter %dx%d: the middle value has a bar above the line" % (mw, mh))
+            check(near(px(fr_n // 2, x0, mid)[:3], line) and near(px(fr_n // 2, x0 + mw - 1, mid)[:3], line),
+                  "meter %dx%d: the zero line does not run the full width" % (mw, mh))
+            check(px(fr_n - 1, x0, mid - mh // 4)[:3] == rgb(pal["lcd"]), "meter %dx%d: no display colour beside the bar" % (mw, mh))
+
         # refusals: each leaves every file untouched
         def refused(desc, mutate, needle):
             folder = os.path.join(tmp, desc.replace(" ", "_"), "Plugin Skins")
@@ -457,6 +515,8 @@ def selftest(samples=None):
         refused("not in TUI", lambda f: json.dump({"images": []}, open(os.path.join(f, "TUI.json"), "w")),
                 "TUI.json does not use it")
         refused("no TUI", lambda f: os.remove(os.path.join(f, "TUI.json")), "no TUI.json")
+        refused("unknown meter", lambda f: Image.new("RGB", (9, 9 * 128), dummy).save(os.path.join(f, "sh_meter_9x9.png")),
+                "sh_meter_9x9.png: not in the layout")
         try:
             polish(os.path.join(tmp, "nowhere"), lay, sty)
             fails.append("a missing skin folder was accepted")
@@ -469,8 +529,8 @@ def selftest(samples=None):
         shutil.rmtree(tmp, ignore_errors=True)
     if fails:
         raise PolishError("selftest FAILED:\n  " + "\n  ".join(fails))
-    return "skin polish selftest: ok (%d knob radii, %d buttons, %d arrows, 6 refusals)" % (
-        len(sk.knobs), len(sk.buttons), len(sk.arrows))
+    return "skin polish selftest: ok (%d knob radii, %d buttons, %d arrows, %d meter strips, 7 refusals)" % (
+        len(sk.knobs), len(sk.buttons), len(sk.arrows), len(sk.meters))
 
 
 def write_samples(out, sk, style, skin):

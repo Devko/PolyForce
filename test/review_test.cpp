@@ -549,7 +549,7 @@ void surfaceFixes() {
         Host h;
         h.setN(pf::P_O1_WAVE__OPEN, 1.0f);
         CHECK(h.get(pf::P_O1_WAVE__OPEN) == 1.0f);
-        h.setN(pf::P_UI_OSC, 0.5f);   // OSC 2
+        h.set(pf::P_UI_OSC, 1);   // OSC 2
         CHECK(h.get(pf::P_O1_WAVE__OPEN) == 0.0f);
     }
     // A preset picked from FAVORITES: the browser stays on FAVORITES.

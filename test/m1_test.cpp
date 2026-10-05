@@ -437,4 +437,70 @@ void browserTests() {
     CHECK(h.finite);
 }
 
+// The wave view (OSC tab, WAVES): the plugin sets each oscillator's kWaveCols meters to its current frame
+// (table, wave and position knob) while the page shows, tells MPC, keeps them when MPC writes to them, and
+// saves none of it.
+void waveViewTests() {
+    auto col = [](Host& h, int o, int c) { return 2.0f * h.get((o ? pf::P_O2_WV01 : pf::P_O1_WV01) + c) - 1.0f; };
+    // A sine: up in the first half, down in the second, the peaks on the quarters.
+    {
+        Host h;
+        h.set(pf::P_UI_OSC, 3);   // WAVES
+        CHECK(h.display(pf::P_UI_OSC) == "WAVES");
+        h.set(pf::P_O1_WAVE, pf::OW_SINE);
+        h.run(4);
+        CHECK(col(h, 0, 11) > 0.95f && col(h, 0, 12) > 0.95f && col(h, 0, 35) < -0.95f && col(h, 0, 36) < -0.95f);
+        bool shape = std::fabs(col(h, 0, 0)) < 0.2f;
+        for (int c = 1; c < 23; ++c) shape = shape && col(h, 0, c) > 0.0f;
+        for (int c = 25; c < pf::kWaveCols - 1; ++c) shape = shape && col(h, 0, c) < 0.0f;
+        CHECK(shape);
+        CHECK(h.log.automated.count(pf::P_O1_WV01 + 11) == 1);   // pushed to MPC
+        CHECK(h.display(pf::P_O1_WV01).empty());
+    }
+    // The position knob moves it: a pulse at 50% width is up half the cycle, at 3% only briefly.
+    {
+        Host h;
+        h.set(pf::P_UI_OSC, 3);
+        h.set(pf::P_O2_WAVE, pf::OW_PULSE);
+        h.set(pf::P_O2_POS, 0.0f);
+        h.run(4);
+        auto high = [&] {
+            int k = 0;
+            for (int c = 0; c < pf::kWaveCols; ++c) k += col(h, 1, c) > 0.0f ? 1 : 0;
+            return k;
+        };
+        const int wide = high();
+        h.set(pf::P_UI_OSC, 1);   // another page: the view holds still, MPC hears nothing
+        const int pushes = h.log.automateCount[pf::P_O2_WV01 + 20];
+        h.set(pf::P_O2_POS, 1.0f);
+        h.run(4);
+        CHECK(high() == wide && h.log.automateCount[pf::P_O2_WV01 + 20] == pushes);
+        h.set(pf::P_UI_OSC, 3);   // back: it catches up
+        h.run(2);
+        CHECK(wide >= 18 && wide <= 30 && high() <= 4);
+    }
+    // A newly loaded table shows; MPC writing a meter (a touch) doesn't move it; nothing of it is saved or
+    // automatable; the page is the fourth of the OSC tab.
+    {
+        Host h;
+        h.set(pf::P_UI_OSC, 3);
+        h.run(4);
+        std::vector<float> before(pf::kWaveCols);
+        for (int c = 0; c < pf::kWaveCols; ++c) before[static_cast<size_t>(c)] = col(h, 0, c);
+        CHECK(h.load("polyforce 4\no1_table=builtin:Sync\n") == 1);
+        CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Built-in / Sync"; }));
+        int moved = 0;
+        for (int c = 0; c < pf::kWaveCols; ++c) moved += std::fabs(col(h, 0, c) - before[static_cast<size_t>(c)]) > 0.05f;
+        CHECK(moved >= 10);
+        const int k = pf::P_O1_WV01 + 20;
+        const float v = h.get(k);
+        const int pushes = h.log.automateCount[k];
+        h.setN(k, v > 0.5f ? 0.0f : 1.0f);
+        h.run(2);
+        CHECK(h.get(k) == v && h.log.automateCount[k] == pushes + 1 && h.log.automated[k] == v);
+        CHECK(h.e->dispatcher(h.e, vst::effCanBeAutomated, k, 0, nullptr, 0.0f) == 0);
+        CHECK(h.chunk().find("_wv") == std::string::npos);
+    }
+}
+
 } // namespace pft

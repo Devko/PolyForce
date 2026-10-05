@@ -19,11 +19,14 @@ Do not edit files here; patch around them so an upgrade stays a plain re-copy.
 
 ## Local patches (RackForce)
 
-`tools/shadow_skin.py` carries four small, marked (`RackForce local patch`) changes:
+`tools/shadow_skin.py` carries five small, marked (`RackForce local patch`) changes:
 1. `theme_title=` / `title_size=`: frame title colour and size (were fixed ACCENT_HI / 26 px).
 2. Popup list options are drawn with the real title font (`SHADOW_TITLE_FONT`) like enum
    segments, instead of the 9x9 bitmap font.
 3. `theme_tile_on=`: a filled lit state for `list` tiles (was a 3 px outline only).
 4. `slider_v`/`slider_h` accept `cw=` (component width), so a tight row of sliders doesn't
    overlap hit areas and value labels.
+5. A `meter` without `strip=` builds with the C renderer: its strip is drawn as a vertical
+   slider's (`sh_meter_<w>x<h>.png`) for a post-step to redraw (PolyForce's wave view:
+   `surface/skin_polish.py`). With the browser renderer a meter still needs `strip=`.
 Re-apply them after re-copying upstream.

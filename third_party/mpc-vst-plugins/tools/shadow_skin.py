@@ -41,7 +41,9 @@ Layout file:
                                                         a when= art line per option, so mode images do the switching)
     meter   cx= cy= w= h= key=<param> strip=meter.png [frames=N]
                                                        (a display-only filmstrip following a parameter the engine sets;
-                                                        experimental: see docs/SKIN_STUDIO.md)
+                                                        experimental: see docs/SKIN_STUDIO.md. RackForce local patch:
+                                                        without strip= and with the C renderer, the strip is drawn as
+                                                        a slider's, sh_meter_<w>x<h>.png, for a post-step to redraw)
     meter   cx= cy= w= h= key=<param> look=native ...  (NOT USABLE: a real native Meter component breaks the
                                                         whole plugin screen on a real device -- see docs/NOTES.md
                                                         "Native `Meter` component: breaks the whole page";
@@ -578,8 +580,9 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
         tab["widgets"] = expand_pictures(tab["widgets"])
         for w in tab["widgets"]:
             lk = look_of(w, base_dir)
-            if w["kind"] == "meter" and not lk:
-                raise SystemExit("layout: meter %s needs strip= (its filmstrip)" % w.get("key"))
+            if w["kind"] == "meter" and not lk and html:   # RackForce local patch: without a look (C renderer) a
+                raise SystemExit("layout: meter %s needs strip= (its filmstrip)" % w.get("key"))   # meter's strip is
+                # drawn as a vertical slider strip, sh_meter_<w>x<h>.png; PolyForce's skin_polish.py redraws it
             if lk and skin_assets.check(w, lk):
                 raise SystemExit("layout: %s %s: %s" % (w["kind"], w.get("key") or w.get("title", ""), skin_assets.check(w, lk)))
             if w["kind"] == "art" and not os.path.isfile(os.path.join(base_dir, w["file"])):

@@ -112,6 +112,7 @@ void Surface::set(int i, float n) {
     n = clamp01(n);
     shown_[i].store(n, std::memory_order_relaxed);   // that is what MPC shows now
     changes_.fetch_add(1, std::memory_order_release);
+    if (k == Kind::Meter) return;   // the plugin's own value: notify() puts it back
     if (k == Kind::Button) {
         const bool down = n > 0.5f;
         const bool rising = down && !held_[i];
@@ -232,7 +233,8 @@ void Surface::apply(int i, float n) {
             browserAction(i);
             break;
         }
-        case Kind::Readout: break;
+        case Kind::Readout:
+        case Kind::Meter: break;
     }
 }
 
@@ -524,7 +526,8 @@ std::string Surface::display(int i) const {
         }
         case Kind::Toggle: return want_[i].load() > 0.5f ? "On" : "Off";
         case Kind::Button:
-        case Kind::Popup: return {};
+        case Kind::Popup:
+        case Kind::Meter: return {};   // a picture, no text
     }
     return {};
 }
@@ -803,8 +806,14 @@ void Surface::setPresetKey(const std::string& key) {
 bool Surface::snapshot(float* out) const {
     const uint32_t before = batchSeq_.load(std::memory_order_acquire);
     if (before & 1u) return false;   // a preset is half written
+    // Sound parameters and the surface's choices (Seq Record is one the patch reads); not what the plugin
+    // itself keeps moving (the wave view's meters, browser tiles, steppers, texts): the plugin rebuilds the
+    // patch whenever this snapshot changes.
     float tmp[P_COUNT];
-    for (int i = 0; i < P_COUNT; ++i) tmp[i] = want_[i].load(std::memory_order_relaxed);
+    for (int i = 0; i < P_COUNT; ++i) {
+        const Kind k = PARAM_INFO[i].kind;
+        tmp[i] = k == Kind::Synth || k == Kind::Ui ? want_[i].load(std::memory_order_relaxed) : 0.0f;
+    }
     std::atomic_thread_fence(std::memory_order_acquire);
     if (batchSeq_.load(std::memory_order_relaxed) != before) return false;   // one started meanwhile
     std::copy(tmp, tmp + P_COUNT, out);
@@ -812,7 +821,7 @@ bool Surface::snapshot(float* out) const {
 }
 
 void Surface::notify(AutomateFn automate, UpdateFn update, void* ctx) {
-    // Nothing changed since the last full pass: no need to look at 436 values every block.
+    // Nothing changed since the last full pass: no need to look at every value every block.
     const uint32_t changes = changes_.load(std::memory_order_acquire);
     if (changes != scanned_ || scanPending_) {
         int pushed = 0, n = 0;

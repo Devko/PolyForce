@@ -40,6 +40,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # the Force (2026-10-04); 16 x 16 was 45%.
 MAX_VOICES = 8
 MAX_UNISON = 8
+WAVE_COLS = 48              # the wave view's columns per oscillator (plugin/plugin.cpp fills them)
 FILTER_TYPES = ["Off", "LP12", "LP24", "BP", "HP12", "HP24", "Notch", "Peak", "Comb+", "Comb-", "Vowel"]   # dsp FilterType
 ENGINES = ["Clean", "Normal", "Dirty"]
 ROUTING = ["Serial", "Parallel"]
@@ -62,6 +63,8 @@ VST = {"name": "PolyForce", "vendor": "Devko", "uid": "PlFc", "version": 1000,
 #   tile     a browser tile (list widget): lit = 1, text = the item; a tap acts
 #   toggle   plugin-owned on/off (lit state follows the plugin), a tap acts
 #   popup    the hidden "<key>__open" flag of a popup list (shadow_skin's popup_params)
+#   meter    a value the plugin sets for a display-only filmstrip (the wave view's columns): not saved,
+#            not automatable, a host write is undone
 # fmt: how the plugin prints the value (see plugin/patch_map.cpp paramDisplay)
 P = []
 
@@ -74,6 +77,10 @@ def _add(key, name, kind, curve, lo, hi, default, fmt, **extra):
 
 def readout(key, name):
     _add(key, name, "readout", "readout", 0, 0, 0, "none")
+
+
+def meter_param(key, name):
+    _add(key, name, "meter", "lin", 0, 1, 0.5, "none")
 
 
 def enum(key, name, options, default, ui=False):
@@ -142,7 +149,7 @@ for o, (pos, semi, fine, level) in ((1, (0.66, 0, 0, 0.8)), (2, (0.66, 0, 7, 0.6
 num("noise_level", "Noise Level", "lin", 0, 1, 0, "pct")
 num("noise_color", "Noise Colour", "lin", -1, 1, 0, "bipct")
 enum("noise_route", "Noise Route", ROUTES, "F1")
-enum("ui_osc", "Osc Page", ["OSC 1", "OSC 2", "NOISE"], "OSC 1", ui=True)
+enum("ui_osc", "Osc Page", ["OSC 1", "OSC 2", "NOISE", "WAVES"], "OSC 1", ui=True)
 
 enum("engine", "Filter Engine", ENGINES, "Normal")
 for f, (ftype, cut, env) in ((1, ("LP24", 1200, 0.25)), (2, ("Off", 8000, 0.0))):
@@ -284,6 +291,12 @@ button("rnd", "Random Pick")
 button("copy", "Copy 1 > 2")
 button("swap", "Swap 1 <> 2")
 
+# --- the wave view (OSC tab, WAVES): each oscillator's current frame as WAVE_COLS columns, each a value the
+# plugin sets and a display-only filmstrip shows (a bar from the zero line; skin_polish.py draws the strip) ---
+for o in (1, 2):
+    for c in range(1, WAVE_COLS + 1):
+        meter_param("o%d_wv%02d" % (o, c), "O%d Wave %02d" % (o, c))
+
 
 def norm(p):
     """The default as MPC's 0..1 value."""
@@ -343,6 +356,9 @@ TEXT_INK = PALETTE["ink_dim"]   # free bitmap text (column headers, slot numbers
 S8 = [100, 252, 404, 556, 708, 860, 1012, 1164]   # 8 knob slots across a card = one Q-Link bank
 L4, R4 = S8[:4], [724, 876, 1028, 1180]           # 4 slots in the left / right half card
 R1, R2 = 158, 440                                 # card rows (h=270), or R1 with h=552
+# The wave view: WAVE_COLS meters WAVE_PITCH apart, WAVE_H tall. shadow_skin gives each a square
+# component of the larger side, centred on it, so the first and last stick out WAVE_H / 2 sideways.
+WAVE_X0, WAVE_PITCH, WAVE_H = 120, 13, 176
 
 # Knobs: shadow_skin bakes ONE filmstrip per radius, so the radius picks the look. A bipolar knob (its arc
 # grows from 12 o'clock) is one pixel smaller than a unipolar knob of the same size. This table is the only
@@ -424,6 +440,9 @@ class Layout:
     def toggle(self, cx, cy, key):
         self.add('toggle cx=%d cy=%d label="%s" key=%s' % (cx, cy, PARAMS[key]["name"], key))
 
+    def meter(self, cx, cy, w, h, key):   # display only: shadow_skin's filmstrip meter, no look (RackForce patch)
+        self.add('meter cx=%d cy=%d w=%d h=%d key=%s' % (cx, cy, w, h, key))
+
     def tiles(self, x, y, w, cols, rows, th, gap, key):
         self.add('list x=%d y=%d w=%d cols=%d rows=%d th=%d gap=%d key=%s' % (x, y, w, cols, rows, th, gap, key))
 
@@ -471,6 +490,16 @@ def pages():
         L.vseg(x + 100, R2 + 160, p + "sub_wave", label="WAVE")
         L.knob(x + 290, R2 + 126, p + "sub_tune")
         L.knob(x + 450, R2 + 126, p + "sub_level")
+    # WAVES: both oscillators' current frames (table at the position knob) as bars; table and position beside.
+    L.mode("ui_osc:WAVES")
+    for o, top in ((1, R1), (2, R2)):
+        p = "o%d_" % o
+        L.card(24, top, 1232, 270, "OSCILLATOR %d" % o)
+        for c in range(WAVE_COLS):
+            L.meter(WAVE_X0 + c * WAVE_PITCH, top + 157, WAVE_PITCH, WAVE_H, "%swv%02d" % (p, c + 1))
+        L.stepper(1036, top + 76, 400, p + "table")
+        L.knob(936, top + 164, p + "pos")
+        L.knob(1136, top + 164, p + "level")
     L.qlinks("OSC 1+2", ["o1_" + k for k in osc8] + ["o2_" + k for k in osc8])
     L.qlinks("OSC WAVES", ["o%d_%s" % (o, k) for o in (1, 2)
                            for k in ("wave", "table", "pos", "phase", "phmode", "pan", "route", "sub_wave")])
@@ -846,6 +875,9 @@ class Geometry:
                     for r in range(w["rows"]) for c in range(w["cols"])]
         if k in ("enum_h", "enum_v"):
             return self.segs(w, len(params[w["key"]]["options"]))
+        if k == "meter":   # shadow_skin: a square of the larger side, centred (transparent padding)
+            sq = max(w["w"], w["h"])
+            return [(w["cx"] - sq // 2, w["cy"] - sq // 2, sq, sq)]
         return []
 
 
@@ -959,6 +991,8 @@ def check_layout(text):
                 errors.append("%s: list %r tiles must be tile parameters" % (T, key))
             if kind == "stepper" and p["kind"] != "stepper":
                 errors.append("%s: stepper %r is not a stepper parameter" % (T, key))
+            if kind == "meter" and p["kind"] != "meter":
+                errors.append("%s: meter %r is not a meter parameter" % (T, key))
             if kind == "button" and not w.get("label"):
                 errors.append("%s: button %r needs a label" % (T, key))
                 continue
@@ -990,6 +1024,8 @@ def check_layout(text):
             if not _inside(r):
                 errors.append("%s: %s at %s leaves the plugin area" % (T, what, r))
             for o_r, o_what, o_mode in placed[:i]:
+                if what.startswith("meter ") and o_what.startswith("meter "):
+                    continue   # a row of meters: their padded squares overlap, transparent and untouchable
                 if _same_screen(mode, o_mode) and _overlap(r, o_r) and o_what != what:
                     errors.append("%s: %s overlaps %s" % (T, what, o_what))
             for f_r, title, f_mode in frames:
@@ -1017,7 +1053,7 @@ FMT = {"none": "None", "enum": "Enum", "pct": "Percent", "bipct": "Bipolar", "hz
        "text": "Text", "frame1": "Frame1", "frame2": "Frame2", "pan": "Pan", "deg": "Degrees", "lfohz": "LfoHz",
        "modamt": "ModAmt"}
 KIND = {"synth": "Synth", "ui": "Ui", "readout": "Readout", "stepper": "Stepper", "button": "Button",
-        "tile": "Tile", "toggle": "Toggle", "popup": "Popup"}
+        "tile": "Tile", "toggle": "Toggle", "popup": "Popup", "meter": "Meter"}
 
 
 def c_str(s):
@@ -1053,7 +1089,7 @@ enum class Curve : unsigned char { Readout, Enum, Lin, Log, Int, Pow };
 enum class Fmt : unsigned char { None, Enum, Percent, Bipolar, Hz, Time, Semi, Cent, Oct, Count, Db, Detune, Text,
                                  Frame1, Frame2, Pan, Degrees, LfoHz, ModAmt };
 // Who owns the value and what a set does: see surface.py "kind".
-enum class Kind : unsigned char { Synth, Ui, Readout, Stepper, Button, Tile, Toggle, Popup };
+enum class Kind : unsigned char { Synth, Ui, Readout, Stepper, Button, Tile, Toggle, Popup, Meter };
 
 struct ParamSpec { Curve curve; Fmt fmt; float lo, hi; };
 struct ParamInfo {
@@ -1096,12 +1132,13 @@ constexpr int kNumModSlots = %d;
 constexpr int kNumArpDirs = %d;
 constexpr int kNumSeqSteps = %d;
 constexpr int kNumShapeSteps = %d;
+constexpr int kWaveCols = %d;   // the wave view's columns per oscillator: P_O1_WV01.., P_O2_WV01..
 
 } // namespace pf
 """ % (ids, specs, "\n".join(opts), info, c_str(VST["name"]), c_str(VST["vendor"]), uid, VST["uid"],
        VST["version"], len(FILTER_TYPES), MAX_VOICES, MAX_UNISON, STEPPER_RANGE, BROWSER_CATS, BROWSER_ITEMS,
        len(LFO_WAVES), len(SYNC_DIVS), len(MOD_SOURCES), len(MOD_TARGETS), len(MODIFIERS), MOD_SLOTS,
-       len(ARP_DIRS), SEQ_STEPS, SHAPE_STEPS)
+       len(ARP_DIRS), SEQ_STEPS, SHAPE_STEPS, WAVE_COLS)
 
 
 # --- factory presets: presets/Factory/*.pfp, embedded in the .so ------------------------------

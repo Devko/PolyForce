@@ -118,8 +118,13 @@ Design record: [M1_DESIGN.md](M1_DESIGN.md).
   from the centre), short parameter names for MPC's labels, BROWSE in the first five tabs, both
   LFOs on one page, two shape lanes per page; `surface/skin_polish.py` redraws knobs, buttons and
   stepper arrows after the generator (README, "Interface")
+- ✅ Wave view (OSC tab, WAVES): both oscillators' current frames as 48 bars each (display-only
+  meters the plugin sets while the page shows; RackForce patch 5 to the generator, the bars drawn by
+  skin_polish.py). On the device: how quickly MPC redraws 48 meters at once, and that pushing them
+  doesn't mark the project as changed
 - ⬜ Skin render and page check on the user's machine (`make skin`, `make preview`; the first
-  real run of skin_polish.py), then the device: install, play every page, `make bench-device`
+  real run of skin_polish.py and of the meter patch), then the device: install, play every page,
+  `make bench-device`
 - ⬜ First release v0.1: parameter list frozen (append-only from then on), catalog-style package
 
 ---

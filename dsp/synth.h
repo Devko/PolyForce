@@ -165,6 +165,13 @@ public:
     // (released, not held by the pedal), quietest first, over the steal fade. Returns how many.
     int  shedTails(int max);
 
+    // The wave view (plugin): oscillator o's current frame -- the table it plays at its position knob, no
+    // modulation, morphed between two frames like the oscillator -- as n columns of -1..1, each the sample
+    // of largest magnitude in its stretch of the cycle (narrow peaks stay visible). Noise: a fixed pattern.
+    // oscTable() with the patch's wave and position says when it would change.
+    void waveView(int o, float* out, int n) const;
+    const Wavetable* oscTable(int o) const { return osc_[o].table; }
+
     // What a voice is doing (tests, diagnostics).
     struct VoiceInfo {
         bool  active, gate;

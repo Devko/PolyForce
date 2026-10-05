@@ -12,7 +12,7 @@ the first release. Effects are left to MPC's own insert effects.
 
 ## Status (2026-10-04): Milestones 1–7 built, not yet on the device
 
-Everything below passes the ASan/UBSan suite (828 checks) on x86 and the same suite
+Everything below passes the ASan/UBSan suite (841 checks) on x86 and the same suite
 cross-compiled for the Force under qemu (also against the profile-guided objects). A full code
 review after Milestone 7 fixed about 60 issues (voice stealing, envelope modulation, sequencer
 clock jumps, crash safety around files, browser state, packaging), a second one after the
@@ -29,7 +29,8 @@ performance pass about 40 more (docs/ROADMAP.md); each fix has a regression chec
 - **Noise** with a continuous colour tilt and its own route
 - **Wavetables:** 4 built-ins; Serum-format WAVs from the plugin folder and the SSD; loaded off
   the audio thread with a shared cache; table steppers, a browser page (categories, favorites,
-  recent, random, copy, swap), `FRAME n / N` readout; saved by key with the project
+  recent, random, copy, swap), `FRAME n / N` readout, a wave view of both oscillators' current
+  frames (OSC tab, WAVES); saved by key with the project
 - **Filters (×2):** Off, LP12, LP24, BP, HP12, HP24, Notch, Peak, Comb+, Comb−, Vowel · drive,
   keytrack, env 2 amount · serial or parallel · engine Clean / Normal / Dirty
 - **Envelopes:** amp (with velocity) and mod (velocity, loop, → cutoff, → wavetable position)
@@ -143,13 +144,23 @@ The touchscreen pages are defined in `surface/surface.py` (`pages()`), after the
   sliders and toggles, and they must fit the label.
 - **Q-Link sets** (their titles show in MPC's tab strip) only remap the Q-Links, the screen stays;
   each is named after what it controls.
+- **Wave view** (OSC tab, WAVES): each oscillator's current frame (its table at the position knob,
+  morphed between frames like the oscillator) as 48 bars on a dark panel, with the table stepper,
+  position and level beside it. Skins can't draw lines, so each bar is a display-only filmstrip
+  (the generator's `meter`, 128 heights) bound to a parameter the plugin sets: the sample of largest
+  magnitude in that 48th of the cycle, so narrow peaks show. The plugin computes and pushes the
+  columns only while the page shows and only when the table, wave or position changed; MPC writing
+  to them (a touch) is undone, they are not saved or automatable. It shows the knob, not the
+  modulated position. The meters need RackForce patch 5 to the generator (`third_party/.../README.md`);
+  `skin_polish.py` draws their strip.
 - **Checks:** before writing anything `surface.py` checks the layout with the generator's own
   sizes (knob, slider and button boxes, enum labels, open popup lists), keeps controls and text out
   of the card title bands and bitmap text to the glyphs that font has.
 - **Post-build polish:** `make skin` runs sd88me's `gen_vst.py` and then `surface/skin_polish.py`,
   which redraws the knob filmstrips (arc knobs), the trigger buttons (rounded, full size, real
-  label; SAVE and AUTO-ASSIGN in the accent) and the stepper arrows (the generator cuts those of a
-  stepper inside a page mode from the wrong image), keeping every file name and size. It checks the
+  label; SAVE and AUTO-ASSIGN in the accent), the stepper arrows (the generator cuts those of a
+  stepper inside a page mode from the wrong image) and the wave view's bar strip, keeping every file
+  name and size. It checks the
   skin against `layout.conf` and `build/skin_style.json` first and fails the build on any mismatch.
   `python3 surface/skin_polish.py --selftest` runs it on a fabricated skin.
 - `make skin` and `make preview` render the real skin and page previews; they build and run the
@@ -162,7 +173,8 @@ surface/surface.py     THE source of the parameter list and the touchscreen page
                        params.json, layout.conf, vst.json, build/param_ids.h (ids, value curves,
                        limits) and build/factory_presets.h (presets/Factory embedded); checks the
                        layout and every factory preset before writing anything
-surface/skin_polish.py redraws knob strips, buttons and stepper arrows after the generator (make skin)
+surface/skin_polish.py redraws knob strips, buttons, stepper arrows and the wave view's bars after the
+                       generator (make skin)
 dsp/wavetable.*        band-limited tables: 11 mip levels (2048 samples down to 256) per frame,
                        FFT-built two frames at a time; 4 built-ins; Serum WAV loader
 dsp/synth.*            the engine: voices, oscillators (uint32 phase), sub, noise, Simper SVF,

@@ -151,6 +151,7 @@ void libraryTests();
 void loaderTests();
 void browserTests();
 void steppingTests();
+void waveViewTests();
 void voiceTests();        // m2_test.cpp
 void oscillatorTests();   // m3_test.cpp
 void filterTests();       // m4_test.cpp

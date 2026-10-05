@@ -314,6 +314,8 @@ int main() {
     testDisplay();
     std::printf("== stepping\n");
     steppingTests();
+    std::printf("== wave view\n");
+    waveViewTests();
     std::printf("== tuning\n");
     testTuning();
     std::printf("== note lifecycle\n");
