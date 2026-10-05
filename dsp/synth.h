@@ -311,7 +311,7 @@ private:
     };
     void controlVoice(Voice& v, int lane, int n);
     void renderSources(int lane, int n);
-    void finishVoice(const Lane& l, int lane, float* outL, float* outR, int n);
+    void finishLanes(float* outL, float* outR, int n, bool direct);
     void filterLanes(int f, float* busL, float* busR, int n);
     void renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, float* R, int n) const;   // adds into L, R
     void renderSub(Voice& v, int o, float pitch, float level, float* L, float* R, int n) const;
