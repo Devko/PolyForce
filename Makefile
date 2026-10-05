@@ -56,8 +56,9 @@ all: test arm-plugin $(BUILD)/polyforce_stages.so
 # python3, so tests and the .so build anywhere. It also checks the layout (keys, options, when=,
 # Q-Link sets, geometry) before writing anything.
 surface: $(GEN)
-# presets/Factory itself too: its time changes when a preset is deleted.
-$(GEN) &: $(SURF)/surface.py presets/Factory $(wildcard presets/Factory/*.pfp)   # one run writes both
+# The preset folders themselves too: their times change when a preset is deleted. wavetable.cpp:
+# the presets' table names are checked against its built-ins.
+$(GEN) &: $(SURF)/surface.py dsp/wavetable.cpp presets/Factory $(wildcard presets/Factory/*) $(wildcard presets/Factory/*/*.pfp)   # one run writes both
 	python3 $(SURF)/surface.py
 
 # The skin (TUI.json + PNGs) and the plugin-list entry: sd88me's generator, Pillow and a host gcc.
@@ -230,7 +231,7 @@ plugin-package: $(ARM_SO) $(SKIN)
 	@! grep -l "$$(printf '\r')" $(MV)/tools/release/* || { echo "error: CRLF in a shipped script"; exit 1; }
 	$(PY) $(MV)/tools/release.py --so $(ARM_SO) --skin "$(SKIN_DIR)" --entry $(SURF_OUT)/pluginlist-entry.xml \
 		--version $(PLUGIN_VERSION) --repo Devko/PolyForce --license MIT \
-		--about "PolyForce wavetable synth (preview): 8 voices, 2 wavetable oscillators with 8x unison and subs, 2 filters with comb and vowel, 2 LFOs, a 12-slot mod matrix, arpeggiator and sequencers, presets, microtuning." \
+		--about "PolyForce wavetable synth (preview): 8 voices, 2 wavetable oscillators with 8x unison and subs, 30 built-in wavetables, 2 filters with comb and vowel, 2 LFOs, a 12-slot mod matrix, arpeggiator and sequencers, 205 presets, microtuning." \
 		--requires "root SSH (MockbaMod)" \
 		--user-data Wavetables --user-data Presets --user-data Tunings \
 		--user-data favorites.txt --user-data recent.txt --user-data preset_favorites.txt --user-data preset_recent.txt \

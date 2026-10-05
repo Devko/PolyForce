@@ -1,0 +1,27 @@
+polyforce 4
+volume=3.5
+o1_level=0
+o2_level=0
+noise_level=1
+noise_color=-0.6
+f1_type=1
+f1_cut=1000
+f1_res=0.1
+f1_env=0
+f1_key=0
+f1_drive=0.3
+e1_a=1.5
+e1_d=1
+e1_s=1
+e1_r=3
+l1_rate=0.12
+l1_trig=2
+l1_polar=1
+m1_src=3
+m1_t1=35
+m1_a1=-0.7
+m1_t2=16
+m1_a2=0.25
+m2_src=7
+m2_t1=16
+m2_a1=0.25

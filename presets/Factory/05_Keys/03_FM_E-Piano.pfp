@@ -1,0 +1,20 @@
+polyforce 4
+volume=-7.5
+o1_table=builtin:FM Tine
+o1_pos=0
+o2_wave=1
+o2_fine=4
+engine=0
+f1_type=0
+e1_a=0.001
+e1_d=3.5
+e1_s=0
+e1_r=0.6
+e1_vel=0.7
+e2_s=0
+e2_r=0.3
+e2_pos=0.6
+e2_vel=0.9
+m1_src=7
+m1_t1=4
+m1_a1=0.35

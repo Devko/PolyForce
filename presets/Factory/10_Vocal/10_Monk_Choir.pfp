@@ -1,0 +1,22 @@
+polyforce 4
+volume=-7
+o1_table=builtin:Vowels
+o1_pos=0.75
+o1_oct=-1
+o1_uni=4
+o1_detune=0.15
+o1_width=0.8
+o2_table=builtin:Choir
+o2_pos=0.2
+o2_fine=0
+o2_level=0.4
+f1_cut=1800
+f1_res=0
+f1_env=0
+e1_a=0.6
+e1_d=1
+e1_s=0.9
+e1_r=1.6
+m1_src=7
+m1_t1=16
+m1_a1=0.25

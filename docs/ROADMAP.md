@@ -21,6 +21,8 @@ Status: ✅ done · 🔜 next · ⬜ planned · 💤 deferred
 - 🔜 **Milestone 1 device checks:** a large library (379 tables) reachable, CPU ≤ 15% at 8 × 8,
   project reload restores the tables; trace whether MPC calls `setParameter` right after restoring
   a project's state.
+- 🔜 **Factory content on the device:** a listening pass through every category, and the built-in
+  tables' build times (Growl, the slowest, at 73 ms on x86).
 - 🔜 **Wave view on the device:** how quickly MPC redraws 48 meters at once, and that pushing them
   doesn't mark the project as changed.
 - ⬜ **16-bit tables** (half the memory traffic), only if the large table clearly costs more in the
@@ -124,7 +126,8 @@ Design record: [M1_DESIGN.md](M1_DESIGN.md).
 
 ### Milestone 7 — presets and finish ✅
 
-- ✅ 21 factory presets (embedded in the `.so`, validated by `surface.py` at build time)
+- ✅ 21 factory presets (embedded in the `.so`, validated by `surface.py` at build time); 205 since
+  the [factory content](#factory-content--2026-10-04)
 - ✅ Preset stepper and the browser page in PRESETS mode (categories, favorites, recent)
 - ✅ Save preset: `<first preset root>/User/User NNN.pfp` (there is no text entry)
 - ✅ Init patch, Randomize with an amount (volume and voicing untouched, attacks kept playable)
@@ -133,6 +136,26 @@ Design record: [M1_DESIGN.md](M1_DESIGN.md).
   centre), short parameter names, both LFOs on one page, two shape lanes per page; post-build skin
   polish ([Interface](INTERFACE.md))
 - ✅ Wave view (OSC → WAVES): both oscillators' current frames as 48 bars each
+
+### Factory content ✅ (2026-10-04)
+
+The tables and preset categories: [Factory content](FACTORY_CONTENT.md).
+
+- ✅ 26 more built-in wavetables, 30 in all, computed (no sample data): analog (Square Sync, Reso Saw /
+  Square, Harmonics, Comb Saw), digital (Fold, Phase Dist, CZ Reso, FM Ratio 1–3, FM Tine, Digital,
+  Bitcrush, Chip), vocal (Vowels, Choir, Growl) and acoustic (Organ, E-Piano, Strings, Brass, Reed,
+  Pluck, Mallet, Bell). The four originals are unchanged (bit for bit; Sync to 4e-16)
+- ✅ Built on demand: Classic when the plugin loads (every slot's fallback), the others on the loader
+  thread the first time a patch uses one, then cached like a file. Plugin load now builds one table
+  instead of four
+- ✅ 184 new factory presets, 205 in all, in 14 categories: one folder per category under
+  `presets/Factory/`, the preset browser's categories. `surface.py` checks names (unique, short
+  enough for a tile) and that every table a preset names is a built-in
+- ✅ Level-matched: every preset rendered through the plugin and its volume set for −19 LUFS
+  (one-shots −17 LUFS), peaks at most −3 dBFS; the first 21 kept their sound
+- ✅ The mod wheel does something on every new preset but the drums (filter, vibrato or position)
+- ✅ Tests cover every built-in table and every factory preset (its tables load, it plays finite and
+  audible)
 
 ### Second performance pass ✅ (2026-10-04)
 

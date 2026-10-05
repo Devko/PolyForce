@@ -19,9 +19,10 @@ all PolyForce's own.
 - **Two filters** — LP, BP, HP, notch, peak, comb and vowel — serial or parallel, three engine characters
 - **Deep modulation** — two LFOs, a 12-slot matrix (29 sources, 37 targets) with modifiers, four XY pads
 - **Arpeggiator, 16-step sequencer and four shape sequencers**, locked to MPC's transport
-- **Your own wavetables** (Serum-format WAVs) from the plugin folder or the SSD, with a browser,
-  favorites and recents
-- **21 factory presets**, user presets, Init and Randomize, `.tun` / `.scl` microtuning
+- **30 built-in wavetables** — analog, FM, digital, vocal, acoustic and chip — plus your own
+  (Serum-format WAVs) from the plugin folder or the SSD, with a browser, favorites and recents
+- **205 factory presets** in 14 categories, level-matched; user presets, Init and Randomize,
+  `.tun` / `.scl` microtuning
 - **Built for the Force's CPU** — NEON vectorisation, a profile-guided build, and a CPU guard that
   sheds release tails before the audio drops out
 
@@ -32,6 +33,7 @@ Effects are deliberately left out: use MPC's insert effects on the track.
 | Document | What's in it |
 |---|---|
 | [User guide](docs/USER_GUIDE.md) | The pages, the sound engine, wavetables, presets, tunings, MIDI |
+| [Factory content](docs/FACTORY_CONTENT.md) | The 30 built-in wavetables and 205 factory presets |
 | [Building](docs/BUILDING.md) | Toolchain, make targets, tests, device bench, packaging |
 | [Architecture](docs/ARCHITECTURE.md) | Source layout, threads and real-time rules, saved state |
 | [Performance](docs/PERFORMANCE.md) | CPU budget, optimisation passes, measurements, CPU guard |
@@ -87,6 +89,7 @@ Toolchain, every make target and the on-device bench are described in
 | Milestone 5 — LFOs, mod matrix, XY pads | ✅ |
 | Milestone 6 — arpeggiator, step and shape sequencers | ✅ |
 | Milestone 7 — presets, microtuning, interface redesign | ✅ |
+| Factory content — 30 built-in wavetables, 205 presets | ✅ |
 | Second performance pass — control rate, PGO, CPU guard | ✅ |
 | Skin render, on-device check and bench | 🔜 |
 | v0.1 — first release, parameter list frozen | ⬜ |

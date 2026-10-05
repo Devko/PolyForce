@@ -1,0 +1,22 @@
+polyforce 4
+volume=3
+o1_wave=1
+o1_level=1
+o2_level=0
+engine=0
+f1_cut=5000
+f1_res=0
+f1_env=0
+f1_key=0
+f1_drive=0.2
+e1_a=0.001
+e1_d=0.45
+e1_s=0
+e1_r=0.2
+e1_vel=0.6
+e2_d=0.07
+e2_s=0
+e2_r=0.05
+m1_src=2
+m1_t1=1
+m1_a1=0.75

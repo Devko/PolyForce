@@ -63,16 +63,38 @@ void tuningFiles() {
 void presets() {
     pf::presetLibrary().rescan();
     const auto L = pf::presetLibrary().listing();
-    CHECK(L->categories.size() >= 1 && L->categories[0] == "Factory");
-    CHECK(L->members[0].size() == static_cast<size_t>(pf::kNumFactoryPresets) && L->items[0].name == "Init");
+    // The factory set comes first, in its own categories (one per presets/Factory folder), Init leading.
+    CHECK(L->categories.size() >= 14 && L->categories[0] == "Templates" && L->categories[1] == "Bass");
+    std::vector<int> factory;
+    for (size_t i = 0; i < L->items.size(); ++i)
+        if (L->items[i].builtin >= 0) factory.push_back(static_cast<int>(i));
+    CHECK(factory.size() == static_cast<size_t>(pf::kNumFactoryPresets) && L->items[0].name == "Init");
+    CHECK(L->members[1].size() > 1 && L->items[static_cast<size_t>(L->members[1][1])].name == "Acid Bass");
+    // A folder of the user's named like a factory category stays its own category.
+    {
+        fs::create_directories(fixtureDir() + "/presets/Bass");
+        std::ofstream(fixtureDir() + "/presets/Bass/Mine.pfp") << "polyforce 4\nvolume=-7\n";
+        pf::presetLibrary().rescan();
+        const auto U = pf::presetLibrary().listing();
+        const int mine = U->find("plugin:Bass/Mine.pfp");
+        CHECK(mine >= 0 && U->items[static_cast<size_t>(mine)].category == "Bass (files)");
+        CHECK(U->label("plugin:Bass/Mine.pfp") == "Bass (files) / Mine" && U->label("builtin:Acid Bass") == "Bass / Acid Bass");
+        fs::remove_all(fixtureDir() + "/presets/Bass");
+        pf::presetLibrary().rescan();
+    }
 
-    // Every factory preset loads and plays something finite and audible.
-    for (int m : L->members[0]) {
+    // Every factory preset loads its tables (built-ins, all there) and plays something finite and audible.
+    for (int m : factory) {
         Host h;
         std::string text;
         CHECK(pf::presetText(L->items[static_cast<size_t>(m)].key, text));
         CHECK(h.load(text) == 1);
-        h.run(4);
+        CHECK(h.until([&] {
+            return h.display(pf::P_O1_TABLE).rfind("LOADING", 0) != 0 && h.display(pf::P_O2_TABLE).rfind("LOADING", 0) != 0;
+        }, 20000));
+        const bool found = h.display(pf::P_O1_TABLE).rfind("MISSING", 0) != 0 && h.display(pf::P_O2_TABLE).rfind("MISSING", 0) != 0;
+        if (!found) std::printf("  preset %s: a table is missing\n", L->items[static_cast<size_t>(m)].name.c_str());
+        CHECK(found);
         for (int n : {48, 55, 60, 64}) h.on(n, 110);
         const float peak = h.run(kBlocksPerSec);
         if (!(h.finite && peak > 1e-3f && peak < 4.0f))
@@ -84,24 +106,26 @@ void presets() {
     // The preset stepper walks the list; a preset starts from the defaults.
     h.set(pf::P_F2_RES, 0.9f);
     h.press(pf::P_PRESET_NEXT);   // no preset yet: the first
-    CHECK(h.display(pf::P_PRESET) == "PRESET  Factory / Init");
+    CHECK(h.display(pf::P_PRESET) == "PRESET  Templates / Init");
     h.press(pf::P_PRESET_NEXT);
-    CHECK(h.display(pf::P_PRESET) == "PRESET  Factory / Supersaw Lead");
-    CHECK(h.value(pf::P_O1_UNI) == 8 && h.display(pf::P_F2_RES) == "25%");
-    CHECK(h.chunk().find("preset=builtin:Supersaw Lead\n") != std::string::npos);
+    CHECK(h.display(pf::P_PRESET) == "PRESET  Templates / Init Mono");
+    CHECK(h.value(pf::P_VMODE) == pf::VM_LEGATO && h.display(pf::P_F2_RES) == "25%");
+    CHECK(h.chunk().find("preset=builtin:Init Mono\n") != std::string::npos);
     // INIT: everything back to the defaults.
     h.press(pf::P_PRE_INIT);
-    CHECK(h.value(pf::P_O1_UNI) == 1 && h.display(pf::P_PRESET) == "PRESET  Factory / Init");
+    CHECK(h.value(pf::P_VMODE) == pf::VM_POLY && h.display(pf::P_PRESET) == "PRESET  Templates / Init");
 
     // The browser in PRESETS mode: tap a preset tile to load it.
     h.setN(pf::P_BR_TARGET, 1.0f);
     h.run(2);
-    CHECK(h.display(pf::P_BR_NOW) == "PRESET  Factory / Init");
-    CHECK(h.get(pf::P_CAT_3) == 1.0f && h.display(pf::P_CAT_3) == "FACTORY");
-    CHECK(h.display(pf::P_TBL_5) == "Acid Bass");
-    h.setN(pf::P_TBL_5, 1.0f);
-    CHECK(h.display(pf::P_PRESET) == "PRESET  Factory / Acid Bass" && h.value(pf::P_ENGINE) == pf::EN_DIRTY);
-    CHECK(h.get(pf::P_TBL_5) == 1.0f);
+    CHECK(h.display(pf::P_BR_NOW) == "PRESET  Templates / Init");
+    CHECK(h.get(pf::P_CAT_3) == 1.0f && h.display(pf::P_CAT_3) == "TEMPLATES");
+    CHECK(h.display(pf::P_CAT_4) == "BASS");
+    h.setN(pf::P_CAT_4, 1.0f);
+    CHECK(h.get(pf::P_CAT_4) == 1.0f && h.display(pf::P_TBL_2) == "Acid Bass");
+    h.setN(pf::P_TBL_2, 1.0f);
+    CHECK(h.display(pf::P_PRESET) == "PRESET  Bass / Acid Bass" && h.value(pf::P_ENGINE) == pf::EN_DIRTY);
+    CHECK(h.get(pf::P_TBL_2) == 1.0f);
     // Favorite presets have their own list.
     h.setN(pf::P_FAV, 1.0f);
     CHECK(pf::presetLibrary().isFavorite("builtin:Acid Bass"));

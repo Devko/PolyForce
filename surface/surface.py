@@ -1141,56 +1141,96 @@ constexpr int kWaveCols = %d;   // the wave view's columns per oscillator: P_O1_
        len(ARP_DIRS), SEQ_STEPS, SHAPE_STEPS, WAVE_COLS)
 
 
-# --- factory presets: presets/Factory/*.pfp, embedded in the .so ------------------------------
+# --- factory presets: presets/Factory/<NN_Category>/<NN_Name>.pfp, embedded in the .so ---------
 PRESET_DIR = os.path.join(HERE, "..", "presets", "Factory")
 STATE_EXTRA_KEYS = ("o1_table", "o2_table", "tuning", "preset")
+PRESET_NAME_MAX = 18      # an item tile on the browser page (816 px / 3 columns)
+CATEGORY_NAME_MAX = 12    # a category tile (320 px / 2 columns), shown in capitals
+WAVETABLE_CPP = os.path.join(HERE, "..", "dsp", "wavetable.cpp")
+
+
+def builtin_tables():
+    """The built-in table names, from kRecipes in dsp/wavetable.cpp."""
+    text = open(WAVETABLE_CPP, encoding="utf-8").read()
+    body = text[text.index("kRecipes[] = {"):]
+    body = body[:body.index("};")]
+    return re.findall(r'\{"([^"]+)",\s*make\w+\}', body)
+
+
+def _shown(entry):
+    """"02_Supersaw_Lead.pfp" -> "Supersaw Lead", "03_Bass" -> "Bass"."""
+    return re.sub(r"^\d+\s+", "", re.sub(r"\.pfp$", "", entry).replace("_", " "))
 
 
 def factory_presets():
-    """[(name, text)] in file order, "NN_" prefixes dropped, "_" shown as spaces. Every line must be a sound parameter
-    (or a table/tuning key) with a value in range: a typo fails the build, not the device."""
+    """[(category, name, text)]: one folder per category, both in file order ("NN_" orders them, "_" shows as a
+    space). Every line must be a sound parameter (or a built-in table / tuning key) with a value in range, every name
+    unique (keys are "builtin:<name>") and short enough for its tile: a typo fails the build, not the device."""
     params = {p["key"]: p for p in P}
-    out, errors = [], []
-    for f in sorted(os.listdir(PRESET_DIR)):
-        if not f.endswith(".pfp"):
+    tables = set(builtin_tables())
+    out, errors, seen = [], [], {}
+    for d in sorted(os.listdir(PRESET_DIR)):
+        folder = os.path.join(PRESET_DIR, d)
+        if d.endswith(".pfp"):
+            errors.append("%s: put it in a category folder (presets/Factory/NN_Category/)" % d)
             continue
-        text = open(os.path.join(PRESET_DIR, f), encoding="utf-8").read().replace("\r\n", "\n")
-        lines = text.split("\n")
-        if not lines[0].startswith("polyforce "):
-            errors.append("%s: no 'polyforce N' header" % f)
-        for n, line in enumerate(lines[1:], 2):
-            if not line.strip():
+        if not os.path.isdir(folder):
+            continue
+        category = _shown(d)
+        if not category or len(category) > CATEGORY_NAME_MAX:
+            errors.append("%s: a category name of 1..%d characters" % (d, CATEGORY_NAME_MAX))
+        for f in sorted(os.listdir(folder)):
+            if not f.endswith(".pfp"):
                 continue
-            key, _, val = line.partition("=")
-            if key in STATE_EXTRA_KEYS:
-                continue
-            p = params.get(key)
-            if not p or p["kind"] != "synth":
-                errors.append("%s:%d: %r is not a sound parameter" % (f, n, key))
-                continue
-            try:
-                v = float(val)
-            except ValueError:
-                errors.append("%s:%d: %r is not a number" % (f, n, val))
-                continue
-            lo, hi = p["lo"], p["hi"]
-            if not (min(lo, hi) - 1e-9 <= v <= max(lo, hi) + 1e-9):
-                errors.append("%s:%d: %s=%s outside %s..%s" % (f, n, key, val, lo, hi))
-        name = re.sub(r"^\d+\s+", "", f[:-4].replace("_", " "))   # "02_Supersaw_Lead.pfp" -> "Supersaw Lead"
-        out.append((name, text))
+            where = "%s/%s" % (d, f)
+            text = open(os.path.join(folder, f), encoding="utf-8").read().replace("\r\n", "\n")
+            lines = text.split("\n")
+            if not lines[0].startswith("polyforce "):
+                errors.append("%s: no 'polyforce N' header" % where)
+            for n, line in enumerate(lines[1:], 2):
+                if not line.strip():
+                    continue
+                key, _, val = line.partition("=")
+                if key in ("o1_table", "o2_table"):
+                    if not (val.startswith("builtin:") and val[8:] in tables):
+                        errors.append("%s:%d: %r is not a built-in table (factory presets can't use files)" % (where, n, val))
+                    continue
+                if key in STATE_EXTRA_KEYS:
+                    continue
+                p = params.get(key)
+                if not p or p["kind"] != "synth":
+                    errors.append("%s:%d: %r is not a sound parameter" % (where, n, key))
+                    continue
+                try:
+                    v = float(val)
+                except ValueError:
+                    errors.append("%s:%d: %r is not a number" % (where, n, val))
+                    continue
+                lo, hi = p["lo"], p["hi"]
+                if not (min(lo, hi) - 1e-9 <= v <= max(lo, hi) + 1e-9):
+                    errors.append("%s:%d: %s=%s outside %s..%s" % (where, n, key, val, lo, hi))
+            name = _shown(f)
+            if name in seen:
+                errors.append("%s: the name %r is taken by %s" % (where, name, seen[name]))
+            seen[name] = where
+            if len(name) > PRESET_NAME_MAX:
+                errors.append("%s: %r is longer than %d characters" % (where, name, PRESET_NAME_MAX))
+            out.append((category, name, text))
+    if "Init" not in seen:
+        errors.append("no Init preset (the INIT button loads builtin:Init)")
     if errors:
         raise SystemExit("factory presets:\n  " + "\n  ".join(errors))
     return out
 
 
 def presets_header(presets):
-    rows = ",\n".join("    {%s, %s}" % (c_str(n), c_str(t).replace("\n", "\\n")) for n, t in presets)
-    return """// generated by surface/surface.py from presets/Factory/*.pfp: do not edit
+    rows = ",\n".join("    {%s, %s, %s}" % (c_str(c), c_str(n), c_str(t).replace("\n", "\\n")) for c, n, t in presets)
+    return """// generated by surface/surface.py from presets/Factory/*/*.pfp: do not edit
 #pragma once
 
 namespace pf {
 
-struct FactoryPreset { const char* name; const char* text; };
+struct FactoryPreset { const char* category; const char* name; const char* text; };
 static const FactoryPreset kFactoryPresets[] = {
 %s
 };

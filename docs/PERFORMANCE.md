@@ -46,7 +46,9 @@ By voice count, v0.0.2:
 Both passes below came after these measurements; the current build is still to be measured on the
 device.
 
-Other Phase 0 numbers: `VSTPluginMain` (builds the four built-in tables) takes 163 ms on the Force.
+Other Phase 0 numbers: `VSTPluginMain` (then building the four built-in tables) took 163 ms on the
+Force; it now builds only Classic and the classic oscillator shapes, the other built-ins on first
+use (6–73 ms each on x86).
 An x86 sweep of 379 commercial sample tables: all load and play, 334 ms average import, 468 ms worst.
 
 ## First pass: NEON

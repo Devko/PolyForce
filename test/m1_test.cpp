@@ -181,14 +181,14 @@ void libraryTests() {
     const auto L = lib.listing();
     const std::vector<std::string> cats = {"Built-in", "Analog", "Digital", "Unsorted"};
     CHECK(L->categories == cats);
-    CHECK(L->items.size() == 4 + 3 + 2 + 2);   // hidden files, macOS junk and readme.txt ignored
+    CHECK(L->items.size() == static_cast<size_t>(pf::builtinCount()) + 3 + 2 + 2);   // hidden files, macOS junk and readme.txt ignored
     CHECK(L->items[0].key == "builtin:Classic" && L->items[3].key == "builtin:Formant");
     // Analog merges both roots; the shared "ESW Analog - " prefix is dropped; names A -> Z.
     std::vector<std::string> analog;
     for (int m : L->members[1]) analog.push_back(L->items[static_cast<size_t>(m)].name);
     CHECK((analog == std::vector<std::string>{"Pulse", "Saw", "Square"}));
     const int pulse = L->find("ssd:Analog/ESW Analog - Pulse.wav");
-    CHECK(pulse == 4);
+    CHECK(pulse == pf::builtinCount());
     CHECK(L->label("plugin:Analog/ESW Analog - Saw.wav") == "Analog / Saw");
     CHECK(L->label("plugin:Gone/Lost Table.wav") == "Lost Table");   // not listed: its stem
     CHECK(L->find("plugin:Digital/Deep/Nested.wav") >= 0);           // deeper folders fold in
@@ -303,15 +303,20 @@ void loaderTests() {
         }));
     }
     // Scrolling through ten tables loads only the one the scroll stops on (150 ms debounce):
-    // detents 30 ms apart, slow enough for the loader to load every one if it didn't wait.
+    // detents 30 ms apart, slow enough for the loader to load (or build) every one if it didn't
+    // wait. From the fourth-last built-in: three built-ins and six files pass, then "loose".
     {
         Host h;
+        const std::string from = pf::builtinName(pf::builtinCount() - 4);
+        CHECK(h.load("polyforce 4\no1_table=builtin:" + from + "\n") == 1);
+        CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Built-in / " + from; }));
         const auto before = pf::tableLibrary().recent();
         // A Q-Link spin: MPC sends its own running value + 1/128 per detent, 10 detents.
+        const float base = h.get(pf::P_O1_TABLE);
         auto last = std::chrono::steady_clock::now();
         auto maxGap = std::chrono::steady_clock::duration::zero();   // a stalled test machine
         for (int k = 1; k <= 10; ++k) {
-            h.setN(pf::P_O1_TABLE, static_cast<float>(k) / 128.0f);
+            h.setN(pf::P_O1_TABLE, base + static_cast<float>(k) / 128.0f);
             const auto now = std::chrono::steady_clock::now();
             if (k > 1) maxGap = std::max(maxGap, now - last);
             last = now;
@@ -371,7 +376,7 @@ void browserTests() {
     CHECK(h.display(pf::P_CAT_1) == "FAVORITES" && h.display(pf::P_CAT_2) == "RECENT");
     CHECK(h.get(catTile("BUILT-IN")) == 1.0f);   // follows OSC 1's table: Built-in / Classic
     CHECK(h.display(pf::P_TBL_1) == "Classic" && h.get(pf::P_TBL_1) == 1.0f);
-    CHECK(h.display(pf::P_TBL_PAGE) == "PAGE 1 / 1");
+    CHECK(h.display(pf::P_TBL_PAGE) == "PAGE 1 / " + std::to_string((pf::builtinCount() + pf::kBrowserItems - 1) / pf::kBrowserItems));
 
     // A table loaded from elsewhere: the browser follows it to its category, its tile lit,
     // and MPC hears about the lit tile through audioMasterAutomate.

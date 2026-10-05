@@ -26,7 +26,7 @@ flowchart LR
 - **`surface/surface.py`** is the single source of the parameter list and the touchscreen pages.
   It writes `params.json`, `layout.conf`, `vst.json`, `build/param_ids.h` (ids, value curves,
   limits) and `build/factory_presets.h` (the factory presets, embedded), after checking the layout
-  and every preset.
+  and every preset (ranges, names, tables).
 - **`dsp/`** is the engine: no VST, no files, no threads. It renders a `Patch` for a set of notes.
 - **`plugin/`** is everything between the engine and MPC: VST2 entry points, MIDI, parameters,
   the touchscreen logic, file libraries, the loader thread and saved state.
@@ -38,7 +38,7 @@ flowchart LR
 | `surface/surface.py` | Parameter list and touchscreen pages; generates everything the skin and the C++ side need |
 | `surface/skin_polish.py` | Redraws knob strips, buttons, stepper arrows and the wave view's bars after the generator |
 | `dsp/synth.*` | The engine: voices, oscillators (uint32 phase), sub, noise, Simper SVF, comb and vowel filters, ADSRs, LFOs, the mod matrix; 32-sample control rate with per-chunk glides |
-| `dsp/wavetable.*` | Band-limited tables (11 mip levels, 2048 down to 256 samples per frame, FFT-built two frames at a time), the 4 built-ins, the Serum WAV loader |
+| `dsp/wavetable.*` | Band-limited tables (11 mip levels, 2048 down to 256 samples per frame, FFT-built two frames at a time), the 30 computed built-ins (Classic at load, the rest on first use), the Serum WAV loader |
 | `dsp/simd.h` | Four-float vectors: NEON on the Force, SSE on x86, so the tests run the same code |
 | `dsp/stages.h` | Per-pass timers for the profiling build (`-DPF_STAGE_TIMING`) |
 | `dsp/mod.h` | LFO shapes, sync divisions, mod sources, targets and modifiers |
@@ -54,7 +54,7 @@ flowchart LR
 | `plugin/state.*` | The state text shared by projects and preset files |
 | `plugin/paths.*` | Plugin folder, library roots, data folder, atomic file writes |
 | `plugin/vst2.h` | A hand-written slice of the VST2 ABI (no Steinberg SDK) |
-| `presets/Factory/` | Factory presets: `NN_Name.pfp`, `NN` sets the order, `_` shows as a space |
+| `presets/Factory/` | Factory presets: `NN_Category/NN_Name.pfp`, a folder per browser category, `NN` sets the order, `_` shows as a space |
 | `test/` | The test suite (see [Building](BUILDING.md#tests)); `host.h` is a fake MPC host |
 | `test/tables_sweep.cpp` | Every WAV in a folder: load, check, play, timing and memory |
 | `tools/bench.cpp` | `pfbench`, the CPU bench: `dlopen()`s the `.so` like MPC and times every block |

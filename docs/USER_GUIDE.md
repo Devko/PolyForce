@@ -160,8 +160,8 @@ frames. A table is normalised as a whole, so level changes across its frames are
   categories from both roots merge.
 - A name prefix shared by every file in a category (ending in `" - "`) is hidden:
   `ESW Analog - Jupiter 8 Saw` shows as `Jupiter 8 Saw`.
-- Four tables are built in: **Classic** (sine → triangle → saw → square), **PWM**, **Sync** and
-  **Formant**.
+- **30 tables are built in** (category *Built-in*): analog, FM, digital, vocal, acoustic and chip
+  shapes, all computed. The list, with tips: [Factory content](FACTORY_CONTENT.md#built-in-wavetables).
 
 ### Picking a table
 
@@ -181,7 +181,9 @@ project and the table comes back once the file does.
 
 ## Presets
 
-- **21 factory presets**, built into the plugin (category *Factory*).
+- **205 factory presets** in 14 categories (Templates, Bass, Lead, Pad, Keys, Pluck, Bell, Brass &
+  Wind, Strings, Vocal, Synth, Arp & Seq, Drum & Perc, FX), built into the plugin and level-matched.
+  The list: [Factory content](FACTORY_CONTENT.md#factory-presets).
 - **SAVE** (VOICE tab) writes the current sound to `Presets/User/User NNN.pfp` in the plugin folder.
   MPC has no text entry, so presets are numbered; rename the files on a computer if you like.
   Numbers are never reused.
@@ -191,7 +193,8 @@ project and the table comes back once the file does.
   favorites, recent, random).
 
 Preset roots: `Presets` in the plugin folder and `/media/AkaiForce/PolyForce Presets` on the SSD;
-categories work as for wavetables.
+categories work as for wavetables. A folder of your own named like a factory category lists next to
+it as "Bass (files)" and so on.
 
 ---
 
