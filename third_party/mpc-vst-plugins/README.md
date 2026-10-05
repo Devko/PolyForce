@@ -17,9 +17,9 @@ What we use it for (we do NOT link their `vst2_wrap.c` / `engine.h` wrapper — 
 Device-verified facts behind these tools are summarised in `../../docs/MPC_PLUGIN_SPEC.md`.
 Do not edit files here; patch around them so an upgrade stays a plain re-copy.
 
-## Local patches (RackForce)
+## Local patches (PolyForce)
 
-`tools/shadow_skin.py` carries five small, marked (`RackForce local patch`) changes:
+`tools/shadow_skin.py` carries five small, marked (`PolyForce local patch`) changes:
 1. `theme_title=` / `title_size=`: frame title colour and size (were fixed ACCENT_HI / 26 px).
 2. Popup list options are drawn with the real title font (`SHADOW_TITLE_FONT`) like enum
    segments, instead of the 9x9 bitmap font.

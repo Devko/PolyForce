@@ -440,7 +440,7 @@ class Layout:
     def toggle(self, cx, cy, key):
         self.add('toggle cx=%d cy=%d label="%s" key=%s' % (cx, cy, PARAMS[key]["name"], key))
 
-    def meter(self, cx, cy, w, h, key):   # display only: shadow_skin's filmstrip meter, no look (RackForce patch)
+    def meter(self, cx, cy, w, h, key):   # display only: shadow_skin's filmstrip meter, no look (PolyForce patch)
         self.add('meter cx=%d cy=%d w=%d h=%d key=%s' % (cx, cy, w, h, key))
 
     def tiles(self, x, y, w, cols, rows, th, gap, key):

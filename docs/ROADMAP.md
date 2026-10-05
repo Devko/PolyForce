@@ -119,7 +119,7 @@ Design record: [M1_DESIGN.md](M1_DESIGN.md).
   LFOs on one page, two shape lanes per page; `surface/skin_polish.py` redraws knobs, buttons and
   stepper arrows after the generator (README, "Interface")
 - ✅ Wave view (OSC tab, WAVES): both oscillators' current frames as 48 bars each (display-only
-  meters the plugin sets while the page shows; RackForce patch 5 to the generator, the bars drawn by
+  meters the plugin sets while the page shows; PolyForce patch 5 to the generator, the bars drawn by
   skin_polish.py). On the device: how quickly MPC redraws 48 meters at once, and that pushing them
   doesn't mark the project as changed
 - ⬜ Skin render and page check on the user's machine (`make skin`, `make preview`; the first
@@ -201,7 +201,9 @@ x86 sweep of all 379 ESW tables: all load and play, 334 ms average import, worst
 
 ## Housekeeping
 
-- ✅ Under version control: `PolyForce/` in Devko/RackForce.
+- ✅ Own repository: Devko/PolyForce (2026-10-05). The history before that came over from
+  `PolyForce/` in Devko/RackForce (same commits, new hashes); the toolkit patches are now
+  marked "PolyForce local patch".
 - ⬜ Add a row to the bench record for the M1–M7 build (`make bench-device`).
 - ⬜ Install on the device and confirm it plays (user: `make plugin-install`).
 - The ESW sample tables (`D:\DEV\mockba\wavetables`) are third-party test data: never committed,

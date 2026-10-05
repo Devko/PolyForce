@@ -151,7 +151,7 @@ The touchscreen pages are defined in `surface/surface.py` (`pages()`), after the
   magnitude in that 48th of the cycle, so narrow peaks show. The plugin computes and pushes the
   columns only while the page shows and only when the table, wave or position changed; MPC writing
   to them (a touch) is undone, they are not saved or automatable. It shows the knob, not the
-  modulated position. The meters need RackForce patch 5 to the generator (`third_party/.../README.md`);
+  modulated position. The meters need PolyForce patch 5 to the generator (`third_party/.../README.md`);
   `skin_polish.py` draws their strip.
 - **Checks:** before writing anything `surface.py` checks the layout with the generator's own
   sizes (knob, slider and button boxes, enum labels, open popup lists), keeps controls and text out
@@ -204,7 +204,7 @@ test/tables_sweep.cpp  every WAV in a folder: load, check, play, timing and memo
 tools/bench.cpp        CPU bench: dlopen()s the .so like MPC, times every block; per-pass times from
                        the profiling build; -t: a large table against one that fits the cache
 tools/pgo_train.cpp    the profile-guided build's trainer (runs under qemu-arm)
-third_party/mpc-vst-plugins/   sd88me's MIT skin generator + installer (marked RackForce patches)
+third_party/mpc-vst-plugins/   sd88me's MIT skin generator + installer (marked PolyForce patches)
 ```
 
 ## Build and test (WSL, Ubuntu 24.04)

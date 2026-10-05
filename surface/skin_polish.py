@@ -13,7 +13,7 @@ renderer can't draw the way the design wants. `make skin` runs it right after ge
 3. Stepper arrows sh_arrow_<tab>_<key>_{prev,next}.png: shadow_skin crops them from the canvas as it stands
    after the LAST page mode was drawn, so a stepper inside a when= panel gets the wrong pixels. Redrawn: the
    h x h box rounded 5 of render_conf_preview.c's widget_stepper() with the design's centred triangle.
-4. Wave view columns sh_meter_<w>x<h>.png (a look-less meter, drawn by shadow_art as a slider strip: RackForce
+4. Wave view columns sh_meter_<w>x<h>.png (a look-less meter, drawn by shadow_art as a slider strip: PolyForce
    patch 5): 128 frames of max(w,h)^2, transparent around the w x h column; frame k is a bar from the zero line
    for the value k/127 (up above 0.5, down below), the zero line across the full width.
 
