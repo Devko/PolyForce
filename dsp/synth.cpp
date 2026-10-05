@@ -316,6 +316,92 @@ QuadFn quadFor(int type, bool dirty) {
     }
 }
 
+// The output's sum (Synth::finishLanes) over Q quads of lanes: F2's bus plus X more (F1's when
+// parallel, the direct bus) times the amp envelope and the gliding gains, summed across the lanes.
+// The envelope is c1 + c2 * q^(i+1) at sample i, worked out here, or (Tab: a steal's fade or a
+// stage change inside the chunk) read from amp[]. Four samples' sums become one vector.
+struct OutSum {
+    const float* x[3][2];          // the buses to add up; left, right
+    const float* amp;              // Tab: amp[i * kMaxVoices + lane]
+    const float *c1, *c2, *q;      // else, per lane
+    const float* g0[2];            // per lane: the gain before the chunk; sample i gets g0 + dg * (i + 1)
+    const float* dg[2];
+};
+
+template <int Q, int X, bool Tab>
+void sumLanes(const OutSum& s, float* outL, float* outR, int n) {
+    f4 gl[Q], gr[Q], dl[Q], dr[Q], c1[Q], c2[Q], q[Q], p[Q];
+    for (int j = 0; j < Q; ++j) {
+        gl[j] = load4(s.g0[0] + 4 * j);
+        gr[j] = load4(s.g0[1] + 4 * j);
+        dl[j] = load4(s.dg[0] + 4 * j);
+        dr[j] = load4(s.dg[1] + 4 * j);
+        if (!Tab) {
+            c1[j] = load4(s.c1 + 4 * j);
+            c2[j] = load4(s.c2 + 4 * j);
+            p[j] = q[j] = load4(s.q + 4 * j);
+        }
+    }
+    // Locals: the output stores could otherwise alias `s`, and every pointer would be reloaded.
+    const float *x0l = s.x[0][0], *x0r = s.x[0][1], *x1l = s.x[1][0], *x1r = s.x[1][1];
+    const float *x2l = s.x[2][0], *x2r = s.x[2][1], *amp = s.amp;
+    auto at = [&](int i, f4& sl, f4& sr) {   // sample i, still one lane per voice
+        for (int j = 0; j < Q; ++j) {
+            const int k = i * kMaxVoices + 4 * j;
+            f4 xl = load4(x0l + k), xr = load4(x0r + k);
+            if (X > 0) {
+                xl += load4(x1l + k);
+                xr += load4(x1r + k);
+            }
+            if (X > 1) {
+                xl += load4(x2l + k);
+                xr += load4(x2r + k);
+            }
+            f4 a;
+            if (Tab) {
+                a = load4(amp + k);
+            } else {
+                a = c1[j] + c2[j] * p[j];
+                p[j] *= q[j];
+            }
+            gl[j] += dl[j];
+            gr[j] += dr[j];
+            const f4 yl = xl * (a * gl[j]), yr = xr * (a * gr[j]);
+            sl = j ? sl + yl : yl;
+            sr = j ? sr + yr : yr;
+        }
+    };
+    int i = 0;
+    for (; i + 4 <= n; i += 4) {
+        f4 l0, r0, l1, r1, l2, r2, l3, r3;
+        at(i, l0, r0);
+        at(i + 1, l1, r1);
+        at(i + 2, l2, r2);
+        at(i + 3, l3, r3);
+        store4(outL + i, load4(outL + i) + hsum4x4(l0, l1, l2, l3));
+        store4(outR + i, load4(outR + i) + hsum4x4(r0, r1, r2, r3));
+    }
+    for (; i < n; ++i) {   // a chunk cut short by an event
+        f4 l, r;
+        at(i, l, r);
+        outL[i] += hsum4(l);
+        outR[i] += hsum4(r);
+    }
+}
+
+using SumFn = void (*)(const OutSum&, float*, float*, int);
+
+// Two quads always read the table: working the envelopes out as well would need more than NEON's
+// 16 q registers.
+template <int Q, int X> SumFn sumOf(bool tab) {
+    if constexpr (Q == 2) return sumLanes<Q, X, true>;
+    else return tab ? sumLanes<Q, X, true> : sumLanes<Q, X, false>;
+}
+
+template <int Q> SumFn sumOf(int extra, bool tab) {
+    return extra == 0 ? sumOf<Q, 0>(tab) : extra == 1 ? sumOf<Q, 1>(tab) : sumOf<Q, 2>(tab);
+}
+
 } // namespace
 
 Synth::Synth(float sampleRate) : sr_(sampleRate), invSr_(1.0f / sampleRate) {
@@ -1054,14 +1140,19 @@ void Synth::render(float* outL, float* outR, int n) {
             src_[MS_CONSTANT] = 1.0f;
         }
         if (nLanes_ > 0) {
-            // A filter reads whole quads of lanes: clear them where a lane may not write. The
-            // direct bus is only read by the lanes that wrote it; F2's input only needs clearing
-            // when a source can go there (or F2 runs beside F1 on whatever is in it).
+            // The filters and the output read whole quads of lanes: clear them where a lane may not
+            // write. F2's input only needs clearing when a source can go there (or F2 runs beside
+            // F1 on whatever is in it), the direct bus when a source is routed there.
             const int wide = nLanes_ > 4 ? 8 : 4;   // floats per sample row in use
             bool toF2 = patch_.noise.route == RT_F2 || patch_.noise.route == RT_BOTH;
-            for (const auto& o : patch_.osc) toF2 = toF2 || o.route == RT_F2 || o.route == RT_BOTH;
-            for (int b = 0; b < 2; ++b) {
+            bool direct = patch_.noise.route == RT_DIRECT;
+            for (const auto& o : patch_.osc) {
+                toF2 = toF2 || o.route == RT_F2 || o.route == RT_BOTH;
+                direct = direct || o.route == RT_DIRECT;
+            }
+            for (int b = 0; b < 3; ++b) {
                 if (b == 1 && !toF2 && !patch_.parallel) continue;   // serial below copies F1's output in
+                if (b == 2 && !direct) continue;                     // the output reads every lane's direct bus
                 for (auto* ch : bus_[b])
                     for (int i = 0; i < len * kMaxVoices; i += kMaxVoices) {
                         store4(ch + i, splat(0.0f));
@@ -1086,7 +1177,7 @@ void Synth::render(float* outL, float* outR, int n) {
                 }
             filterLanes(1, bus_[1][0], bus_[1][1], len);
             clock.lap(STG_FILTER2);
-            for (int k = 0; k < nLanes_; ++k) finishVoice(lanes_[k], k, L, R, len);
+            finishLanes(L, R, len, direct);
             clock.lap(STG_OUTPUT);
         }
 
@@ -1208,66 +1299,121 @@ void Synth::renderSources(int lane, int n) {
             }
 }
 
-// Pass 4 for one voice: its filtered buses, the voice pan, the amp envelope, a steal's fade.
-void Synth::finishVoice(const Lane& l, int lane, float* outL, float* outR, int n) {
-    Voice& v = *l.v;
-    const Mods& m = l.m;
-    // Voice pan (a matrix target): an equal-power balance on the voice's stereo output. With
-    // the velocity and the matrix's volume it glides in from the last chunk's.
-    float bl = 1.0f, br = 1.0f;
-    if (m.voicePan != 0.0f) panGains(m.voicePan, bl, br);
-    const float vg = v.velGain * m.amp;
-    const float gl1 = vg * bl, gr1 = vg * br;
-    const float gl0 = v.ramp.valid ? v.ramp.outGain[0] : gl1, gr0 = v.ramp.valid ? v.ramp.outGain[1] : gr1;
-    v.ramp.outGain[0] = gl1;
-    v.ramp.outGain[1] = gr1;
-    v.ramp.valid = true;   // this chunk's values are the next one's starting points
-    const float invN = 1.0f / static_cast<float>(n), dgl = (gl1 - gl0) * invN, dgr = (gr1 - gr0) * invN;
-    float tl[kChunk], tr[kChunk];
-    for (int i = 0; i < n; ++i) {
-        const int at = i * kMaxVoices + lane;
-        tl[i] = bus_[1][0][at];
-        tr[i] = bus_[1][1][at];
+// Pass 4: every lane's filtered signal (F2's bus; F1's beside it when parallel; the direct bus) times
+// its amp envelope, steal fade and gains, summed into the output four voices per vector (sumLanes).
+// An envelope with no stage change inside the chunk is c1 + c2 * q^(i+1) at sample i (attack toward
+// 1.2, decay toward the sustain, release toward 0), worked out in the sum itself. A chunk where some
+// lane changes stage (the attack reaching 1, the release ending: envRun sample by sample) or fades
+// for a steal writes every envelope to a table first. Then each voice's own bookkeeping: a steal's
+// fade ending starts the waiting note, an ended release frees the voice.
+void Synth::finishLanes(float* outL, float* outR, int n, bool direct) {
+    const int wide = nLanes_ > 4 ? 8 : 4;   // lanes in use, in whole quads (the rest: amp 0)
+    alignas(16) float amp[kChunk * kMaxVoices];
+    alignas(16) float c1[kMaxVoices] = {}, c2[kMaxVoices] = {}, q[kMaxVoices];
+    alignas(16) float g0[2][kMaxVoices] = {}, dg[2][kMaxVoices] = {};
+    bool own[kMaxVoices] = {};   // its amp column comes from envRun (a stage change inside the chunk)
+    bool tab = false;            // some lane needs the amp table (own, or a steal's fade)
+    std::fill(q, q + kMaxVoices, 1.0f);
+    const float invN = 1.0f / static_cast<float>(n);
+    for (int k = 0; k < nLanes_; ++k) {
+        const Lane& l = lanes_[k];
+        Voice& v = *l.v;
+        const Mods& m = l.m;
+        // Voice pan (a matrix target): an equal-power balance on the voice's stereo output. With
+        // the velocity and the matrix's volume it glides in from the last chunk's.
+        float bl = 1.0f, br = 1.0f;
+        if (m.voicePan != 0.0f) panGains(m.voicePan, bl, br);
+        const float vg = v.velGain * m.amp;
+        const float gl1 = vg * bl, gr1 = vg * br;
+        const float gl0 = v.ramp.valid ? v.ramp.outGain[0] : gl1, gr0 = v.ramp.valid ? v.ramp.outGain[1] : gr1;
+        v.ramp.outGain[0] = gl1;
+        v.ramp.outGain[1] = gr1;
+        v.ramp.valid = true;   // this chunk's values are the next one's starting points
+        g0[0][k] = gl0;
+        g0[1][k] = gr0;
+        dg[0][k] = (gl1 - gl0) * invN;
+        dg[1][k] = (gr1 - gr0) * invN;
+
+        Env& e = v.env[0];
+        const EnvCoef& c = v.ownEnv ? v.envc[0] : envc_[0];
+        float a1 = 0.0f, a2 = 0.0f, qq = 1.0f, qn = 1.0f;   // qn = qq^n: what is left after the chunk
+        switch (e.stage) {
+            case Attack: a1 = 1.2f, a2 = e.v - 1.2f, qq = 1.0f - c.att, qn = c.attN; break;
+            case Decay: a1 = c.sus, a2 = e.v - c.sus, qq = 1.0f - c.dec, qn = c.decN; break;
+            case Release: a2 = e.v, qq = 1.0f - c.rel, qn = c.relN; break;
+            case Idle: break;
+        }
+        if (n != kChunk) {   // a chunk cut short by an event
+            qn = 1.0f;
+            for (int i = 0; i < n; ++i) qn *= qq;
+        }
+        const float end = a1 + a2 * qn;
+        tab = tab || v.fade > 0;
+        if ((e.stage == Attack && end >= 1.0f) || (e.stage == Release && end < 1e-4f)) {
+            own[k] = tab = true;
+            continue;
+        }
+        c1[k] = a1;
+        c2[k] = a2;
+        q[k] = qq;
+        e.v = end;
     }
-    if (patch_.parallel)   // F1 beside F2
-        for (int i = 0; i < n; ++i) {
-            tl[i] += bus_[0][0][i * kMaxVoices + lane];
-            tr[i] += bus_[0][1][i * kMaxVoices + lane];
-        }
-    if (l.buses & 4)       // past both filters
-        for (int i = 0; i < n; ++i) {
-            tl[i] += bus_[2][0][i * kMaxVoices + lane];
-            tr[i] += bus_[2][1][i * kMaxVoices + lane];
-        }
-    const EnvCoef& c0 = v.ownEnv ? v.envc[0] : envc_[0];
-    float amp[kChunk];
-    envRun<true>(v.env[0], c0, false, amp, n);
-    if (v.fade > 0) {   // being stolen: fade out, then start the waiting note
-        constexpr float kInv = 1.0f / static_cast<float>(kFadeSamples);
-        for (int i = 0; i < n; ++i) {
-            const float k = static_cast<float>(i + 1);
-            const float a = amp[i] * static_cast<float>(std::max(v.fade - i, 0)) * kInv;
-            outL[i] += tl[i] * a * (gl0 + dgl * k);
-            outR[i] += tr[i] * a * (gr0 + dgr * k);
-        }
-        v.fade -= n;
-        if (v.fade <= 0) {
-            v.fade = 0;
-            v.active = false;
-            if (v.pendingNote >= 0) {
-                const bool up = v.pendingUp;
-                start(v, v.pendingNote, v.pendingVel, nHeld_ > 1);
-                if (up) v.releaseIn = kFadeSamples;   // a short key press still sounds, then releases
+    OutSum sum;
+    sum.amp = amp;
+    sum.c1 = c1;
+    sum.c2 = c2;
+    sum.q = q;
+    for (int ch = 0; ch < 2; ++ch) {
+        sum.g0[ch] = g0[ch];
+        sum.dg[ch] = dg[ch];
+        int x = 0;
+        sum.x[x++][ch] = bus_[1][ch];
+        if (patch_.parallel) sum.x[x++][ch] = bus_[0][ch];
+        if (direct) sum.x[x++][ch] = bus_[2][ch];
+        for (; x < 3; ++x) sum.x[x][ch] = nullptr;
+    }
+    const int extra = (patch_.parallel ? 1 : 0) + (direct ? 1 : 0);
+    tab = tab || wide == 8;
+    if (tab) {   // a steal's fade or a stage change in this chunk, or five voices or more: a table
+        for (int j = 0; j < wide; j += 4) {
+            const f4 C1 = load4(c1 + j), C2 = load4(c2 + j), Q = load4(q + j);
+            f4 P = Q;
+            for (int i = 0; i < n; ++i) {
+                store4(amp + i * kMaxVoices + j, C1 + C2 * P);
+                P *= Q;
             }
         }
-        return;
+        constexpr float kInv = 1.0f / static_cast<float>(kFadeSamples);
+        for (int k = 0; k < nLanes_; ++k) {
+            Voice& v = *lanes_[k].v;
+            if (own[k]) {
+                float a[kChunk];
+                envRun<true>(v.env[0], v.ownEnv ? v.envc[0] : envc_[0], false, a, n);
+                for (int i = 0; i < n; ++i) amp[i * kMaxVoices + k] = a[i];
+            }
+            if (v.fade > 0)   // being stolen: fading out over kFadeSamples
+                for (int i = 0; i < n; ++i) amp[i * kMaxVoices + k] *= static_cast<float>(std::max(v.fade - i, 0)) * kInv;
+        }
     }
-    for (int i = 0; i < n; ++i) {
-        const float k = static_cast<float>(i + 1);
-        outL[i] += tl[i] * amp[i] * (gl0 + dgl * k);
-        outR[i] += tr[i] * amp[i] * (gr0 + dgr * k);
+    (wide == 8 ? sumOf<2>(extra, tab) : sumOf<1>(extra, tab))(sum, outL, outR, n);
+
+    for (int k = 0; k < nLanes_; ++k) {
+        Voice& v = *lanes_[k].v;
+        if (v.fade > 0) {   // being stolen: when the fade is over, the waiting note starts
+            v.fade -= n;
+            if (v.fade <= 0) {
+                v.fade = 0;
+                v.active = false;
+                if (v.pendingNote >= 0) {
+                    const bool up = v.pendingUp;
+                    start(v, v.pendingNote, v.pendingVel, nHeld_ > 1);
+                    if (up) v.releaseIn = kFadeSamples;   // a short key press still sounds, then releases
+                }
+            }
+            continue;
+        }
+        if (v.env[0].stage == Idle) v.active = false;
     }
-    if (v.env[0].stage == Idle) v.active = false;
 }
 
 // The hot loop. Phase is a 32-bit fixed-point fraction of a cycle: the top bits index the

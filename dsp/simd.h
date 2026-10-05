@@ -17,10 +17,12 @@ typedef float f4 __attribute__((vector_size(16)));
 inline f4 splat(float x) { return f4{x, x, x, x}; }
 inline f4 load4(const float* p) {
     f4 v;
-    std::memcpy(&v, p, sizeof v);   // a plain (unaligned-safe) vector load
+    __builtin_memcpy(&v, p, sizeof v);   // a plain (unaligned-safe) vector load
     return v;
 }
-inline void store4(float* p, f4 v) { std::memcpy(p, &v, sizeof v); }
+// The builtin, not std::memcpy: with _FORTIFY_SOURCE (on by default in Ubuntu's compilers) a store
+// into a local array at a variable index became a __memcpy_chk call instead of one vst1.
+inline void store4(float* p, f4 v) { __builtin_memcpy(p, &v, sizeof v); }
 
 inline f4 min4(f4 a, f4 b) {
 #ifdef PF_NEON
@@ -46,6 +48,29 @@ inline f4 recip4(f4 x) {
     return (f4)e;
 #else
     return splat(1.0f) / x;
+#endif
+}
+
+// The sum of the four lanes.
+inline float hsum4(f4 v) {
+#ifdef PF_NEON
+    const float32x4_t q = (float32x4_t)v;
+    const float32x2_t s = vadd_f32(vget_low_f32(q), vget_high_f32(q));
+    return vget_lane_f32(vpadd_f32(s, s), 0);
+#else
+    return (v[0] + v[1]) + (v[2] + v[3]);
+#endif
+}
+
+// The sums of four vectors' lanes, as one vector: {sum a, sum b, sum c, sum d}.
+inline f4 hsum4x4(f4 a, f4 b, f4 c, f4 d) {
+#ifdef PF_NEON
+    const float32x4_t A = (float32x4_t)a, B = (float32x4_t)b, C = (float32x4_t)c, D = (float32x4_t)d;
+    const float32x2_t ab = vpadd_f32(vadd_f32(vget_low_f32(A), vget_high_f32(A)), vadd_f32(vget_low_f32(B), vget_high_f32(B)));
+    const float32x2_t cd = vpadd_f32(vadd_f32(vget_low_f32(C), vget_high_f32(C)), vadd_f32(vget_low_f32(D), vget_high_f32(D)));
+    return (f4)vcombine_f32(ab, cd);
+#else
+    return f4{hsum4(a), hsum4(b), hsum4(c), hsum4(d)};
 #endif
 }
 
