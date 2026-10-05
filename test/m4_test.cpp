@@ -91,6 +91,35 @@ void combs() {
     p.flt[0].res = 1.0f;
     const auto x = play(p, 72, 40);   // an octave up: delay = 44100 / 523.25 = 84 samples
     CHECK(autocorr(x, 84) > 0.5);
+
+    // A new note on a voice whose comb lines still hold an earlier note hears none of it (the
+    // lines aren't cleared at note start; what this note hasn't written yet reads as silence):
+    // sample for sample what a fresh engine plays.
+    {
+        pf::Patch q = base();
+        q.osc[0].wave = pf::OW_SAW;
+        q.flt[0].type = pf::F_COMB_PLUS;
+        q.flt[0].cutoffHz = 30.0f;   // a 1470-sample delay: the old note is still in the line
+        q.flt[0].res = 1.0f;
+        q.flt[1].type = pf::F_COMB_MINUS;
+        q.flt[1].cutoffHz = 55.0f;
+        pf::Synth used, fresh;
+        used.setPatch(q);
+        fresh.setPatch(q);
+        float l[kBlock], r[kBlock], l2[kBlock], r2[kBlock];
+        used.noteOn(40, 127);
+        for (int b = 0; b < 30; ++b) used.render(l, r, kBlock);
+        used.reset();   // the voice goes free with its lines full
+        used.noteOn(52, 100);
+        fresh.noteOn(52, 100);
+        bool same = true;
+        for (int b = 0; b < 40; ++b) {
+            used.render(l, r, kBlock);
+            fresh.render(l2, r2, kBlock);
+            for (int i = 0; i < kBlock; ++i) same = same && l[i] == l2[i] && r[i] == r2[i];
+        }
+        CHECK(same);
+    }
 }
 
 void vowels() {

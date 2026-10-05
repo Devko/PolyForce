@@ -219,7 +219,8 @@ private:
         Svf      svf[2][2][3];        // [filter][channel][stage] (Vowel: 3 formants)
         float*   comb = nullptr;      // [filter][channel][kCombLen] delay lines (Synth-owned)
         int      combPos = 0;
-        bool     combLive[2] = {};    // the filter's lines hold this note's past (else cleared before use)
+        int      combFill[2] = {};    // samples the filter wrote since it started on this note (kCombLen:
+                                      // the whole line is this note's); older samples read as silence
         float    drift = 0.0f;        // cents, a slow random walk (Normal / Dirty)
         // modulation
         LfoState lfo[2];

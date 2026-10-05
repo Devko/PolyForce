@@ -652,7 +652,7 @@ void Synth::start(Voice& v, int note, int velocity, bool legato) {
         for (auto& f : v.svf)
             for (auto& ch : f)
                 for (auto& st : ch) st = Svf{};
-        v.combLive[0] = v.combLive[1] = false;   // a comb clears its lines when it first runs
+        v.combFill[0] = v.combFill[1] = 0;   // a comb's lines start empty (older samples read as silence)
         v.ramp = Voice::Ramp{};                   // a fresh note's control values start where they are
         v.lfoRateMul[0] = v.lfoRateMul[1] = 1.0f;  // not the last note's matrix values for its first chunk
         v.lfoDepthAdd[0] = v.lfoDepthAdd[1] = 0.0f;
@@ -1510,11 +1510,10 @@ void Synth::filterOne(Voice& v, int f, float pitch, const Mods& m, float mod, fl
         const float delay = clampf(sr_ / hz, 2.0f, static_cast<float>(kCombLen - 2));
         const float fb = (0.25f + 0.72f * res) * (p.type == F_COMB_MINUS ? -1.0f : 1.0f);
         constexpr int kMask = kCombLen - 1;
-        const bool live = v.combLive[f];
-        if (!live) {   // this note's first comb chunk: no older note in the lines
-            std::fill_n(v.comb + static_cast<size_t>(f) * 2 * kCombLen, 2 * kCombLen, 0.0f);
-            v.combLive[f] = true;
-        }
+        // Not cleared when a note starts (2 x 16 KB per filter, 0.5 MB for a chord on both combs in
+        // one chunk): until the line is full, a tap further back than this note has written reads 0.
+        const int fill = v.combFill[f];
+        const bool live = fill > 0;
         // Delay, feedback and drive move per sample (a delay step would click).
         const float to[5] = {delay, fb, c.pre, c.post, c.wet};
         float from[5], d[5];
@@ -1539,7 +1538,12 @@ void Synth::filterOne(Voice& v, int f, float pitch, const Mods& m, float mod, fl
                 }
                 const int d0 = static_cast<int>(dl);
                 const float frac = dl - static_cast<float>(d0);
-                const float a = line[(w - d0) & kMask], b = line[(w - d0 - 1) & kMask];
+                float a = line[(w - d0) & kMask], b = line[(w - d0 - 1) & kMask];
+                if (fill < kCombLen) {   // offsets d0 and d0 + 1 back: this note's only if written since it began
+                    const int written = fill + i;
+                    if (d0 > written) a = 0.0f;
+                    if (d0 + 1 > written) b = 0.0f;
+                }
                 float y = in + g * (a + frac * (b - a));
                 if (dirty) y = softclip(y);
                 line[w] = y;
@@ -1547,6 +1551,7 @@ void Synth::filterOne(Voice& v, int f, float pitch, const Mods& m, float mod, fl
                 x[i] = y * (1.0f - 0.55f * std::fabs(g));
             }
         }
+        v.combFill[f] = std::min(fill + n, kCombLen);
         if (f == 1 || !isComb(patch_.flt[1].type))   // both filters share the write position
             v.combPos = (v.combPos + n) & (kCombLen - 1);
         return;
@@ -1623,7 +1628,7 @@ Synth::Ctl Synth::controls(int f, float pitch, const Mods& m, float mod) const {
 void Synth::filterLanes(int f, float* busL, float* busR, int n) {
     const FilterPatch& p = patch_.flt[f];
     if (!isComb(p.type))   // switched to a comb later: it starts from silence
-        for (int k = 0; k < nLanes_; ++k) lanes_[k].v->combLive[f] = false;
+        for (int k = 0; k < nLanes_; ++k) lanes_[k].v->combFill[f] = 0;
     if (p.type == F_OFF) {
         for (int k = 0; k < nLanes_; ++k) lanes_[k].v->ramp.fType[f] = F_OFF;
         return;
