@@ -18,6 +18,7 @@
 #include "presets.h"
 #include "state.h"
 #include "surface.h"
+#include "trace.h"
 #include "cpu_guard.h"
 #include "../dsp/tuning.h"
 #include "../dsp/notegen.h"
@@ -132,6 +133,7 @@ struct Plugin {
     WaveKey waveKey[2];
     float   waveShown[2][kWaveCols] = {};
     bool    waveValid[2] = {};
+    int     waveWait = 0;   // blocks until the view is looked at again
 
     Plugin() {
         // Loaded tables show in the stepper texts and the browser; a fresh one goes on the
@@ -183,7 +185,14 @@ float getParameter(AEffect* e, int32_t i) {
 
 void setParameter(AEffect* e, int32_t i, float v) {
     try {
-        self(e)->surface.set(i, v);
+        Surface& s = self(e)->surface;
+        const bool traced = i >= 0 && i < P_COUNT && tracing();
+        const float before = traced ? s.get(i) : 0.0f;   // what MPC last read back
+        s.set(i, v);
+        if (traced)
+            trace("%p set %3d %-18s %.4f  read %.4f -> %.4f  \"%s\"", static_cast<void*>(e), static_cast<int>(i),
+                  PARAM_INFO[i].key, static_cast<double>(v), static_cast<double>(before), static_cast<double>(s.get(i)),
+                  s.display(i).c_str());
     } catch (...) {
     }
 }
@@ -236,14 +245,18 @@ void renderTo(Plugin* p, float* L, float* R, int& pos, int to) {
 }
 
 // The WAVES page: each oscillator's current frame as kWaveCols meter values, each one of the strip's 128
-// levels. Only while the page shows (an automated position would otherwise keep MPC busy with values it
-// isn't drawing; switching to the page catches up at once), and only when a table, wave or position
-// changed (a few thousand reads then, nothing otherwise). MPC hears the columns that moved via notify().
-constexpr int kWavesPage = 3;   // ui_osc: OSC 1, OSC 2, NOISE, WAVES
-static_assert(PARAM_INFO[P_UI_OSC].nopts == kWavesPage + 1, "WAVES is the OSC tab's last page");
+// levels, when a table, wave or position changed (a few thousand reads then, nothing otherwise). MPC
+// doesn't tell a plugin which page shows, so it is kept up to date on every page, at most every
+// kWaveEveryBlocks (~46 ms): a sweep or an automated position pushes ~20 views a second, not one a block.
+// MPC hears the columns that moved via notify().
+constexpr int kWaveEveryBlocks = 16;
 static_assert(P_O2_WV01 == P_O1_WV01 + kWaveCols, "the wave view's parameters: two runs of kWaveCols");
 void updateWaveView(Plugin* p) {
-    if (std::lround(paramValue(P_UI_OSC, p->surface.get(P_UI_OSC))) != kWavesPage) return;
+    if (p->waveWait > 0) {
+        --p->waveWait;
+        return;
+    }
+    p->waveWait = kWaveEveryBlocks - 1;
     for (int o = 0; o < 2; ++o) {
         const Wavetable* t = p->synth.oscTable(o);
         const Plugin::WaveKey key{t, t ? std::hash<std::string>{}(t->name) : 0, t ? t->frames : 0,

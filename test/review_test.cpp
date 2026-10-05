@@ -544,12 +544,12 @@ void surfaceFixes() {
         CHECK(h.log.updates > before);
         CHECK(h.display(pf::P_O1_POS).compare(0, 5, "WIDTH") == 0);
     }
-    // An open popup list closes when its page goes away.
+    // An open popup list closes when a surface choice changes (the browser's target, say).
     {
         Host h;
         h.setN(pf::P_O1_WAVE__OPEN, 1.0f);
         CHECK(h.get(pf::P_O1_WAVE__OPEN) == 1.0f);
-        h.set(pf::P_UI_OSC, 1);   // OSC 2
+        h.set(pf::P_BR_TARGET, 1);   // OSC 2
         CHECK(h.get(pf::P_O1_WAVE__OPEN) == 0.0f);
     }
     // A preset picked from FAVORITES: the browser stays on FAVORITES.

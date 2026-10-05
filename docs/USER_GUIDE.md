@@ -13,39 +13,43 @@
 
 ## The screen
 
-PolyForce has seven tabs. Every tab starts with a header row: the [status line](#status-line) on
-the left and, on tabs with several pages, the page selector on the right.
+PolyForce has seven tabs in MPC's tab strip. A tab with several pages shows dots under its name:
+tap the tab again for the next page. The strip shows the name of the page that is up. Every page
+starts with the [status line](#status-line).
 
 | Tab | Pages | What's there |
 |---|---|---|
-| **OSC** | OSC 1 · OSC 2 · NOISE · WAVES | One oscillator per page: wave or table, position, tuning, unison, level, pan, phase, route and its sub oscillator. NOISE: the noise source and a mixer for all levels. WAVES: the [wave view](#wave-view) |
-| **FILTER** | — | Both filters: type, cutoff, resonance, env 2 amount, keytrack, drive. Routing and engine sit in the header |
-| **MOD** | ENVELOPES · LFOS · XY | Amp and mod envelopes · both LFOs · four XY pads with auto-assign |
-| **MATRIX** | 1-4 · 5-8 · 9-12 · MODIFIERS | Four slots per page (source, via, two targets with amounts) · the modifier of every slot |
-| **BROWSE** | OSC 1 · OSC 2 · PRESETS | Wavetable or preset browser: categories, items, favorite, random, copy, swap |
-| **VOICE** | — | Voice mode, steal mode, voices, volume, velocity, bend range · glide · preset and tuning, Save, Init, Random |
-| **SEQ** | ARP · STEPS · SHAPES 1-2 · SHAPES 3-4 | Arpeggiator and sequencer settings · the 16 steps (note, velocity, mod) · the shape-sequencer lanes |
+| **OSC** | OSC 1 · OSC 2 · NOISE+MIX · WAVES | One oscillator per page: wave or table, position, tuning, unison, level, pan, phase, route and its sub oscillator. NOISE+MIX: the noise source and a mixer for all levels. WAVES: the [wave view](#wave-view) |
+| **FILTER** | FILTER | Both filters: type, cutoff, resonance, env 2 amount, keytrack, drive. Routing and engine sit next to the status line |
+| **MOD** | ENVELOPES · LFOS · XY PADS | Amp and mod envelopes · both LFOs · four XY pads with auto-assign |
+| **MATRIX** | MATRIX 1-4 · MATRIX 5-8 · MATRIX 9-12 · MODIFIERS | Four slots per page (source, via, two targets with amounts) · the modifier of every slot |
+| **BROWSE** | BROWSE | Wavetable or preset browser (OSC 1 · OSC 2 · PRESETS next to the status line): categories, items, favorite, random, copy, swap |
+| **VOICE** | VOICE | Voice mode, steal mode, voices, volume, velocity, bend range · glide · preset and tuning, Save, Init, Random |
+| **SEQ** | ARP/SEQ · STEPS · SHAPES 1-2 · SHAPES 3-4 | Arpeggiator and sequencer settings · the 16 steps (note, velocity, mod) · the shape-sequencer lanes |
 
 ### Q-Links
 
-Each tab has Q-Link sets named after what they control; their titles show in MPC's tab strip.
-Picking a set only remaps the Q-Links, the screen stays where it is.
+Every page has its own Q-Link set: the knobs follow the page that is up. The Force's eight knobs
+show the first eight; the next bank has the rest.
 
-| Tab | Q-Link sets |
+| Page | Q-Links |
 |---|---|
-| OSC | OSC 1+2 · OSC WAVES · OSC MIX |
-| FILTER | FILTERS |
-| MOD | ENV 1+2 · LFO 1+2 · XY PADS |
-| MATRIX | MX AMOUNT 1 · MX AMOUNT 2 · MX MOD AMT |
-| BROWSE | BROWSE (tables, positions, preset, tuning, cutoffs: scroll and audition while browsing) |
-| VOICE | VOICE |
-| SEQ | ARP/SEQ · STEP NOTES · STEP VELS · STEP MODS · SHAPE 1+2 · SHAPE 3+4 |
+| OSC 1, OSC 2 | The eight knobs of the oscillator card · table, pan, phase, phase mode, route, sub wave, sub tune, sub level |
+| NOISE+MIX | Noise level, colour, route, both levels and sub levels, volume · sub waves and tunes, pans, routes |
+| WAVES | Per oscillator: table, position, level, wave, unison, detune, width, semi |
+| FILTER | Filter 1's knobs and type, routing, engine · filter 2's, env 2 attack and decay |
+| ENVELOPES · LFOS · XY PADS | The knobs of the page (plus the filters' env amounts and cutoffs on ENVELOPES) |
+| MATRIX 1-4 … 9-12 | The four slots' amounts 1 and 2 · their sources and first targets |
+| MODIFIERS | The twelve modifier amounts |
+| BROWSE | Tables, positions, levels, detunes, preset, tuning, cutoffs and resonances, random amount, volume: scroll and audition while browsing |
+| VOICE | The voice knobs, modes, glide, preset, tuning, random amount |
+| ARP/SEQ · STEPS · SHAPES | The arp and sequencer settings · the 16 step notes (velocity and mod by touch) · the two lanes' steps |
 
 ### Wave view
 
 OSC → WAVES shows each oscillator's current frame (its table at the position knob, morphed between
 frames like the oscillator itself) as 48 bars, with the table stepper, position and level beside
-it. It follows the knob, not the modulated position.
+it. It follows the knob, not the modulated position, about 20 times a second.
 
 ---
 

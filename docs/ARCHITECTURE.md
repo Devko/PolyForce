@@ -131,11 +131,18 @@ The full design: [Milestone 1 design](M1_DESIGN.md), §1–3.
   are pushed with `audioMasterAutomate`, and only re-reads names and texts after
   `audioMasterUpdateDisplay`. The plugin pushes from `processReplacing` only: at most 48 values per
   block (round-robin), a display update at most every 4 blocks.
-- Steppers move exactly one item per event, whatever delta MPC sends (Q-Link detent 1/128, data
-  wheel 0.01, touch drag, fast spins); MPC echoing the plugin's own value back is ignored.
+- A Force sends every Q-Link detent, data-wheel click or drag event as the value it last read back
+  plus its step (sd88me/mpc-vst-plugins `docs/NOTES.md`, "Input probe", MPC OS 3.9.1). Steppers
+  measure each event from the plugin's own value and move exactly one item, whatever the delta
+  (Q-Link detent 1/128, data wheel 0.01, touch drag, fast spins); MPC echoing the plugin's own value
+  back is ignored.
+- A tap on a button toggles the value MPC read back, and a button always reads back 0, so every
+  tap arrives as a 1 with no release in between: each 1 is a press, and the plugin springs the
+  button back to 0 from the next block.
 - MPC sends a second toggle about 0.7 s after a tap on a tile; a revert within 1 s is ignored.
-- These mechanics were proven on the device in RackForce, an earlier Force plugin, and ported from
-  there. Details: [Milestone 1 design](M1_DESIGN.md), §6.
+- These mechanics were ported from RackForce, an earlier Force plugin. Details:
+  [Milestone 1 design](M1_DESIGN.md), §6. To see what MPC sends on a device, see
+  [diagnostics](BUILDING.md#diagnostics-on-the-device).
 
 ## Parameters and saved state
 

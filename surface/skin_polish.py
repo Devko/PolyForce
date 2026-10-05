@@ -16,10 +16,14 @@ renderer can't draw the way the design wants. `make skin` runs it right after ge
 4. Wave view columns sh_meter_<w>x<h>.png (a look-less meter, drawn by shadow_art as a slider strip: PolyForce
    patch 5): 128 frames of max(w,h)^2, transparent around the w x h column; frame k is a bar from the zero line
    for the value k/127 (up above 0.5, down below), the zero line across the full width.
+5. Sub-pages: the layout has one [tab] per page, and the generator gives each its own button in MPC's tab strip.
+   TUI.json's tabs and the Q-Links files are renumbered so the pages of each group in skin_style.json
+   ("tab_groups") are one button's sub-pages (a tap on the button again shows the next), as AIR DrumSynthMulti's
+   stock skin numbers them.
 
 The file names and sizes stay (TUI.json names them). Everything is checked first (the files exist, TUI.json uses
-them, the sizes are the generator's, no unknown button/arrow/knob images) and nothing is written unless all of it
-passes; a failure exits non-zero with the reason.
+them, the sizes are the generator's, no unknown button/arrow/knob images, the tabs are the groups' pages) and
+nothing is written unless all of it passes; a failure exits non-zero with the reason.
 
     skin_polish.py --selftest [--samples DIR]   fabricates a skin folder for the real layout, polishes it, checks
                                                  the results and the refusals; --samples also writes sample PNGs
@@ -345,9 +349,57 @@ def plan(skin_dir, layout_path, style):
         if image(meter_name(w, h), (sq, sq * frames)):
             out.append((meter_name(w, h), lambda w=w, h=h: meter_strip(w, h, pal, sk.under, frames)))
 
+    pages = regroup(skin_dir, tui, style["tab_groups"], errors)
     if errors:
         raise PolishError("skin polish refused, nothing written:\n  " + "\n  ".join(errors))
-    return out, sk
+    return out, sk, pages
+
+
+def regroup(skin_dir, tui_text, groups, errors):
+    """5. The generator numbers its tabs fnKeyIndex = place, fnKeySubIndex = 0 (Q-Links files: Tab = place + 1,
+    SubTab = 1). Renumbered: fnKeyIndex = the group, fnKeySubIndex = the page in it. A skin numbered so already is
+    left as it is; any other numbering, or tabs that are not the groups' pages in order, is refused. Returns
+    [(file name, JSON object)] to write."""
+    names = [n for g in groups for n in g["pages"]]
+    want = [(gi, si) for gi, g in enumerate(groups) for si in range(len(g["pages"]))]
+    try:
+        tui = json.loads(tui_text)
+        tabs = tui["pageData"]["tabs"]
+    except (ValueError, KeyError, TypeError):
+        errors.append("TUI.json: no pageData tabs (not a generated skin folder?)")
+        return []
+    got = [t.get("tabName") for t in tabs]
+    if not names or got != names:
+        errors.append("TUI.json has the tabs %s, the page groups list %s (wrong layout for this skin?)" % (got, names))
+        return []
+    plain = [(i, 0) for i in range(len(tabs))]
+    now = [(t.get("fnKeyIndex"), t.get("fnKeySubIndex")) for t in tabs]
+    if now not in (plain, want):
+        errors.append("TUI.json tabs are numbered %s: neither the generator's numbering nor the groups'" % now)
+        return []
+    for t, (gi, si) in zip(tabs, want):
+        t["fnKeyIndex"], t["fnKeySubIndex"] = gi, si
+    out = [("TUI.json", tui)]
+    for f in ("Q-Links.json", "Q-Links - 8by1.json"):   # the generator writes both, the same
+        path = os.path.join(skin_dir, f)
+        if not os.path.isfile(path):
+            if f == "Q-Links.json":
+                errors.append("%s: missing" % f)
+            continue
+        try:
+            q = json.load(open(path, encoding="utf-8"))
+            sets = q["Screen Mode Q-Links"]["map"]
+            now = [(e["Tab"] - 1, e["SubTab"] - 1) for e in sets]
+        except (OSError, ValueError, KeyError, TypeError):
+            errors.append("%s: no Screen Mode Q-Links sets" % f)
+            continue
+        if now not in (plain, want):
+            errors.append("%s: Q-Link sets numbered %s do not match the %d pages" % (f, now, len(tabs)))
+            continue
+        for e, (gi, si) in zip(sets, want):
+            e["Tab"], e["SubTab"] = gi + 1, si + 1
+        out.append((f, q))
+    return out
 
 
 def polish(skin_dir, layout_path, style_path):
@@ -355,18 +407,25 @@ def polish(skin_dir, layout_path, style_path):
         raise PolishError("%s: no such layout" % layout_path)
     try:
         style = json.load(open(style_path, encoding="utf-8"))
-        for k in ("palette", "title_font", "frames", "knobs", "primary_buttons"):
+        for k in ("palette", "title_font", "frames", "knobs", "primary_buttons", "tab_groups"):
             style[k]
     except (OSError, ValueError, KeyError) as e:
         raise PolishError("%s: not a skin style from surface.py (%s)" % (style_path, e))
-    todo, sk = plan(skin_dir, layout_path, style)
+    todo, sk, pages = plan(skin_dir, layout_path, style)
     drawn = [(name, make()) for name, make in todo]   # draw everything before writing anything
+    texts = [(name, json.dumps(obj, indent=4)) for name, obj in pages]
     for name, im in drawn:
         path = os.path.join(skin_dir, name)
         im.save(path + ".tmp.png")
         os.replace(path + ".tmp.png", path)
-    return "skin polish: %d knob strips, %d button images, %d stepper arrows, %d meter strips" % (
-        len(sk.knobs), 2 * len(sk.buttons), len(sk.arrows), len(sk.meters))
+    for name, text in texts:
+        path = os.path.join(skin_dir, name)
+        with open(path + ".tmp", "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(path + ".tmp", path)
+    return "skin polish: %d knob strips, %d button images, %d stepper arrows, %d meter strips, %d pages in %d tabs" % (
+        len(sk.knobs), 2 * len(sk.buttons), len(sk.arrows), len(sk.meters), sum(len(g["pages"]) for g in style["tab_groups"]),
+        len(style["tab_groups"]))
 
 
 # --- self-test ----------------------------------------------------------------------------------
@@ -377,7 +436,7 @@ def selftest(samples=None):
     sys.path.insert(0, HERE)
     import surface
     layout_text, style = surface.pages(), surface.skin_style()
-    surface.check_layout(layout_text)
+    surface.check_layout(layout_text, style["tab_groups"])
     tmp = tempfile.mkdtemp(prefix="pf_polish_")
     fails = []
 
@@ -405,15 +464,33 @@ def selftest(samples=None):
                 names += [("%s_%s.png" % (stem, st), sk.button_size(label)) for st in ("on", "off")]
             names += [(n, (h, h)) for n, (_, h) in sk.arrows.items()]
             names += [(meter_name(w, h), (max(w, h), max(w, h) * style["frames"])) for w, h in sk.meters]
-            names += [("sh_bg_0.png", (1280, 628)), ("sh_seg_ui_osc_0_on.png", (122, 33))]   # left alone
+            names += [("sh_bg_0.png", (1280, 628)), ("sh_seg_engine_0_on.png", (102, 33))]   # left alone
             for n, size in names:
                 Image.new("RGB", size, dummy).save(os.path.join(folder, n))
-            json.dump({"images": [n for n, _ in names]}, open(os.path.join(folder, "TUI.json"), "w"))
+            # the tabs and Q-Link sets as the generator numbers them: one strip button per [tab]
+            tabs = [{"tabName": t["name"], "fnKeyIndex": i, "fnKeySubIndex": 0} for i, t in enumerate(sk.tabs)]
+            json.dump({"images": [n for n, _ in names], "pageData": {"tabs": tabs}},
+                      open(os.path.join(folder, "TUI.json"), "w"))
+            sets = {"Screen Mode Q-Links": {"map": [{"Tab": i + 1, "SubTab": 1} for i in range(len(tabs))]}}
+            for f in ("Q-Links.json", "Q-Links - 8by1.json"):
+                json.dump(sets, open(os.path.join(folder, f), "w"))
             return dict(names)
+
+        def numbering(folder):
+            t = json.load(open(os.path.join(folder, "TUI.json")))["pageData"]["tabs"]
+            q = [json.load(open(os.path.join(folder, f)))["Screen Mode Q-Links"]["map"]
+                 for f in ("Q-Links.json", "Q-Links - 8by1.json")]
+            return ([(x["fnKeyIndex"], x["fnKeySubIndex"]) for x in t],
+                    [[(e["Tab"] - 1, e["SubTab"] - 1) for e in m] for m in q])
 
         skin = os.path.join(tmp, "ok", "Plugin Skins")
         sizes = fabricate(skin)
         print(polish(skin, lay, sty))
+        grouped = [(gi, si) for gi, g in enumerate(style["tab_groups"]) for si in range(len(g["pages"]))]
+        check(numbering(skin) == (grouped, [grouped, grouped]), "tabs and Q-Link sets are not numbered by page group")
+        check(any(si for _, si in grouped) and len(style["tab_groups"]) <= 7, "the groups have no sub-pages, or too many")
+        polish(skin, lay, sty)   # a skin grouped already stays as it is
+        check(numbering(skin) == (grouped, [grouped, grouped]), "polishing twice changed the grouping")
         for n, size in sizes.items():
             with Image.open(os.path.join(skin, n)) as im:
                 check(im.size == size, "%s changed size" % n)
@@ -517,6 +594,15 @@ def selftest(samples=None):
         refused("no TUI", lambda f: os.remove(os.path.join(f, "TUI.json")), "no TUI.json")
         refused("unknown meter", lambda f: Image.new("RGB", (9, 9 * 128), dummy).save(os.path.join(f, "sh_meter_9x9.png")),
                 "sh_meter_9x9.png: not in the layout")
+
+        def edit_tabs(f, change):
+            path = os.path.join(f, "TUI.json")
+            t = json.load(open(path))
+            change(t["pageData"]["tabs"])
+            json.dump(t, open(path, "w"))
+        refused("pages out of order", lambda f: edit_tabs(f, lambda ts: ts.insert(0, ts.pop(1))), "the page groups list")
+        refused("odd numbering", lambda f: edit_tabs(f, lambda ts: ts[1].update(fnKeySubIndex=3)),
+                "neither the generator's numbering nor the groups'")
         try:
             polish(os.path.join(tmp, "nowhere"), lay, sty)
             fails.append("a missing skin folder was accepted")
@@ -529,8 +615,8 @@ def selftest(samples=None):
         shutil.rmtree(tmp, ignore_errors=True)
     if fails:
         raise PolishError("selftest FAILED:\n  " + "\n  ".join(fails))
-    return "skin polish selftest: ok (%d knob radii, %d buttons, %d arrows, %d meter strips, 7 refusals)" % (
-        len(sk.knobs), len(sk.buttons), len(sk.arrows), len(sk.meters))
+    return "skin polish selftest: ok (%d knob radii, %d buttons, %d arrows, %d meter strips, %d pages, 9 refusals)" % (
+        len(sk.knobs), len(sk.buttons), len(sk.arrows), len(sk.meters), len(sk.tabs))
 
 
 def write_samples(out, sk, style, skin):

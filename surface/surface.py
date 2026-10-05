@@ -55,7 +55,7 @@ VST = {"name": "PolyForce", "vendor": "Devko", "uid": "PlFc", "version": 1000,
 # --- parameters ------------------------------------------------------------------------------
 # kind:
 #   synth    a sound parameter: saved in the state, automatable; curve lin|log|int|pow|enum
-#   ui       a stepped choice the surface uses (page selector, browser target): not saved
+#   ui       a stepped choice the surface uses (browser target, seq record): not saved
 #   readout  text the plugin writes (status line, "PAGE 2 / 4"): read only
 #   stepper  plugin-owned index into a list (tables, presets), text = the item; moves one
 #            item per Q-Link/wheel event; comes with <key>_prev / <key>_next buttons
@@ -149,7 +149,6 @@ for o, (pos, semi, fine, level) in ((1, (0.66, 0, 0, 0.8)), (2, (0.66, 0, 7, 0.6
 num("noise_level", "Noise Level", "lin", 0, 1, 0, "pct")
 num("noise_color", "Noise Colour", "lin", -1, 1, 0, "bipct")
 enum("noise_route", "Noise Route", ROUTES, "F1")
-enum("ui_osc", "Osc Page", ["OSC 1", "OSC 2", "NOISE", "WAVES"], "OSC 1", ui=True)
 
 enum("engine", "Filter Engine", ENGINES, "Normal")
 for f, (ftype, cut, env) in ((1, ("LP24", 1200, 0.25)), (2, ("Off", 8000, 0.0))):
@@ -246,14 +245,11 @@ for l in range(1, 5):
     enum("sh%d_mode" % l, "Shape %d Mode" % l, ["Step", "Ramp", "Smooth"], "Step")
     for k in range(1, SHAPE_STEPS + 1):
         num("sh%d_%d" % (l, k), "Sh%d Step %d" % (l, k), "lin", -1, 1, 0, "bipct")
-enum("ui_seq", "Seq Page", ["ARP", "STEPS", "SHAPES 1-2", "SHAPES 3-4"], "ARP", ui=True)
 
 for x in range(1, 5):
     num("xy%d_x" % x, "XY Pad X%d" % x, "lin", 0, 1, 0, "pct")
     num("xy%d_y" % x, "XY Pad Y%d" % x, "lin", 0, 1, 0, "pct")
 button("xy_auto", "XY Auto-Assign")
-enum("ui_mod", "Mod Page", ["ENVELOPES", "LFOS", "XY"], "ENVELOPES", ui=True)
-enum("ui_mx", "Matrix Page", ["1-4", "5-8", "9-12", "MODIFIERS"], "1-4", ui=True)
 
 # --- voices (Milestone 2) ---
 enum("vmode", "Voice Mode", ["Poly", "Duo", "Mono", "Legato"], "Poly")
@@ -333,8 +329,8 @@ def params_json():
 
 # --- touchscreen pages -------------------------------------------------------------------------
 # The look: style=td3 cards (rounded, filled) on one flat colour; bg and box are the same, so the opaque
-# image of a control never shows a box behind it. Plugin area 1280x628 at y = 86..714. Every tab: a header
-# row (status line from x=24; the page modes, if any, right-aligned to x=1256), then cards at y=158 and
+# image of a control never shows a box behind it. Plugin area 1280x628 at y = 86..714. Every page: a header
+# row (status line from x=24; a page's own choices, if any, right-aligned to x=1256), then cards at y=158 and
 # y=440 (h=270) or one full-height card (h=552), x=24 w=1232 or halves at x=24 / 648 (w=608). Nothing
 # may sit in a card's title band (y .. y+44: td3 draws the title rule at y+38). skin_polish.py (run by
 # `make skin` after the generator) redraws the knob strips, the trigger buttons and the stepper arrows.
@@ -358,7 +354,8 @@ L4, R4 = S8[:4], [724, 876, 1028, 1180]           # 4 slots in the left / right 
 R1, R2 = 158, 440                                 # card rows (h=270), or R1 with h=552
 # The wave view: WAVE_COLS meters WAVE_PITCH apart, WAVE_H tall. shadow_skin gives each a square
 # component of the larger side, centred on it, so the first and last stick out WAVE_H / 2 sideways.
-WAVE_X0, WAVE_PITCH, WAVE_H = 120, 13, 176
+# 128 at most: the strip is 128 frames of that square, and MPC draws an image taller than 16384 px wrongly.
+WAVE_X0, WAVE_PITCH, WAVE_H = 120, 13, 128
 
 # Knobs: shadow_skin bakes ONE filmstrip per radius, so the radius picks the look. A bipolar knob (its arc
 # grows from 12 o'clock) is one pixel smaller than a unipolar knob of the same size. This table is the only
@@ -384,13 +381,23 @@ def knob_radius(key, size="big"):
 
 
 class Layout:
-    """layout.conf lines. mode() tags every widget that follows with when= until the next tab or mode()."""
+    """layout.conf lines, one generator [tab] per page. Pages are grouped: a group is one button of MPC's tab strip
+    and its pages are that button's sub-pages (the dots under it; a tap on the button again shows the next), each
+    with its own screen and its own Q-Link set. skin_polish.py renumbers the generator's tabs into these groups
+    (skin_style.json "tab_groups"). mode() tags every widget that follows with when= until the next page or mode()."""
 
     def __init__(self):
-        self.lines, self.when = [THEME], None
+        self.lines, self.when, self.groups = [THEME], None, []
 
-    def tab(self, name):
+    def group(self, name):
+        self.groups.append({"name": name, "pages": []})
+
+    def page(self, name, qlinks):
+        """A page of the current group. Its name is also its Q-Link set's title, which MPC shows in the tab strip
+        while the page is up."""
         self.lines.append("[tab %s]" % name)
+        self.lines.append('qlinks "%s" = %s' % (name, ",".join(qlinks)))
+        self.groups[-1]["pages"].append(name)
         self.when = None
 
     def mode(self, when):
@@ -446,22 +453,20 @@ class Layout:
     def tiles(self, x, y, w, cols, rows, th, gap, key):
         self.add('list x=%d y=%d w=%d cols=%d rows=%d th=%d gap=%d key=%s' % (x, y, w, cols, rows, th, gap, key))
 
-    def qlinks(self, title, keys):
-        """A Q-Link set: MPC shows its title in the tab strip. Sets only remap the Q-Links (the screen stays),
-        so each is named after what it controls and makes sense whatever page mode is showing."""
-        self.lines.append('qlinks "%s" = %s' % (title, ",".join(keys)))
 
-
-def pages():
+def build_layout():
+    """Every page, in groups (see Layout). Each page has its own Q-Link set: the Force's 8 knobs show the first 8
+    keys, the next bank the other 8 (shadow_skin qlink_for_slot)."""
     L = Layout()
     osc8 = ("pos", "oct", "semi", "fine", "uni", "detune", "width", "level")
 
-    # OSC: one oscillator (or noise and the levels) at a time, picked top right.
-    L.tab("OSC")
-    L.header("ui_osc")
+    # OSC: one page per oscillator, then the noise and the levels, then the wave view.
+    L.group("OSC")
     for o in (1, 2):
         p = "o%d_" % o
-        L.mode("ui_osc:OSC %d" % o)
+        L.page("OSC %d" % o, [p + k for k in osc8] + [p + k for k in ("table", "pan", "phase", "phmode", "route",
+                                                                      "sub_wave", "sub_tune", "sub_level")])
+        L.header()
         L.card(24, R1, 1232, 270, "OSCILLATOR %d" % o)
         L.popup(144, R1 + 76, 200, p + "wave")
         L.stepper(750, R1 + 76, 972, p + "table")
@@ -476,7 +481,10 @@ def pages():
         L.vseg(R4[0], R2 + 160, p + "sub_wave", label="WAVE")
         L.knob(R4[1] + 20, R2 + 126, p + "sub_tune")
         L.knob(R4[2] + 40, R2 + 126, p + "sub_level")
-    L.mode("ui_osc:NOISE")
+    L.page("NOISE+MIX", ["noise_level", "noise_color", "noise_route", "o1_level", "o2_level", "o1_sub_level",
+                         "o2_sub_level", "volume", "o1_sub_wave", "o1_sub_tune", "o2_sub_wave", "o2_sub_tune",
+                         "o1_pan", "o2_pan", "o1_route", "o2_route"])
+    L.header()
     L.card(24, R1, 608, 270, "NOISE")
     L.knob(L4[0], R1 + 126, "noise_level")
     L.knob(L4[1], R1 + 126, "noise_color")
@@ -491,7 +499,9 @@ def pages():
         L.knob(x + 290, R2 + 126, p + "sub_tune")
         L.knob(x + 450, R2 + 126, p + "sub_level")
     # WAVES: both oscillators' current frames (table at the position knob) as bars; table and position beside.
-    L.mode("ui_osc:WAVES")
+    L.page("WAVES", ["o%d_%s" % (o, k) for o in (1, 2)
+                     for k in ("table", "pos", "level", "wave", "uni", "detune", "width", "semi")])
+    L.header()
     for o, top in ((1, R1), (2, R2)):
         p = "o%d_" % o
         L.card(24, top, 1232, 270, "OSCILLATOR %d" % o)
@@ -500,16 +510,12 @@ def pages():
         L.stepper(1036, top + 76, 400, p + "table")
         L.knob(936, top + 164, p + "pos")
         L.knob(1136, top + 164, p + "level")
-    L.qlinks("OSC 1+2", ["o1_" + k for k in osc8] + ["o2_" + k for k in osc8])
-    L.qlinks("OSC WAVES", ["o%d_%s" % (o, k) for o in (1, 2)
-                           for k in ("wave", "table", "pos", "phase", "phmode", "pan", "route", "sub_wave")])
-    L.qlinks("OSC MIX", ["o1_level", "o2_level", "o1_sub_level", "o2_sub_level", "noise_level", "noise_color",
-                         "noise_route", "volume", "o1_sub_tune", "o2_sub_tune", "o1_sub_wave", "o2_sub_wave",
-                         "o1_pan", "o2_pan", "o1_route", "o2_route"])
 
     # FILTER: type and 5 knobs per filter; routing and engine next to the status line.
     flt5 = ("cut", "res", "env", "key", "drive")
-    L.tab("FILTER")
+    L.group("FILTER")
+    L.page("FILTER", ["f1_" + k for k in flt5 + ("type",)] + ["routing", "engine"]
+           + ["f2_" + k for k in flt5 + ("type",)] + ["e2_a", "e2_d"])
     L.header(status_w=664)
     L.hseg(817, 121, "routing", 112)
     L.hseg(1101, 121, "engine", 102)
@@ -518,22 +524,22 @@ def pages():
         L.popup(164, top + 126, 220, "f%d_type" % f)
         for cx, k in zip(S8[2:], flt5):
             L.knob(cx, top + 126, "f%d_%s" % (f, k))
-    L.qlinks("FILTERS", ["f1_" + k for k in flt5 + ("type",)] + ["routing", "engine"]
-             + ["f2_" + k for k in flt5 + ("type",)] + ["e2_a", "e2_d"])
 
-    # MOD: the envelopes, both LFOs or the XY pads.
-    L.tab("MOD")
-    L.header("ui_mod")
-    L.mode("ui_mod:ENVELOPES")
+    # MOD: the envelopes, both LFOs, the XY pads.
+    L.group("MOD")
     adsr = ("a", "d", "s", "r", "vel")
+    L.page("ENVELOPES", ["e1_" + k for k in adsr] + ["e2_loop", "f1_env", "f2_env"]
+           + ["e2_" + k for k in adsr] + ["e2_pos", "f1_cut", "f2_cut"])
+    L.header()
     for e, top, title in ((1, R1, "AMP ENVELOPE"), (2, R2, "MOD ENVELOPE")):
         L.card(24, top, 1232, 270, title)
         for cx, k in zip(S8, adsr):
             L.knob(cx, top + 126, "e%d_%s" % (e, k))
     L.knob(S8[5], R2 + 126, "e2_pos")
     L.vseg(1088, R2 + 160, "e2_loop", sw=140, label="LOOP")
-    L.mode("ui_mod:LFOS")
     lfo5 = ("rate", "phase", "delay", "fade", "depth")
+    L.page("LFOS", ["l%d_%s" % (l, k) for l in (1, 2) for k in lfo5 + ("wave", "sync", "div")])
+    L.header()
     for l, top in ((1, R1), (2, R2)):
         p = "l%d_" % l
         L.card(24, top, 1232, 270, "LFO %d" % l)
@@ -544,25 +550,25 @@ def pages():
         L.hseg(1090, top + 76, p + "trig", 104)
         for cx, k in zip(S8, lfo5):
             L.knob(cx, top + 164, p + k)
-    L.mode("ui_mod:XY")
     xy = ["xy%d_%s" % (x, a) for x in range(1, 5) for a in "xy"]
+    L.page("XY PADS", xy)
+    L.header()
     L.card(24, R1, 1232, 270, "XY PADS")
     for cx, k in zip(S8, xy):
         L.knob(cx, R1 + 126, k)
     L.card(24, R2, 1232, 270, "ASSIGN")
     L.button(164, R2 + 126, "AUTO-ASSIGN", "xy_auto")
     L.text(700, R2 + 116, "FREE PADS GO TO FREE MATRIX SLOTS")
-    L.qlinks("ENV 1+2", ["e1_" + k for k in adsr] + ["e2_loop", "f1_env", "f2_env"]
-             + ["e2_" + k for k in adsr] + ["e2_pos", "f1_cut", "f2_cut"])
-    L.qlinks("LFO 1+2", ["l%d_%s" % (l, k) for l in (1, 2) for k in lfo5 + ("wave", "sync", "div")])
-    L.qlinks("XY PADS", xy)
 
     # MATRIX: 12 slots, four per page (source, via, two targets with amounts); the 12 modifiers on their own.
-    L.tab("MATRIX")
-    L.header("ui_mx")
+    # A page per four slots also keeps each page light: every popup option is a component MPC builds when the
+    # page opens (all twelve slots on one page took ~0.9 s on the Force).
+    L.group("MATRIX")
     rows = [268 + 110 * r for r in range(4)]   # 110: a small knob's box is 110 tall (the mock had 108)
     for page, name in enumerate(["1-4", "5-8", "9-12"]):
-        L.mode("ui_mx:%s" % name)
+        slots4 = range(page * 4 + 1, page * 4 + 5)
+        L.page("MATRIX " + name, ["m%d_%s" % (k, s) for s in ("a1", "a2", "src", "t1") for k in slots4])
+        L.header()
         L.card(24, R1, 1232, 552, "MOD SLOTS %s" % name)
         for label, cx in (("SOURCE", 170), ("VIA", 380), ("TARGET 1", 600), ("AMOUNT", 772), ("TARGET 2", 950),
                           ("AMOUNT", 1124)):
@@ -577,20 +583,19 @@ def pages():
             L.knob(772, cy, p + "a1", "small")
             L.popup(950, cy, 200, p + "t2")
             L.knob(1124, cy, p + "a2", "small")
-    L.mode("ui_mx:MODIFIERS")
+    L.page("MODIFIERS", ["m%d_modamt" % k for k in range(1, MOD_SLOTS + 1)])
+    L.header()
     L.card(24, R1, 1232, 552, "MODIFIERS")
     for k in range(1, MOD_SLOTS + 1):
         x, cy = 24 + (k - 1) // 4 * 410, rows[(k - 1) % 4]
         L.text(x + 34, cy - 8, str(k))
         L.popup(x + 150, cy, 170, "m%d_mod" % k)
         L.knob(x + 320, cy, "m%d_modamt" % k, "small")
-    slots = range(1, MOD_SLOTS + 1)
-    L.qlinks("MX AMOUNT 1", ["m%d_a1" % k for k in slots])
-    L.qlinks("MX AMOUNT 2", ["m%d_a2" % k for k in slots])
-    L.qlinks("MX MOD AMT", ["m%d_modamt" % k for k in slots])
 
     # BROWSE: categories left, tables or presets right, the loaded item and actions below.
-    L.tab("BROWSE")
+    L.group("BROWSE")
+    L.page("BROWSE", ["o1_table", "o1_pos", "o1_level", "o1_detune", "o2_table", "o2_pos", "o2_level", "o2_detune",
+                      "preset", "tuning", "f1_cut", "f1_res", "f2_cut", "f2_res", "rand_amt", "volume"])
     L.header("br_target")
     L.card(24, R1, 360, 552, "CATEGORIES")
     L.tiles(44, 206, 320, 2, 8, 48, 8, "cat")
@@ -609,17 +614,17 @@ def pages():
     L.button(989, 676, "RND", "rnd")
     L.button(1094, 676, "1>2", "copy")
     L.button(1201, 676, "1<>2", "swap")
-    L.qlinks("BROWSE", ["o1_table", "o1_pos", "o1_level", "o1_detune", "o2_table", "o2_pos", "o2_level", "o2_detune",
-                        "preset", "tuning", "f1_cut", "f1_res", "f2_cut", "f2_res", "rand_amt", "volume"])
 
     # VOICE: how notes become voices; glide; presets and tuning.
-    L.tab("VOICE")
+    L.group("VOICE")
+    voice6 = ("voices", "volume", "vel_curve", "e1_vel", "bend_up", "bend_dn")
+    L.page("VOICE", list(voice6) + ["vmode", "steal", "same_note", "glide_mode", "glide_type", "glide",
+                                    "preset", "tuning", "rand_amt"])
     L.header()
     L.card(24, R1, 1232, 270, "VOICES")
     L.hseg(264, R1 + 96, "vmode", 110, label="MODE")
     L.hseg(740, R1 + 96, "steal", 116, label="STEAL")
     L.hseg(1120, R1 + 96, "same_note", 120, label="SAME NOTE")
-    voice6 = ("voices", "volume", "vel_curve", "e1_vel", "bend_up", "bend_dn")
     for cx, k in zip(S8, voice6):
         L.knob(cx, R1 + 172, k)
     L.card(24, R2, 608, 270, "GLIDE")
@@ -633,19 +638,18 @@ def pages():
     L.button(846, R2 + 204, "INIT", "pre_init")
     L.button(980, R2 + 204, "RANDOM", "pre_rand")
     L.knob(1186, R2 + 76, "rand_amt", "small")
-    L.qlinks("VOICE", list(voice6) + ["vmode", "steal", "same_note", "glide_mode", "glide_type", "glide",
-                                      "preset", "tuning", "rand_amt"])
 
     # SEQ: arpeggiator / sequencer settings, the 16 steps, the shape lanes two at a time.
-    L.tab("SEQ")
-    L.header("ui_seq")
-    L.mode("ui_seq:ARP")
+    L.group("SEQ")
+    arp4 = ("arp_oct", "clk_gate", "clk_swing", "seq_steps")
+    L.page("ARP/SEQ", list(arp4) + ["seq_mode", "arp_dir", "clk_rate", "arp_latch", "arp_pattern", "sh_rate",
+                                    "sh_steps"] + ["sh%d_mode" % l for l in range(1, 5)])
+    L.header()
     L.card(24, R1, 1232, 270, "ARPEGGIATOR / SEQUENCER")
     L.hseg(190, R1 + 96, "seq_mode", 96, label="MODE")
     L.hseg(470, R1 + 96, "arp_latch", 100, label="LATCH")
     L.hseg(730, R1 + 96, "arp_pattern", 100, label="PATTERN")
     L.hseg(990, R1 + 96, "seq_rec", 100, label="RECORD")
-    arp4 = ("arp_oct", "clk_gate", "clk_swing", "seq_steps")
     for cx, k in zip(S8, arp4):
         L.knob(cx, R1 + 172, k)
     L.popup(870, R1 + 172, 200, "arp_dir")
@@ -654,31 +658,35 @@ def pages():
     L.popup(164, R2 + 126, 200, "sh_rate")
     L.knob(404, R2 + 126, "sh_steps")
     L.text(830, R2 + 116, "FOUR LANES OF EIGHT STEPS  SOURCES SHAPE 1-4")
-    L.mode("ui_seq:STEPS")
+    # STEPS: all three rows on one screen; the Q-Links play the notes (velocity and mod by touch).
+    L.page("STEPS", ["s%d_note" % k for k in range(1, SEQ_STEPS + 1)])
+    L.header()
     for key, title, top in (("note", "NOTE", 158), ("vel", "VELOCITY", 344), ("mod", "MOD", 530)):
         L.card(24, top, 1232, 180, title)
         for k in range(1, SEQ_STEPS + 1):   # h=76 (mock 84): the slider's 56 px of labels fit the 180 px card
             L.slider(81 + (k - 1) * 74, top + 86, 18, 76, 72, "s%d_%s" % (k, key))
-    for a, name in ((1, "SHAPES 1-2"), (3, "SHAPES 3-4")):
-        L.mode("ui_seq:%s" % name)
+    for a in (1, 3):
+        L.page("SHAPES %d-%d" % (a, a + 1), ["sh%d_%d" % (l, k) for l in (a, a + 1) for k in range(1, SHAPE_STEPS + 1)])
+        L.header()
         for l, top in ((a, R1), (a + 1, R2)):
             L.card(24, top, 1232, 270, "SHAPE %d" % l)
             L.vseg(110, top + 150, "sh%d_mode" % l, sw=120, label="MODE")
             for k in range(1, SHAPE_STEPS + 1):
                 L.slider(300 + (k - 1) * 130, top + 126, 24, 120, 110, "sh%d_%d" % (l, k))
-    L.qlinks("ARP/SEQ", list(arp4) + ["seq_mode", "arp_dir", "clk_rate", "arp_latch", "arp_pattern", "sh_rate",
-                                      "sh_steps"] + ["sh%d_mode" % l for l in range(1, 5)])
-    for key, title in (("note", "STEP NOTES"), ("vel", "STEP VELS"), ("mod", "STEP MODS")):
-        L.qlinks(title, ["s%d_%s" % (k, key) for k in range(1, SEQ_STEPS + 1)])
-    for a in (1, 3):
-        L.qlinks("SHAPE %d+%d" % (a, a + 1), ["sh%d_%d" % (l, k) for l in (a, a + 1) for k in range(1, SHAPE_STEPS + 1)])
-    return "\n".join(L.lines) + "\n"
+    return L
+
+
+def pages():
+    """layout.conf."""
+    return "\n".join(build_layout().lines) + "\n"
 
 
 def skin_style():
-    """What skin_polish.py needs to redraw the knob strips, buttons and stepper arrows (build/skin_style.json)."""
+    """What skin_polish.py needs (build/skin_style.json): the palette, knob looks and primary buttons to redraw the
+    knob strips, buttons and stepper arrows, and the page groups to renumber the generator's tabs into sub-pages."""
     return {"palette": PALETTE, "title_font": TITLE_FONT, "frames": FRAMES,
-            "knobs": {str(r): s for r, s in sorted(KNOB_STYLES.items())}, "primary_buttons": list(PRIMARY_BUTTONS)}
+            "knobs": {str(r): s for r, s in sorted(KNOB_STYLES.items())}, "primary_buttons": list(PRIMARY_BUTTONS),
+            "tab_groups": build_layout().groups}
 
 
 # --- layout check (offline, no skin toolchain) ---------------------------------------------------
@@ -687,6 +695,7 @@ def skin_style():
 X0, Y0, X1, Y1 = 0, 86, 1280, 714
 TITLE_BAND = 44              # a card's title band: y .. y+44
 NAME_MAX = 13                # MPC shows a knob/slider's effGetParamName at ~19.5 px in a 130 px box
+MAX_IMAGE_H = 16384          # taller skin images draw wrongly (sd88me/mpc-vst-plugins catalog_check.py warns)
 POP_ROW, POP_GAP, POP_PAD, POP_GROUP_ROWS = 40, 2, 6, 8
 BITMAP_GLYPHS = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.-/_>%+:#"   # font8x8.h font_chars
 BITMAP_ADVANCE = {" ": 4, "J": 9, "j": 9, ".": 9, "-": 9, ":": 9}   # font_glyph_width(): last lit column + 2; else 10
@@ -917,10 +926,11 @@ def check_names(layout_tabs, geo, errors):
                 errors.append("%s: %s %s: name %r does not fit its %d px label" % (tab["name"], w["kind"], w["key"], name, box))
 
 
-def check_layout(text):
+def check_layout(text, groups):
     """Raise SystemExit on anything shadow_skin.py would refuse, plus geometry mistakes: outside the plugin
     area, overlaps on one screen (a page mode with everything shown in every mode), controls or text in a
-    card's title band, open popup lists that leave the plugin area, unknown bitmap glyphs."""
+    card's title band, open popup lists that leave the plugin area, unknown bitmap glyphs; and the page groups
+    (Layout): every page in one group, in layout order, with exactly one Q-Link set titled like the page."""
     params = PARAMS
     geo = Geometry(_top_level(text))
     errors = []
@@ -939,8 +949,17 @@ def check_layout(text):
             tabs[-1]["qlinks"].append((m.group(1), keys))
             continue
         tabs[-1]["widgets"].append(_widget(line))
-    if len(tabs) > 7:
-        errors.append("%d tabs: MPC shows five plus a pager; keep it to seven" % len(tabs))
+    if len(groups) > 7:
+        errors.append("%d page groups: MPC's tab strip shows five plus a pager; keep it to seven" % len(groups))
+    errors += ["page group %s has no pages" % g["name"] for g in groups if not g["pages"]]
+    grouped, names = [n for g in groups for n in g["pages"]], [t["name"] for t in tabs]
+    if grouped != names:
+        errors.append("the page groups list %s, the layout has the pages %s" % (grouped, names))
+    errors += ["page %r: the name is taken (MPC tells pages apart by it)" % n for n in sorted(set(names))
+               if names.count(n) > 1]
+    for t in tabs:
+        if [title for title, _ in t["qlinks"]] != [t["name"]]:
+            errors.append("%s: a page has exactly one Q-Link set, titled like the page" % t["name"])
     check_names(tabs, geo, errors)
     errors += ["PRIMARY_BUTTONS: %r is not a button parameter" % k for k in PRIMARY_BUTTONS
                if PARAMS.get(k, {}).get("kind") != "button"]
@@ -996,6 +1015,11 @@ def check_layout(text):
             if kind == "button" and not w.get("label"):
                 errors.append("%s: button %r needs a label" % (T, key))
                 continue
+            strip = {"knob": lambda: 2 * w["r"] + 10, "slider_v": lambda: max(w["w"], w["h"]),
+                     "slider_h": lambda: max(w["w"], w["h"]), "meter": lambda: max(w["w"], w["h"])}.get(kind)
+            if strip and strip() * FRAMES > MAX_IMAGE_H:   # FRAMES square frames stacked: one tall image
+                errors.append("%s: %s %s: its filmstrip is %d px tall; MPC draws images over %d px wrongly" % (
+                    T, kind, key, strip() * FRAMES, MAX_IMAGE_H))
             if kind == "knob":
                 style = KNOB_STYLES.get(w["r"])
                 if not style:
@@ -1245,7 +1269,7 @@ def main():
     assert len(set(keys)) == len(keys), "duplicate parameter key"
     assert P[0]["kind"] == "readout", "parameter 0 must stay a read-only readout"
     layout = pages()
-    check_layout(layout)
+    check_layout(layout, build_layout().groups)
     presets = factory_presets()   # everything checked before anything is written
     outputs = [
         ("params.json", json.dumps(params_json(), indent=1)),

@@ -416,17 +416,6 @@
    "default": "F1"
   },
   {
-   "key": "ui_osc",
-   "name": "Osc Page",
-   "options": [
-    "OSC 1",
-    "OSC 2",
-    "NOISE",
-    "WAVES"
-   ],
-   "default": "OSC 1"
-  },
-  {
    "key": "engine",
    "name": "Filter Engine",
    "options": [
@@ -4804,17 +4793,6 @@
    "display": "string"
   },
   {
-   "key": "ui_seq",
-   "name": "Seq Page",
-   "options": [
-    "ARP",
-    "STEPS",
-    "SHAPES 1-2",
-    "SHAPES 3-4"
-   ],
-   "default": "ARP"
-  },
-  {
    "key": "xy1_x",
    "name": "XY Pad X1",
    "min": 0,
@@ -4885,27 +4863,6 @@
    "max": 1,
    "momentary": true,
    "type": "trigger"
-  },
-  {
-   "key": "ui_mod",
-   "name": "Mod Page",
-   "options": [
-    "ENVELOPES",
-    "LFOS",
-    "XY"
-   ],
-   "default": "ENVELOPES"
-  },
-  {
-   "key": "ui_mx",
-   "name": "Matrix Page",
-   "options": [
-    "1-4",
-    "5-8",
-    "9-12",
-    "MODIFIERS"
-   ],
-   "default": "1-4"
   },
   {
    "key": "vmode",

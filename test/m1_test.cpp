@@ -10,8 +10,10 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <thread>
 
 namespace pft {
@@ -245,6 +247,49 @@ void steppingTests() {
     CHECK(h.get(pf::P_STATUS) == 0.0f);
     CHECK(!h.e->dispatcher(h.e, vst::effCanBeAutomated, pf::P_TBL_1, 0, nullptr, 0.0f));
     CHECK(h.e->dispatcher(h.e, vst::effCanBeAutomated, pf::P_F1_CUT, 0, nullptr, 0.0f));
+
+    // A table stepper turned on a Force: every detent of one turn moves one table, both ways.
+    // Each detent is measured from the read-back, which the last detent moved by one item (1/1023).
+    {
+        Host s;
+        for (int k = 0; k < 5; ++k) s.detent(pf::P_O1_TABLE, +1);
+        CHECK(s.until([&] { return s.display(pf::P_O1_TABLE) == std::string("Built-in / ") + pf::builtinName(5); }));
+        for (int k = 0; k < 2; ++k) s.detent(pf::P_O1_TABLE, -1);
+        CHECK(s.until([&] { return s.display(pf::P_O1_TABLE) == std::string("Built-in / ") + pf::builtinName(3); }));
+    }
+    // Buttons: every tap acts. A Force never sends a release in between (see Host::press).
+    {
+        Host b;
+        for (int k = 0; k < 3; ++k) b.press(pf::P_O1_TABLE_NEXT);
+        CHECK(b.until([&] { return b.display(pf::P_O1_TABLE) == std::string("Built-in / ") + pf::builtinName(3); }));
+        b.press(pf::P_O1_TABLE_PREV);
+        CHECK(b.until([&] { return b.display(pf::P_O1_TABLE) == std::string("Built-in / ") + pf::builtinName(2); }));
+        b.run(2);   // each press springs back: MPC is told 0, so its button shows off again
+        CHECK(b.log.automated.count(pf::P_O1_TABLE_NEXT) && b.log.automated[pf::P_O1_TABLE_NEXT] == 0.0f);
+        CHECK(b.get(pf::P_O1_TABLE_NEXT) == 0.0f);
+    }
+    // Device diagnostics: what MPC sets is logged only while the flag file exists (looked for once a second).
+    {
+        const std::string dir = fixtureDir() + "/trace";
+        fs::create_directories(dir);
+        setenv("PF_TRACE_DIR", dir.c_str(), 1);
+        std::ofstream(dir + "/polyforce.trace").put('\n');
+        std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+        Host t;
+        t.press(pf::P_TBL_NEXT);
+        t.setN(pf::P_ROUTING, 1.0f);
+        auto logged = [&] {
+            std::ifstream in(dir + "/polyforce.log");
+            return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        };
+        const std::string on = logged();
+        CHECK(on.find(" tbl_next ") != std::string::npos && on.find("\"Parallel\"") != std::string::npos);
+        fs::remove(dir + "/polyforce.trace");
+        std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+        t.press(pf::P_TBL_PREV);
+        CHECK(logged() == on);
+        unsetenv("PF_TRACE_DIR");
+    }
 }
 
 // --- loader -----------------------------------------------------------------------------------
@@ -441,16 +486,14 @@ void browserTests() {
     CHECK(h.finite);
 }
 
-// The wave view (OSC tab, WAVES): the plugin sets each oscillator's kWaveCols meters to its current frame
-// (table, wave and position knob) while the page shows, tells MPC, keeps them when MPC writes to them, and
-// saves none of it.
+// The wave view (OSC tab, WAVES page): the plugin sets each oscillator's kWaveCols meters to its current frame
+// (table, wave and position knob), tells MPC, keeps them when MPC writes to them, and saves none of it. MPC
+// doesn't say which page shows, so it follows on every page, at most every 16 blocks.
 void waveViewTests() {
     auto col = [](Host& h, int o, int c) { return 2.0f * h.get((o ? pf::P_O2_WV01 : pf::P_O1_WV01) + c) - 1.0f; };
     // A sine: up in the first half, down in the second, the peaks on the quarters.
     {
         Host h;
-        h.set(pf::P_UI_OSC, 3);   // WAVES
-        CHECK(h.display(pf::P_UI_OSC) == "WAVES");
         h.set(pf::P_O1_WAVE, pf::OW_SINE);
         h.run(4);
         CHECK(col(h, 0, 11) > 0.95f && col(h, 0, 12) > 0.95f && col(h, 0, 35) < -0.95f && col(h, 0, 36) < -0.95f);
@@ -461,10 +504,10 @@ void waveViewTests() {
         CHECK(h.log.automated.count(pf::P_O1_WV01 + 11) == 1);   // pushed to MPC
         CHECK(h.display(pf::P_O1_WV01).empty());
     }
-    // The position knob moves it: a pulse at 50% width is up half the cycle, at 3% only briefly.
+    // The position knob moves it: a pulse at 50% width is up half the cycle, at 3% only briefly. A change
+    // right after the view was looked at waits for the next look, up to 16 blocks later.
     {
         Host h;
-        h.set(pf::P_UI_OSC, 3);
         h.set(pf::P_O2_WAVE, pf::OW_PULSE);
         h.set(pf::P_O2_POS, 0.0f);
         h.run(4);
@@ -474,25 +517,22 @@ void waveViewTests() {
             return k;
         };
         const int wide = high();
-        h.set(pf::P_UI_OSC, 1);   // another page: the view holds still, MPC hears nothing
-        const int pushes = h.log.automateCount[pf::P_O2_WV01 + 20];
         h.set(pf::P_O2_POS, 1.0f);
-        h.run(4);
-        CHECK(high() == wide && h.log.automateCount[pf::P_O2_WV01 + 20] == pushes);
-        h.set(pf::P_UI_OSC, 3);   // back: it catches up
-        h.run(2);
+        h.run(1);
+        CHECK(high() == wide);
+        h.run(16);
         CHECK(wide >= 18 && wide <= 30 && high() <= 4);
     }
     // A newly loaded table shows; MPC writing a meter (a touch) doesn't move it; nothing of it is saved or
-    // automatable; the page is the fourth of the OSC tab.
+    // automatable.
     {
         Host h;
-        h.set(pf::P_UI_OSC, 3);
         h.run(4);
         std::vector<float> before(pf::kWaveCols);
         for (int c = 0; c < pf::kWaveCols; ++c) before[static_cast<size_t>(c)] = col(h, 0, c);
         CHECK(h.load("polyforce 4\no1_table=builtin:Sync\n") == 1);
         CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Built-in / Sync"; }));
+        h.run(16);   // the next look at the view
         int moved = 0;
         for (int c = 0; c < pf::kWaveCols; ++c) moved += std::fabs(col(h, 0, c) - before[static_cast<size_t>(c)]) > 0.05f;
         CHECK(moved >= 10);

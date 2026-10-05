@@ -199,7 +199,10 @@ Layout (1280 × 800 layout coordinates, plugin area y = 86..714):
   `textGen_` moved. **Never call the host from `setParameter` or the dispatcher.**
 - MPC doesn't notice engine-side value changes (tile lit states, stepper position) unless
   they're automated, and doesn't re-read names/texts without UpdateDisplay.
-- Momentaries fire on the rising edge only (`held_[]`).
+- Momentaries fire on every press (a 1). As first built they fired on the rising edge only
+  (`held_[]`), and on the first device run (2026-10-05) buttons stopped working after one press:
+  a tap toggles the value MPC read back, a button reads back 0, so MPC never sends the release
+  that would re-arm it.
 - Parameter count after this milestone: ~101 (44 − 2 + 59). No MPC limit is known (a catalog
   plugin declares 669).
 
