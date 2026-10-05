@@ -1,11 +1,17 @@
 # PolyForce: wavetable synth as a VST2 instrument for MPC OS (Force / MPC standalone).
-# Builds on Linux or WSL. Native: g++ (tests, x86 bench). Device: arm-linux-gnueabihf-g++ 13 (the
-# Force ships GCC 13's libstdc++, so the .so links it dynamically).
+# Builds on Linux or WSL. Native: g++ (tests, x86 bench). Device: arm-linux-gnueabihf-g++ 11 or newer
+# (libstdc++ is linked dynamically; MPC OS has it). Releases come from CI, built against glibc 2.31 so
+# they load on MPC OS 2.x and 3.x; a newer distribution's cross toolchain needs a newer glibc (3.x only).
 # Your own settings (FORCE, SSH_KEY, PY, WAVETABLES, ...) go in local.mk, which git ignores.
 -include local.mk
 
 CXX      ?= g++
-ARM_CXX  ?= arm-linux-gnueabihf-g++
+# ARM_PREFIX: the device toolchain's prefix; empty for a native ARM build (the release CI builds in
+# arm32v7/gcc:11-bullseye, glibc 2.31, see .github/workflows/build.yml). ARM_RUN: how ARM programs
+# run here: qemu-user on x86, nothing on ARM.
+ARM_PREFIX ?= arm-linux-gnueabihf-
+ARM_CXX  ?= $(ARM_PREFIX)g++
+ARM_RUN  ?= qemu-arm -L /usr/arm-linux-gnueabihf
 BUILD    := build
 # FORCE: the device, root@<ip>, for bench-device and plugin-install. SSH_KEY: the private key for
 # it (empty: ssh's own defaults). PY: a Python 3 with Pillow, for skin, preview and plugin-package.
@@ -95,7 +101,7 @@ $(BUILD)/plugin_test: $(TESTS) $(wildcard test/*.h) $(SRC) $(HDR) $(GEN) | $(BUI
 # The same suite cross-compiled for the Force's CPU and run under qemu-user (no sanitizers):
 # catches 32-bit and ARM-only code paths (the FPSCR flush, NEON float vectorisation).
 test-arm: $(BUILD)/arm/plugin_test
-	PF_WAVETABLES="$(WAVETABLES)" qemu-arm -L /usr/arm-linux-gnueabihf $<
+	PF_WAVETABLES="$(WAVETABLES)" $(ARM_RUN) $<
 
 $(BUILD)/arm/plugin_test: $(TESTS) $(wildcard test/*.h) $(SRC) $(HDR) $(GEN)
 	mkdir -p $(BUILD)/arm
@@ -130,9 +136,9 @@ ARM_SO_FLAGS = -std=c++17 $(ARM_OPT) -fPIC -fvisibility=hidden -fvisibility-inli
 ARM_SO_LINK  = -shared -Wl,--no-undefined -Wl,-soname,polyforce.so
 ARM_SO_CMD   = $(ARM_CXX) $(ARM_SO_FLAGS) $(ARM_SO_LINK)
 
-# Profile-guided: on by default when qemu-arm is installed (as test-arm needs); PGO=0 builds
-# without. A copy of the plugin compiled with counters is linked into tools/pgo_train.cpp,
-# which plays a spread of patches under qemu-arm (about 10 s); then the .so is compiled from
+# Profile-guided: on by default when ARM programs can run here (qemu-arm installed, as test-arm
+# needs, or a native ARM build); PGO=0 builds without. A copy of the plugin compiled with counters
+# is linked into tools/pgo_train.cpp, which plays a spread of patches (about 10 s under qemu-arm); then the .so is compiled from
 # the same sources with the same flags plus that profile, which tells the compiler which paths
 # are hot. -fprofile-partial-training keeps functions the trainer never ran optimised as usual;
 # inside a trained function, branches it never took (other LFO shapes, glide, mono, ...) are
@@ -140,8 +146,8 @@ ARM_SO_CMD   = $(ARM_CXX) $(ARM_SO_FLAGS) $(ARM_SO_LINK)
 # with the busy matrix -2.6%. Objects keep one path (dir_name.o) in both rounds: GCC names the
 # profile files after it. A missing profile fails the build instead of quietly building without.
 PGO      ?= auto
-QEMU_ARM := $(shell command -v qemu-arm 2>/dev/null)
-PGO_ON   := $(if $(filter auto,$(PGO)),$(if $(QEMU_ARM),1,0),$(PGO))
+ARM_RUNS := $(if $(strip $(ARM_RUN)),$(shell command -v $(firstword $(ARM_RUN)) 2>/dev/null),native)
+PGO_ON   := $(if $(filter auto,$(PGO)),$(if $(ARM_RUNS),1,0),$(PGO))
 PGO_DIR  := $(BUILD)/arm/pgo
 PGO_PROF := $(abspath $(PGO_DIR)/profile)
 PGO_OBJ  := $(PGO_DIR)/obj
@@ -163,7 +169,7 @@ ifeq ($(PGO_ON),1)
 		-c $$f -o $(PGO_O) || exit 1; done
 	$(ARM_CXX) $(ARM_SO_FLAGS) -fprofile-generate -static tools/pgo_train.cpp $(PGO_OBJ)/*.o -o $(PGO_DIR)/train
 	PF_DATA_DIR=$(PGO_DIR) PF_TABLE_ROOTS=$(PGO_DIR) PF_PRESET_ROOTS=$(PGO_DIR) PF_TUNING_ROOTS=$(PGO_DIR) PF_CPU_GUARD=0 \
-		qemu-arm $(PGO_DIR)/train
+		$(ARM_RUN) $(PGO_DIR)/train
 	@n=$$(ls $(PGO_PROF)/*.gcda 2>/dev/null | wc -l); [ $$n -eq $(words $(SRC)) ] || \
 		{ echo "PGO: $$n of $(words $(SRC)) profiles written (PGO=0 builds without)"; exit 1; }
 	for f in $(SRC); do $(ARM_CXX) $(ARM_SO_FLAGS) -fprofile-use=$(PGO_PROF) -fprofile-partial-training -Werror=missing-profile \
@@ -172,17 +178,17 @@ ifeq ($(PGO_ON),1)
 	@echo "profile-guided build"
 else
 	$(ARM_SO_CMD) $(SRC) -o $@
-	@echo "plain build (PGO=$(PGO): qemu-arm $(if $(QEMU_ARM),found,not found))"
+	@echo "plain build (PGO=$(PGO): $(firstword $(ARM_RUN)) $(if $(ARM_RUNS),found,not found))"
 endif
-	arm-linux-gnueabihf-strip --strip-unneeded $@
-	@arm-linux-gnueabihf-readelf -V $@ | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1 | sed 's/^/needs /'
-	@arm-linux-gnueabihf-nm -D --defined-only $@ | grep -c ' T ' | sed 's/^/exported functions: /'
+	$(ARM_PREFIX)strip --strip-unneeded $@
+	@$(ARM_PREFIX)readelf -V $@ | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1 | sed 's/^/needs /'
+	@$(ARM_PREFIX)nm -D --defined-only $@ | grep -c ' T ' | sed 's/^/exported functions: /'
 
 # The suite against the objects the shipped .so is linked from (profile-guided), under qemu.
 test-arm-pgo: $(ARM_SO)
 ifeq ($(PGO_ON),1)
 	$(ARM_CXX) -std=c++17 $(ARM_OPT) -Wno-psabi -pthread $(INC) $(TESTS) $(PGO_OBJ)/*.o -o $(BUILD)/arm/plugin_test_pgo
-	PF_WAVETABLES="$(WAVETABLES)" qemu-arm -L /usr/arm-linux-gnueabihf $(BUILD)/arm/plugin_test_pgo
+	PF_WAVETABLES="$(WAVETABLES)" $(ARM_RUN) $(BUILD)/arm/plugin_test_pgo
 else
 	@echo "test-arm-pgo: the .so is a plain build here (PGO=$(PGO)); test-arm covers it"
 endif
@@ -193,7 +199,7 @@ arm-bench-stages: $(ARM_SO_STAGES) $(ARM_BENCH)
 $(ARM_SO_STAGES): $(SRC) $(HDR) $(GEN)
 	mkdir -p $(BUILD)/arm
 	$(ARM_SO_CMD) -DPF_STAGE_TIMING $(SRC) -o $@
-	arm-linux-gnueabihf-strip --strip-unneeded $@
+	$(ARM_PREFIX)strip --strip-unneeded $@
 
 arm-bench: $(ARM_BENCH)
 $(ARM_BENCH): tools/bench.cpp dsp/wavetable.cpp $(HDR) $(GEN)

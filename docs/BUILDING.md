@@ -7,6 +7,8 @@
 - [Tests](#tests)
 - [Benchmarking on the device](#benchmarking-on-the-device)
 - [Packaging and installing](#packaging-and-installing)
+- [Release builds](#release-builds)
+- [Diagnostics on the device](#diagnostics-on-the-device)
 - [Binary compatibility](#binary-compatibility)
 
 ---
@@ -18,7 +20,7 @@ PolyForce builds on Linux or WSL; it is developed on Ubuntu 24.04.
 | Tool | Needed for |
 |---|---|
 | `g++` 13 | tests and the x86 bench |
-| `arm-linux-gnueabihf-g++` 13 | the device build (the Force ships GCC 13's libstdc++, linked dynamically) |
+| `arm-linux-gnueabihf-g++` 11 or newer | the device build (libstdc++ is linked dynamically; MPC OS ships it). Release builds come from [CI](#release-builds) |
 | GNU make ≥ 4.3 | everything |
 | `python3` | generating the parameter list, layout and C++ headers from `surface/surface.py` |
 | `gcc` | the skin generator's C renderer |
@@ -119,6 +121,7 @@ make test WAVETABLES=~/wavetables
 | `PF_DATA_DIR` | Where favorites and recent lists are kept |
 | `PF_CPU_GUARD=0` | Turns the CPU guard off (the test suite does) |
 | `PF_WAVETABLES` | The folder the import check reads (`make test` sets it from `WAVETABLES`) |
+| `PF_TRACE_DIR` | Where the [diagnostics](#diagnostics-on-the-device) flag and log are (default `/tmp`) |
 
 ## Benchmarking on the device
 
@@ -158,9 +161,43 @@ Packages, copies the package to the device and runs its installer: it **stops MP
 project first), backs up and edits `MPC.settings`, and starts MPC again. A reinstall keeps the
 user's wavetables, presets, tunings and favorites/recent lists.
 
+## Release builds
+
+Releases are built by CI (`.github/workflows/build.yml`) on every push, the way the plugin catalog's
+own ports are built: the device build runs in `arm32v7/gcc:11-bullseye` (GCC 11, glibc 2.31) under
+QEMU, profile-guided, with the test suite run against the objects the `.so` is linked from; the
+sanitizer suite runs on x86. The zip is checked with the catalog's own checker
+(`third_party/mpc-vst-plugins/tools/catalog_check.py --catalog`) and kept as the run's artifact.
+
+Pushing a tag `vX.Y.Z` also publishes it as a GitHub release, a prerelease while the version is 0.x
+(the catalog's beta channel). The catalog reads the major version as the parameter list's
+compatibility: bump X whenever parameter indices change.
+
+The same build outside CI, in an ARM environment: `make ARM_PREFIX= ARM_RUN= PGO=1 plugin-package`
+(`ARM_PREFIX` empty: the native compiler; `ARM_RUN` empty: ARM programs run directly).
+
+A local build with a newer distribution's cross compiler (Ubuntu 24.04: 64-bit `time_t` by default,
+glibc 2.39) needs glibc 2.38. That loads on the Force and other MPC OS 3.x devices, fine for testing,
+but the catalog refuses it.
+
+## Diagnostics on the device
+
+To see what MPC sends when a control is touched, turned or tapped, create the flag file while MPC
+runs (no restart):
+
+```sh
+ssh root@<ip> touch /tmp/polyforce.trace
+```
+
+Within a second every PolyForce instance appends one line per `setParameter` to
+`/tmp/polyforce.log`: the time, the instance, the parameter, the value MPC sent, the value it had
+read back before and the plugin's value and text after. Remove the flag file to stop. The log stops
+growing at 2 MB; `/tmp` is cleared when the device restarts.
+
 ## Binary compatibility
 
 - The `.so` exports only `VSTPluginMain` and links with `--no-undefined`: an unresolved symbol
   would otherwise only show as MPC crashing on load.
-- It needs glibc 2.38 (`__isoc23_strtol`), which is too new for devices still on MPC OS 2.x. The
-  device build prints the highest glibc version it needs.
+- The [release build](#release-builds) needs glibc 2.31 or less, so it loads on MPC OS 2.x and 3.x.
+  Built with a newer toolchain it needs that toolchain's glibc (Ubuntu 24.04: 2.38). The device build
+  prints the highest glibc version it needs.
