@@ -8,7 +8,8 @@
 //              indices move when files are added.
 //   category   the first folder under the root; deeper folders fold into it; files directly
 //              in a root are "Unsorted"; same-named categories from both roots merge. The
-//              built-ins have their own category, listed first; the rest A -> Z.
+//              built-ins have their own category (or categories), listed first; the rest
+//              A -> Z; a folder named like a built-in category shows as "<name> (files)".
 //   name       the file stem minus the longest " - "-terminated prefix that every file in the
 //              category shares: "ESW Analog - Jupiter 8 Saw" -> "Jupiter 8 Saw".
 //   flat order categories in order, names A -> Z inside each: what a knob scroll walks.
@@ -56,6 +57,9 @@ public:
         std::vector<std::string> exts;                  // lower case, with the dot
         std::string builtinCategory;                    // "Built-in"
         std::vector<std::string> builtinNames;          // keys become "builtin:<name>"
+        // Per built-in, its category instead of builtinCategory (empty: all in builtinCategory).
+        // Categories keep the order they first appear in, names their order inside each.
+        std::vector<std::string> builtinCategories;
         std::function<std::vector<Root>()> roots;
         std::string favFile, recentFile;                // under dataDir(); "" = not kept
         size_t recentMax = 12;
@@ -89,7 +93,7 @@ private:
 // Builds a listing from explicit roots (used by FileLibrary; exposed for tests).
 std::shared_ptr<const Listing> scanLibrary(const FileLibrary::Config& cfg);
 
-FileLibrary& tableLibrary();    // *.wav; built-ins = builtinTables()
+FileLibrary& tableLibrary();    // *.wav; built-ins = dsp/wavetable.h builtinName()
 FileLibrary& presetLibrary();   // *.pfp; built-ins = the factory presets
 FileLibrary& tuningLibrary();   // *.tun, *.scl; built-in = "12-TET"
 

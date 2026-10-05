@@ -23,7 +23,10 @@ FileLibrary& presetLibrary() {
         FileLibrary::Config c;
         c.exts = {".pfp"};
         c.builtinCategory = "Factory";
-        for (int i = 0; i < kNumFactoryPresets; ++i) c.builtinNames.push_back(kFactoryPresets[i].name);
+        for (int i = 0; i < kNumFactoryPresets; ++i) {
+            c.builtinNames.push_back(kFactoryPresets[i].name);
+            c.builtinCategories.push_back(kFactoryPresets[i].category);
+        }
         c.roots = presetRoots;
         c.favFile = "preset_favorites.txt";
         c.recentFile = "preset_recent.txt";

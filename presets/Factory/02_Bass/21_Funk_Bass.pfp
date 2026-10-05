@@ -1,0 +1,23 @@
+polyforce 4
+volume=-5.5
+o1_wave=5
+o1_pos=0.3
+o1_sub_wave=3
+o1_sub_level=0.25
+o2_level=0
+f1_cut=250
+f1_res=0.55
+f1_env=0.5
+e1_a=0.001
+e1_s=0.5
+e1_r=0.06
+e2_d=0.18
+e2_s=0
+e2_r=0.1
+e2_vel=0.8
+m1_src=7
+m1_t1=16
+m1_a1=0.25
+vmode=3
+glide_mode=2
+glide=0.03

@@ -109,7 +109,8 @@ Design record: [M1_DESIGN.md](M1_DESIGN.md).
 
 ## Milestone 7 — presets and finish ✅ (release ⬜)
 
-- ✅ 21 factory presets (embedded in the .so, validated by `surface.py` at build time)
+- ✅ 21 factory presets (embedded in the .so, validated by `surface.py` at build time); 205 since
+  the factory content below
 - ✅ Preset stepper and the browser page in PRESETS mode (categories, favorites, recent)
 - ✅ Save preset: `<first preset root>/User/User NNN.pfp` (there is no text entry)
 - ✅ Init patch, Randomize with an amount (volume and voicing untouched, attacks kept playable)
@@ -126,6 +127,28 @@ Design record: [M1_DESIGN.md](M1_DESIGN.md).
   real run of skin_polish.py and of the meter patch), then the device: install, play every page,
   `make bench-device`
 - ⬜ First release v0.1: parameter list frozen (append-only from then on), catalog-style package
+
+## Factory content ✅ (2026-10-04)
+
+README, "Factory content", lists the tables and the preset categories.
+
+- ✅ 26 more built-in wavetables, 30 in all, computed (no sample data): analog (Square Sync, Reso Saw /
+  Square, Harmonics, Comb Saw), digital (Fold, Phase Dist, CZ Reso, FM Ratio 1-3, FM Tine, Digital,
+  Bitcrush, Chip), vocal (Vowels, Choir, Growl) and acoustic (Organ, E-Piano, Strings, Brass, Reed,
+  Pluck, Mallet, Bell). The four originals are unchanged (bit for bit; Sync to 4e-16)
+- ✅ Built on demand: Classic is built when the plugin loads (every slot's fallback); the others on the
+  loader thread the first time a patch uses one, then cached like a file (evicted when unused). Plugin
+  load now builds one table instead of four. 6-73 ms per table on x86; the slowest (Growl) needs a
+  device check
+- ✅ 184 new factory presets, 205 in all, in 14 categories: one folder per category under
+  `presets/Factory/`, the preset browser's categories (a user folder of the same name lists as
+  "<name> (files)"). `surface.py` checks names (unique, short enough for a tile) and that every table a
+  preset names is a built-in
+- ✅ Level-matched: every preset rendered through the plugin on a phrase that suits it, its volume set
+  for the loudest 3 s at -19 LUFS (one-shots: loudest 400 ms at -17 LUFS), peaks at most -3 dBFS; the
+  first 21 kept their sound (Comb Pluck and Noise Sweep got some filter drive to get there)
+- ✅ The mod wheel does something on every new preset but the drums (filter, vibrato or position)
+- ⬜ On the device: a listening pass through every category, table build times
 
 ---
 
@@ -194,7 +217,8 @@ MPC running. PASS ≤ 15%, WARN ≤ 35%.
 | 2026-10-04 | Phase 0 (16-voice engine) | 8.1 | 11.5 | 15.5 | 45.1 | 582 ms, 22 MB |
 | 2026-10-04 | v0.0.2 (8 × 8 cap) | 8.2 | 11.4 | 15.2 | — | (same code) |
 
-Other Phase 0 numbers: `VSTPluginMain` (builds the 4 built-in tables) 163 ms on the Force;
+Other Phase 0 numbers: `VSTPluginMain` (builds the 4 built-in tables; since the factory content only
+Classic and the classic shapes) 163 ms on the Force;
 x86 sweep of all 379 ESW tables: all load and play, 334 ms average import, worst 468 ms.
 
 ---

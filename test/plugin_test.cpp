@@ -43,15 +43,35 @@ namespace {
 using namespace pft;
 
 void testTables() {
-    const auto& t = pf::builtinTables();
-    CHECK(t.size() == 4);
+    CHECK(pf::builtinCount() == 30);
+    CHECK(std::string(pf::builtinName(0)) == "Classic" && pf::classicBuiltin().frames == 16);
+    CHECK(std::string(pf::builtinName(pf::builtinCount())).empty() && pf::builtinIndex("Nope") == -1);
+    pf::Wavetable none;
+    CHECK(!pf::buildBuiltin(-1, none) && !pf::buildBuiltin(pf::builtinCount(), none));
+    const auto t0 = std::chrono::steady_clock::now();
+    std::vector<pf::Wavetable> t(static_cast<size_t>(pf::builtinCount()));
+    for (int i = 0; i < pf::builtinCount(); ++i) {
+        CHECK(pf::builtinIndex(pf::builtinName(i)) == i);   // names are unique
+        CHECK(pf::buildBuiltin(i, t[static_cast<size_t>(i)]) && t[static_cast<size_t>(i)].name == pf::builtinName(i));
+    }
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    std::printf("  %d built-in tables: %.0f ms to build all\n", pf::builtinCount(), ms);
+    CHECK(t[0].data == pf::classicBuiltin().data);
     for (const auto& w : t) {
-        CHECK(w.frames == 16);
+        CHECK(w.frames >= 8 && w.frames <= pf::kMaxFrames);
+        // One gain per frame (peak 1), except Pluck: one for the whole table, its dull frames quieter.
+        const bool whole = w.name == "Pluck";
+        float tablePeak = 0.0f;
+        bool finite = true;
+        for (float v : w.data) finite = finite && std::isfinite(v);
+        CHECK(finite);
         for (int f = 0; f < w.frames; ++f) {
             const float* m0 = w.get(f, 0);
             float peak = 0.0f;
             for (int i = 0; i < pf::kTableSize; ++i) peak = std::max(peak, std::fabs(m0[i]));
-            CHECK(peak > 0.99f && peak < 1.01f);
+            tablePeak = std::max(tablePeak, peak);
+            if (!whole && !(peak > 0.99f && peak < 1.01f)) std::printf("  %s frame %d: peak %g\n", w.name.c_str(), f, peak);
+            CHECK(whole ? peak > 0.05f && peak < 1.01f : peak > 0.99f && peak < 1.01f);
             bool guards = true;   // every level ends in a guard sample = its sample 0
             for (int k = 0; k < pf::kMipLevels; ++k) {
                 const float* lv = w.get(f, k);
@@ -69,6 +89,7 @@ void testTables() {
             for (int i = 0; i < topLen; ++i) rises += (top[i] < 0.0f && top[i + 1] >= 0.0f) ? 1 : 0;
             CHECK(rises <= 1 || topPeak < 1e-6f);
         }
+        CHECK(tablePeak > 0.99f && tablePeak < 1.01f);
     }
     CHECK(pf::mipFor(1e-4f) == 0);
     CHECK(pf::mipFor(0.45f) == pf::kMipLevels - 1);

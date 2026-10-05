@@ -1,0 +1,18 @@
+polyforce 4
+volume=-4.5
+o1_wave=1
+o2_wave=2
+o2_oct=2
+o2_semi=7
+o2_level=0.35
+f1_type=0
+f2_type=0
+e1_a=0.001
+e1_d=2.8
+e1_s=0
+e1_r=2.5
+e1_vel=0.7
+l1_rate=5
+m1_src=3
+m1_t1=7
+m1_a1=0.2

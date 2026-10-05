@@ -73,14 +73,22 @@ void TableCache::clear() {
 
 std::shared_ptr<const Wavetable> loadTable(const std::string& key, std::string* err) {
     static const std::string kBuiltin = "builtin:";
-    if (key.compare(0, kBuiltin.size(), kBuiltin) == 0) {
-        const std::string name = key.substr(kBuiltin.size());
-        for (const Wavetable& t : builtinTables())
-            if (t.name == name) return std::shared_ptr<const Wavetable>(&t, [](const Wavetable*) {});   // static
-        if (err) *err = "no such built-in";
-        return nullptr;
+    const bool builtin = key.compare(0, kBuiltin.size(), kBuiltin) == 0;
+    int index = -1;
+    if (builtin) {
+        index = builtinIndex(key.substr(kBuiltin.size()));
+        if (index < 0) {
+            if (err) *err = "no such built-in";
+            return nullptr;
+        }
+        if (index == 0) return std::shared_ptr<const Wavetable>(&classicBuiltin(), [](const Wavetable*) {});   // static
     }
     if (auto hit = TableCache::get().find(key)) return hit;
+    if (builtin) {   // computed, then cached like a file (evicted when unused, rebuilt on demand)
+        auto t = std::make_shared<Wavetable>();
+        buildBuiltin(index, *t);
+        return TableCache::get().put(key, std::move(t));
+    }
     const std::string path = resolveKey(key, tableRoots());
     if (path.empty()) {
         if (err) *err = "unknown folder";

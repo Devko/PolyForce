@@ -12,7 +12,7 @@ the first release. Effects are left to MPC's own insert effects.
 
 ## Status (2026-10-04): Milestones 1–7 built, not yet on the device
 
-Everything below passes the ASan/UBSan suite (841 checks) on x86 and the same suite
+Everything below passes the ASan/UBSan suite (4096 checks) on x86 and the same suite
 cross-compiled for the Force under qemu (also against the profile-guided objects). A full code
 review after Milestone 7 fixed about 60 issues (voice stealing, envelope modulation, sequencer
 clock jumps, crash safety around files, browser state, packaging), a second one after the
@@ -27,7 +27,8 @@ performance pass about 40 more (docs/ROADMAP.md); each fix has a regression chec
   unison up to 8 with detune and width · octave/semitone/fine · level, pan · phase offset and
   Reset / Random / Free · sub oscillator (4 waves, −36..+12 st) · route F1 / F2 / F1+F2 / Direct
 - **Noise** with a continuous colour tilt and its own route
-- **Wavetables:** 4 built-ins; Serum-format WAVs from the plugin folder and the SSD; loaded off
+- **Wavetables:** 30 built-ins, all computed (analog, FM, digital, vocal, acoustic, chip: see
+  [Factory content](#factory-content)); Serum-format WAVs from the plugin folder and the SSD; loaded off
   the audio thread with a shared cache; table steppers, a browser page (categories, favorites,
   recent, random, copy, swap), `FRAME n / N` readout, a wave view of both oscillators' current
   frames (OSC tab, WAVES); saved by key with the project
@@ -40,7 +41,7 @@ performance pass about 40 more (docs/ROADMAP.md); each fix has a regression chec
 - **Sequencing:** arpeggiator (7 directions, 1–4 octaves, latch, step pattern) · 16-step note
   sequencer with record · 4 × 8-step shape sequencer as mod sources · gate and swing, synced to
   MPC's transport
-- **Patch:** 21 factory presets, a preset browser, numbered user presets, Init, Randomize with
+- **Patch:** 205 factory presets in 14 categories, level-matched; a preset browser, numbered user presets, Init, Randomize with
   an amount · microtuning from `.tun` and `.scl`
 - Status line with live voice count, CPU and loading state; a CPU guard that fades release
   tails when an instance runs over budget; sustain pedal (holds the keys in
@@ -166,17 +167,87 @@ The touchscreen pages are defined in `surface/surface.py` (`pages()`), after the
 - `make skin` and `make preview` render the real skin and page previews; they build and run the
   vendored generator, so run them on the user's machine.
 
+## Factory content
+
+### Built-in wavetables
+
+All 30 are computed from formulas (no sample data), band-limited like imported tables. Classic is
+built when the plugin loads (it is every slot's fallback); the others on the loader thread the first
+time a patch uses one, then cached like a file (evicted when unused, rebuilt on demand): 6 to 73 ms
+each on x86. They list in the browser's BUILT-IN category in this order.
+
+| Table | Frames | Position sweeps | Tip |
+|---|---|---|---|
+| Classic | 16 | sine → triangle → saw → square | |
+| PWM | 16 | pulse width 50% → 4% | |
+| Sync | 16 | a saw hard-synced to the fundamental, ratio 1 → 8 | |
+| Formant | 16 | a resonant peak, harmonic 1 → 48 | |
+| Square Sync | 32 | a square hard-synced, ratio 1 → 8 | |
+| Reso Saw | 32 | a saw through a resonant 24 dB low-pass, cutoff harmonic 1.5 → 96 | an envelope to position is a filter sweep with no filter |
+| Reso Square | 32 | the same on a square | |
+| Harmonics | 32 | additive, 1 → 32 harmonics | |
+| Comb Saw | 32 | a saw plus a delayed copy: comb notches sweep down (flanger) | a slow LFO to position |
+| Fold | 32 | a sine through a wavefolder, gain 1 → 8 | |
+| Phase Dist | 32 | Casio CZ phase distortion, sine → sharp saw | |
+| CZ Reso | 32 | Casio CZ resonance, peak 1 → 16 × the fundamental | |
+| FM Ratio 1, 2, 3 | 32 | two-operator FM, modulator at 1×, 2×, 3×, index 0 → 6, 5, 4 | |
+| FM Tine | 32 | 1:1 and 14:1 modulators rising: an FM electric piano's tine | position 0 is a pure sine, so an envelope decays the tine |
+| Digital | 32 | eight seeded random spectra in turn | |
+| Bitcrush | 32 | a sine with 64 → 2 levels and 256 → 16 steps a cycle | |
+| Chip | 8 | pulse 12.5 / 25 / 50%, NES triangle, 4-bit saw, 4-bit sine, octave pulse, a Game Boy wave | position k/7 is shape k |
+| Vowels | 32 | a tenor singing A → E → I → O → U | truest near C3 |
+| Choir | 32 | an alto, oo → oh → ah → eh | truest near A3 |
+| Growl | 32 | saturated bass vowels U → O → A → E → I | truest near C2 |
+| Organ | 16 | tonewheel drawbars, 8' alone → all nine | harmonic 1 is the 16': play it at Octave −1 |
+| E-Piano | 16 | mellow → barking | velocity to position |
+| Strings | 16 | a bowed string in a violin body, dark → bright | |
+| Brass | 16 | soft → blaring | velocity or an envelope to position |
+| Reed | 16 | clarinet → oboe → saxophone | |
+| Pluck | 32 | a plucked string, bright → dull, one gain for the table | position 1 with E2 > Pos −1: it darkens as it rings |
+| Mallet | 16 | soft → marimba → vibraphone → xylophone → glockenspiel → kalimba | key frames at 0, 0.2 … 1 |
+| Bell | 32 | a church bell, soft → bright, then → a metal plate | the prime is harmonic 16: play it at Octave −3, Semi −12 |
+
+### Factory presets
+
+205 presets, one folder per category under `presets/Factory/` (the browser's categories, in this
+order). They use only built-in tables, so they sound the same on every device. Every preset was
+rendered through the plugin on a phrase that suits it and level-matched with its volume (loudest
+3 s at −19 LUFS; one-shots loudest 400 ms at −17 LUFS; peaks at most −3 dBFS), so stepping through
+them doesn't jump in level.
+
+| Category | Presets | For example |
+|---|---|---|
+| Templates | 9 | Init, Init Mono, Init Pad, Init Pluck, Init Wavetable, Init Arp, Init Seq, Init Drum |
+| Bass | 24 | Moog Bass, Reese Bass, 808 Bass, FM Bass, Growl Bass, Talk Bass, Neuro Bass, Chip Bass |
+| Lead | 20 | Saw Lead, Prophet Lead, Screamer, Fold Lead, Chip Lead, Vowel Lead, Whistle, Theremin |
+| Pad | 20 | Warm Pad, Juno Pad, Glass Pad, Shimmer Pad, Flanger Pad, Air Pad, Drone Pad, Motion Pad |
+| Keys | 13 | E-Piano, Suitcase EP, FM E-Piano, Wurli, Clav, Harpsichord, Jazz Organ, Church Organ |
+| Pluck | 14 | Harp, Nylon Guitar, Koto, Sitar, Banjo, Future Pluck, Glass Pluck, Dub Pluck |
+| Bell | 14 | Church Bell, Tubular Bell, Gong, Marimba, Vibraphone, Glockenspiel, Kalimba, Music Box |
+| Brass & Wind | 12 | Brass Section, Trumpet, French Horn, Synth Brass, Flute, Clarinet, Oboe, Sax, Pan Flute |
+| Strings | 10 | String Ensemble, Solo Violin, Cello, Pizzicato, Tremolo Strings, Solina, Slow Strings |
+| Vocal | 10 | Choir Aah, Choir Ooh, Talk Box, Robot Voice, Wah Vox, Vowel Morph, Monk Choir |
+| Synth | 16 | House Stab, Prophet Poly, Supersaw Chords, CZ Poly, Lo-Fi Keys, Chip Poly, Reso Motion |
+| Arp & Seq | 16 | Up Down Arp, Chord Pulse, Berlin School, Acid Seq, Rhythm Gate, Shape Wobble, Bell Arp |
+| Drum & Perc | 13 | Kick, 808 Kick, Snare, Clap, Closed Hat, Open Hat, Tom, Cowbell, Conga, Shaker |
+| FX | 14 | Riser, Downlifter, Laser, Siren, Robot Bleeps, Wind, Ocean, Impact, Glitch, Star Field |
+
+Apart from the drums and most of the first 21 presets, every preset answers the mod wheel (a brighter
+filter, more vibrato or a wavetable move; with the wheel down nothing changes). A user folder named
+like a factory category lists as "Bass (files)" and so on, next to it.
+
 ## Layout
 
 ```
 surface/surface.py     THE source of the parameter list and the touchscreen pages: writes
                        params.json, layout.conf, vst.json, build/param_ids.h (ids, value curves,
                        limits) and build/factory_presets.h (presets/Factory embedded); checks the
-                       layout and every factory preset before writing anything
+                       layout and every factory preset (ranges, names, tables) before writing anything
 surface/skin_polish.py redraws knob strips, buttons, stepper arrows and the wave view's bars after the
                        generator (make skin)
 dsp/wavetable.*        band-limited tables: 11 mip levels (2048 samples down to 256) per frame,
-                       FFT-built two frames at a time; 4 built-ins; Serum WAV loader
+                       FFT-built two frames at a time; 30 computed built-ins (Classic at once, the
+                       rest when first used); Serum WAV loader
 dsp/synth.*            the engine: voices, oscillators (uint32 phase), sub, noise, Simper SVF,
                        comb and vowel filters, ADSRs, LFOs, the mod matrix; 32-sample control rate
                        with per-chunk glides, four voices per vector in the filters
@@ -197,7 +268,8 @@ plugin/presets.*       preset and tuning libraries, user preset files
 plugin/state.*         the state text shared by projects and preset files
 plugin/paths.*         plugin dir, library roots, data dir, atomic file writes
 plugin/vst2.h          hand-written VST2 ABI slice (from RackForcePlugin)
-presets/Factory/       factory presets (NN_Name.pfp: NN orders them, "_" shows as a space)
+presets/Factory/       factory presets, NN_Category/NN_Name.pfp: a folder per browser category, NN
+                       orders them, "_" shows as a space
 test/                  the whole plugin through its VST2 entry points, ASan/UBSan, one file per
                        milestone plus review_test.cpp (host.h = a fake MPC host)
 test/tables_sweep.cpp  every WAV in a folder: load, check, play, timing and memory

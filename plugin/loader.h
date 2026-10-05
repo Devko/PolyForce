@@ -56,7 +56,8 @@ private:
     size_t cap_ = 96u << 20;
 };
 
-// A table by key: "builtin:<Name>" (static, never freed) or a file key (cache, else import).
+// A table by key: "builtin:Classic" (static, never freed), another built-in (cache, else
+// computed) or a file key (cache, else import).
 std::shared_ptr<const Wavetable> loadTable(const std::string& key, std::string* err = nullptr);
 
 class Loader {

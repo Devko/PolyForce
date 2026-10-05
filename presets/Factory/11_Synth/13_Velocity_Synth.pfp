@@ -1,0 +1,20 @@
+polyforce 4
+volume=-3.5
+o1_table=builtin:Fold
+o1_pos=0.05
+o2_wave=2
+o2_fine=0
+o2_level=0.4
+f1_res=0.1
+f1_env=0.2
+e1_a=0.002
+e1_d=0.8
+e1_s=0.6
+m1_src=5
+m1_t1=4
+m1_a1=0.6
+m1_t2=16
+m1_a2=0.2
+m2_src=7
+m2_t1=16
+m2_a1=0.25

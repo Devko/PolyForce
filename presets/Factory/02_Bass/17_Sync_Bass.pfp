@@ -1,0 +1,24 @@
+polyforce 4
+volume=-6.5
+o1_table=builtin:Square Sync
+o1_pos=0.2
+o1_sub_level=0.4
+o2_level=0
+engine=2
+f1_cut=1500
+f1_res=0.3
+f1_drive=0.3
+e1_a=0.002
+e1_d=0.5
+e1_s=0.7
+e1_r=0.1
+e2_d=0.3
+e2_s=0.15
+e2_r=0.1
+e2_pos=0.5
+m1_src=7
+m1_t1=16
+m1_a1=0.25
+vmode=3
+glide_mode=2
+glide=0.04

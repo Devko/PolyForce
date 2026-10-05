@@ -1,0 +1,25 @@
+polyforce 4
+volume=-7.5
+routing=1
+o1_table=builtin:Choir
+o1_pos=0.35
+o1_uni=5
+o1_detune=0.25
+o1_width=1
+o2_level=0
+noise_level=0.3
+noise_color=-0.1
+noise_route=1
+f1_cut=4000
+f1_res=0
+f1_env=0
+f2_type=3
+f2_cut=1200
+f2_res=0.3
+e1_a=0.7
+e1_d=1.5
+e1_s=0.85
+e1_r=1.6
+m1_src=7
+m1_t1=16
+m1_a1=0.25

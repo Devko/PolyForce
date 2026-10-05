@@ -125,15 +125,24 @@ std::shared_ptr<const Listing> scanLibrary(const FileLibrary::Config& cfg) {
         }
     };
 
-    std::vector<Entry> builtins;
-    for (size_t i = 0; i < cfg.builtinNames.size(); ++i)
-        builtins.push_back({"builtin:" + cfg.builtinNames[i], "", cfg.builtinCategory, cfg.builtinNames[i],
-                            static_cast<int>(i)});
-    // Keep the built-ins in their own order (Classic first), not A -> Z.
-    if (!builtins.empty()) {
-        L->categories.push_back(cfg.builtinCategory);
+    // Keep the built-ins in their own order (Classic first), not A -> Z, grouped by category in
+    // the order the categories first appear.
+    std::vector<std::string> builtinCats;
+    std::vector<std::vector<Entry>> builtins;
+    for (size_t i = 0; i < cfg.builtinNames.size(); ++i) {
+        const std::string& cat = i < cfg.builtinCategories.size() ? cfg.builtinCategories[i] : cfg.builtinCategory;
+        size_t c = 0;
+        while (c < builtinCats.size() && builtinCats[c] != cat) ++c;
+        if (c == builtinCats.size()) {
+            builtinCats.push_back(cat);
+            builtins.emplace_back();
+        }
+        builtins[c].push_back({"builtin:" + cfg.builtinNames[i], "", cat, cfg.builtinNames[i], static_cast<int>(i)});
+    }
+    for (size_t c = 0; c < builtinCats.size(); ++c) {
+        L->categories.push_back(builtinCats[c]);
         L->members.emplace_back();
-        for (Entry& e : builtins) {
+        for (Entry& e : builtins[c]) {
             const int idx = static_cast<int>(L->items.size());
             L->byKey[e.key] = idx;
             L->members.back().push_back(idx);
@@ -145,7 +154,8 @@ std::shared_ptr<const Listing> scanLibrary(const FileLibrary::Config& cfg) {
         std::vector<std::string> stems;
         for (const Found& f : found) stems.push_back(f.stem);
         const std::string prefix = sharedPrefix(stems);
-        const std::string shown = cat == cfg.builtinCategory ? cat + " (files)" : cat;   // never the built-ins' own
+        const bool taken = std::find(builtinCats.begin(), builtinCats.end(), cat) != builtinCats.end();
+        const std::string shown = taken ? cat + " (files)" : cat;   // never a built-in category
         std::vector<Entry> entries;
         for (Found& f : found)
             entries.push_back({f.key, f.path, shown, f.stem.substr(prefix.size()), -1});
@@ -270,7 +280,7 @@ FileLibrary& tableLibrary() {
         FileLibrary::Config c;
         c.exts = {".wav"};
         c.builtinCategory = "Built-in";
-        for (const Wavetable& t : builtinTables()) c.builtinNames.push_back(t.name);
+        for (int i = 0; i < builtinCount(); ++i) c.builtinNames.push_back(builtinName(i));
         c.roots = tableRoots;
         c.favFile = "favorites.txt";
         c.recentFile = "recent.txt";

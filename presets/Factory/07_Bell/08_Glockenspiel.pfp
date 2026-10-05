@@ -1,0 +1,15 @@
+polyforce 4
+volume=0
+o1_table=builtin:Mallet
+o1_pos=0.8
+o1_oct=1
+o2_level=0
+engine=0
+f1_type=0
+e1_a=0.001
+e1_d=2
+e1_s=0
+e1_r=1
+m1_src=7
+m1_t1=4
+m1_a1=-0.35
