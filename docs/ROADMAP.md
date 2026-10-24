@@ -29,7 +29,7 @@ Status: ✅ done · 🔜 next · ⬜ planned · 💤 deferred
   `surface/params.lock` stops the build when a parameter changes its index. Tested: 32 Q-Link
   detents on sound parameters ask for no redraw; a matrix target swept for 4096 frames asks at
   most twice, and its end is told.
-- 🔜 **On the device:** Q-Links on track edit → automation (a knob, a whole number, a matrix
+- ✅ **On the device** (2026-10-24): Q-Links on track edit → automation (a knob, a whole number, a matrix
   target), with the status line and the matrix amounts' texts still following.
 - 🔜 **On the device:** play every page with Q-Links, save and reload a project, the large-table
   bench run (`make bench-device WAVETABLES=<folder>`).
