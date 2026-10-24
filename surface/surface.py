@@ -4,6 +4,7 @@
 Writes, next to this file:
   params.json        ordered VST parameter list (index = position; append-only once released:
                      MPC projects store values by index)
+  params.lock        the keys in that order, one per line (check_lock): a key that moves fails here
   layout.conf        the skin (shadow_page.conf syntax, see
                      third_party/mpc-vst-plugins/tools/shadow_skin.py); coords are 1280x800
                      Force-Shadow pixels, the plugin area is y = 86..714
@@ -1264,9 +1265,34 @@ constexpr int kNumFactoryPresets = %d;
 """ % (rows, len(presets))
 
 
+def check_lock(keys):
+    """params.lock: the parameter keys in index order, one per line, the file sd88me's gen_vst.py writes since
+    2026-10-21 (their #488), so a later copy of it reads ours as its own. MPC projects, automation lanes and Q-Link
+    maps store parameters by index: a locked key that moves (one inserted mid-list, a reorder) stops the build, a key
+    removed from the end only warns (its index stays taken). GEN_VST_RELOCK=1 accepts a deliberate break.
+    Returns the file's new text, or None when it is current."""
+    path = os.path.join(HERE, "params.lock")
+    if os.path.exists(path) and os.environ.get("GEN_VST_RELOCK") != "1":
+        with open(path) as f:
+            locked = f.read().split()
+        for i, k in enumerate(locked):
+            if i >= len(keys):
+                print("warning: params.lock: %d locked key(s) from %r on are gone (removed from the end)"
+                      % (len(locked) - i, k), file=sys.stderr)
+                return None
+            if keys[i] != k:
+                raise SystemExit("params.lock: parameter %d was %r and is now %r. MPC projects, automation and Q-Link "
+                                 "maps store parameters by index: append new ones at the end, never insert or reorder "
+                                 "(GEN_VST_RELOCK=1 accepts the break)" % (i, k, keys[i]))
+        if len(keys) == len(locked):
+            return None
+    return "".join(k + "\n" for k in keys)
+
+
 def main():
     keys = [p["key"] for p in P]
     assert len(set(keys)) == len(keys), "duplicate parameter key"
+    lock = check_lock(keys)
     assert P[0]["kind"] == "readout", "parameter 0 must stay a read-only readout"
     layout = pages()
     check_layout(layout, build_layout().groups)
@@ -1279,6 +1305,8 @@ def main():
         (os.path.join("build", "factory_presets.h"), presets_header(presets)),
         (os.path.join("build", "param_ids.h"), header()),   # last: make's target, newer than the rest
     ]
+    if lock:
+        outputs.insert(-1, ("params.lock", lock))
     os.makedirs(os.path.join(HERE, "build"), exist_ok=True)
     for name, text in outputs:
         path = os.path.join(HERE, name)

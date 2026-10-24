@@ -20,6 +20,17 @@ Status: ✅ done · 🔜 next · ⬜ planned · 💤 deferred
   [interface](INTERFACE.md#design) notes).
 - ✅ **Release build** in CI against glibc 2.31, profile-guided, passing the plugin catalog's check;
   device bench of it: 11.1% p99 at 8 × 8 ([measurements](PERFORMANCE.md#device-measurements)).
+- ✅ **Q-Links on track edit → automation** (2026-10-23, for 0.0.5): sd88me/mpc-vst-plugins found
+  (2026-10-21, [#486](https://github.com/sd88me/mpc-vst-plugins/pull/486)–[#489](https://github.com/sd88me/mpc-vst-plugins/pull/489))
+  that every `audioMasterUpdateDisplay` makes MPC rebuild its parameter screen, and that a Q-Link
+  turned on track edit → automation loses its value to it. PolyForce doesn't link their wrapper and
+  never asked on a sound parameter's write; it now asks at most once per 50 ms (was every 4 blocks,
+  ~12 ms), the status line's CPU figures through the same gate (they called MPC directly), and
+  `surface/params.lock` stops the build when a parameter changes its index. Tested: 32 Q-Link
+  detents on sound parameters ask for no redraw; a matrix target swept for 4096 frames asks at
+  most twice, and its end is told.
+- 🔜 **On the device:** Q-Links on track edit → automation (a knob, a whole number, a matrix
+  target), with the status line and the matrix amounts' texts still following.
 - 🔜 **On the device:** play every page with Q-Links, save and reload a project, the large-table
   bench run (`make bench-device WAVETABLES=<folder>`).
 - 🔜 **Milestone 1 device checks:** a large library (379 tables) reachable, CPU ≤ 15% at 8 × 8,

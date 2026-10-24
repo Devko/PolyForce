@@ -196,7 +196,7 @@ Layout (1280 × 800 layout coordinates, plugin area y = 86..714):
   changes.
 - From `processReplacing` only: `audioMasterAutomate` for changed values, at most **48 per
   block** (round-robin cursor); `audioMasterUpdateDisplay` at most every **4 blocks** when
-  `textGen_` moved. **Never call the host from `setParameter` or the dispatcher.**
+  `textGen_` moved (once per 50 ms since 0.0.5: [Architecture](ARCHITECTURE.md#talking-to-mpc)). **Never call the host from `setParameter` or the dispatcher.**
 - MPC doesn't notice engine-side value changes (tile lit states, stepper position) unless
   they're automated, and doesn't re-read names/texts without UpdateDisplay.
 - Momentaries fire on every press (a 1). As first built they fired on the rising edge only

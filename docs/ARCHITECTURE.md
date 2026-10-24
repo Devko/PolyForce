@@ -25,8 +25,8 @@ flowchart LR
 
 - **`surface/surface.py`** is the single source of the parameter list and the touchscreen pages.
   It writes `params.json`, `layout.conf`, `vst.json`, `build/param_ids.h` (ids, value curves,
-  limits) and `build/factory_presets.h` (the factory presets, embedded), after checking the layout
-  and every preset (ranges, names, tables).
+  limits) and `build/factory_presets.h` (the factory presets, embedded), after checking the layout,
+  every preset (ranges, names, tables) and the parameters' order against `params.lock`.
 - **`dsp/`** is the engine: no VST, no files, no threads. It renders a `Patch` for a set of notes.
 - **`plugin/`** is everything between the engine and MPC: VST2 entry points, MIDI, parameters,
   the touchscreen logic, file libraries, the loader thread and saved state.
@@ -36,6 +36,7 @@ flowchart LR
 | Path | Contents |
 |---|---|
 | `surface/surface.py` | Parameter list and touchscreen pages; generates everything the skin and the C++ side need |
+| `surface/params.lock` | The parameter keys in index order, one per line: `surface.py` stops if one moves |
 | `surface/skin_polish.py` | Redraws knob strips, buttons, stepper arrows and the wave view's bars after the generator |
 | `dsp/synth.*` | The engine: voices, oscillators (uint32 phase), sub, noise, Simper SVF, comb and vowel filters, ADSRs, LFOs, the mod matrix; 32-sample control rate with per-chunk glides; four voices per vector in the filters and the output; the frame cache (float copies of positions that hold still) |
 | `dsp/wavetable.*` | Band-limited tables (11 mip levels, 2048 down to 256 samples per frame, 16-bit with a scale per frame, FFT-built two frames at a time), the 30 computed built-ins (Classic at load, the rest on first use), the Serum WAV loader |
@@ -130,7 +131,13 @@ The full design: [Milestone 1 design](M1_DESIGN.md), §1–3.
 - MPC only notices value changes the plugin makes (lit browser tiles, stepper positions) when they
   are pushed with `audioMasterAutomate`, and only re-reads names and texts after
   `audioMasterUpdateDisplay`. The plugin pushes from `processReplacing` only: at most 48 values per
-  block (round-robin), a display update at most every 4 blocks.
+  block (round-robin), a display update at most once per 50 ms.
+- MPC rebuilds its parameter screen on every `audioMasterUpdateDisplay`, and a Q-Link turned on track
+  edit → automation meanwhile loses its value (sd88me/mpc-vst-plugins, NOTES.md 2026-10-21). So a
+  sound parameter's change asks for none (its text is made when MPC asks); the texts that change on
+  their own or follow another parameter (the status line, the browser and steppers, the position
+  knob by the wave mode, a matrix amount in its target's unit) ask through one gate, at most once
+  per 50 ms (`Surface::kTextGap`). A change inside the gap is told at its end.
 - A Force sends every Q-Link detent, data-wheel click or drag event as the value it last read back
   plus its step (sd88me/mpc-vst-plugins `docs/NOTES.md`, "Input probe", MPC OS 3.9.1). Steppers
   measure each event from the plugin's own value and move exactly one item, whatever the delta
@@ -147,7 +154,8 @@ The full design: [Milestone 1 design](M1_DESIGN.md), §1–3.
 ## Parameters and saved state
 
 - **Parameters** are free to change until v0.1, then **append-only**: MPC projects store values by
-  index.
+  index. `surface/params.lock` (sd88me's format) keeps a change deliberate already: a parameter
+  that moves stops `surface.py`; `GEN_VST_RELOCK=1` accepts the break.
 - **Saved state** (projects and `.pfp` preset files) is the text format `polyforce 4`: `key=value`
   lines of *real* values (Hz, seconds, dB…) plus the table, tuning and preset keys. Ranges can
   change without remapping saved projects. Versions 1–3 are still read.

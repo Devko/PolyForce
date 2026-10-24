@@ -3,6 +3,7 @@
 // Built with ASan/UBSan by `make test`.
 #include "host.h"
 #include "../dsp/wavetable.h"
+#include "../plugin/surface.h"
 
 #include <algorithm>
 #include <cmath>
@@ -120,6 +121,41 @@ void testDisplay() {
     // the status line ignores host sets (MPC sets param 0 right after loading a plugin)
     h.e->setParameter(h.e, pf::P_STATUS, 1.0f);
     CHECK(h.get(pf::P_STATUS) == 0.0f);
+}
+
+// MPC rebuilds its parameter screen on every UpdateDisplay, and a Q-Link turned on track edit ->
+// automation loses its value to the rebuild (sd88me/mpc-vst-plugins NOTES 2026-10-21). So a sound
+// parameter's write asks for none; a text that changed asks at most once per 50 ms, and a change
+// inside the gap is told at its end, not dropped. The first meter report is ~172 blocks away.
+void testRedraws() {
+    Host h;
+    const int gap = pf::Surface::kTextGap / kBlock + 1;
+    h.run(gap);   // the first texts told
+    const int settled = h.log.updates;
+    const float cut = h.get(pf::P_F1_CUT);
+    const long bend = std::lround(h.value(pf::P_BEND_UP));
+    for (int k = 0; k < 16; ++k) {   // two Q-Links turned, a detent per block: a knob and a whole number
+        h.detent(pf::P_F1_CUT, +1);
+        h.detent(pf::P_BEND_UP, +1);
+        h.run(1);
+    }
+    CHECK(h.get(pf::P_F1_CUT) > cut);
+    CHECK(std::lround(h.value(pf::P_BEND_UP)) == bend + 16);   // one step per detent
+    CHECK(h.log.automated.count(pf::P_BEND_UP) && h.log.automated[pf::P_BEND_UP] == h.get(pf::P_BEND_UP));   // the snapped step pushed back, without a redraw
+    CHECK(h.log.updates == settled);
+    // A matrix amount's text is in its target's unit: a target swept for 4096 frames asks at most twice...
+    const int before = h.log.updates;
+    for (int k = 0; k < 4096 / kBlock; ++k) {
+        h.detent(pf::P_M1_T1, +1);
+        h.run(1);
+    }
+    CHECK(std::lround(h.get(pf::P_M1_T1) * (pf::PARAM_INFO[pf::P_M1_T1].nopts - 1)) == 4096 / kBlock);
+    std::printf("  %d UpdateDisplays for a 4096-frame sweep\n", h.log.updates - before);
+    CHECK(h.log.updates - before >= 1 && h.log.updates - before <= 2);
+    // ...and where it stopped is told once the gap is over.
+    const int swept = h.log.updates;
+    h.run(gap);
+    CHECK(h.log.updates == swept + 1);
 }
 
 void testTuning() {
@@ -334,6 +370,8 @@ int main() {
     testDisplay();
     std::printf("== stepping\n");
     steppingTests();
+    std::printf("== redraws: none for a sound parameter, at most one per 50 ms\n");
+    testRedraws();
     std::printf("== wave view\n");
     waveViewTests();
     std::printf("== tuning\n");

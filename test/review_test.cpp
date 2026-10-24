@@ -534,13 +534,14 @@ void surfaceFixes() {
         h.run(4);
         CHECK(h.display(pf::P_O1_TABLE) == "Built-in / PWM");
     }
-    // A text that follows another parameter is announced when that one changes.
+    // A text that follows another parameter is announced when that one changes (at most once per
+    // 50 ms: plugin_test.cpp).
     {
         Host h;
         h.run(8);
         const int before = h.log.updates;
         h.set(pf::P_O1_WAVE, pf::OW_PULSE);
-        h.run(8);
+        h.run(pf::Surface::kTextGap / kBlock + 1);
         CHECK(h.log.updates > before);
         CHECK(h.display(pf::P_O1_POS).compare(0, 5, "WIDTH") == 0);
     }

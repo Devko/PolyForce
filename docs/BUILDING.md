@@ -45,7 +45,9 @@ make plugin-package            # dist/PolyForce-<version>-mpc-armv7.zip
 
 `surface/surface.py` is the single source of the parameter list and the touchscreen pages. Every
 build regenerates `params.json`, `layout.conf`, `vst.json` and the C++ headers from it when it
-changes; it checks the layout and every factory preset before writing anything.
+changes; it checks the layout, every factory preset and the parameters' order before writing
+anything. A parameter that moves from its index in `surface/params.lock` stops it (MPC projects
+store values by index); `GEN_VST_RELOCK=1` accepts a deliberate break.
 
 ## Make targets
 

@@ -379,7 +379,7 @@ void meter(Plugin* p, double us, double engineUs, int n) {
         p->lastPeak = peak;
         p->lastVoices = voices;
         p->lastShed = shed;
-        if (p->master) p->master(&p->fx, vst::audioMasterUpdateDisplay, 0, 0, nullptr, 0.0f);
+        p->surface.textsChanged();   // told by the next block's notify, within its 50 ms gap
     }
 }
 
@@ -407,7 +407,7 @@ void processReplacing(AEffect* e, float** /*in*/, float** out, int32_t n) {
     }
     const double t1 = threadCpuUs();
     p->loader.blockDone();   // the tables read at block start are no longer in use
-    p->surface.notify(hostAutomate, hostUpdate, p);
+    p->surface.notify(hostAutomate, hostUpdate, p, n);
     meter(p, threadCpuUs() - t0, t1 - t0, n);
 }
 
