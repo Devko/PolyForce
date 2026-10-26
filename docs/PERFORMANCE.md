@@ -6,7 +6,7 @@
 - [Second pass: control rate, matrix, PGO](#second-pass-control-rate-matrix-pgo)
 - [Third pass: output stage, 16-bit tables, frame cache](#third-pass-output-stage-16-bit-tables-frame-cache)
 - [Fourth pass: filter step, bus transpose, unison stacks](#fourth-pass-filter-step-bus-transpose-unison-stacks)
-- [Open question: memory traffic](#open-question-memory-traffic)
+- [Memory traffic](#memory-traffic)
 - [CPU guard](#cpu-guard)
 - [Wavetable import](#wavetable-import)
 - [Considered and left out](#considered-and-left-out)
@@ -38,6 +38,8 @@ RMS on x86, 1.8e-4 on ARM (reciprocal estimates and fused multiply-adds), over 1
 | 2026-10-04 | Phase 0 (16-voice engine) | 8.1 | 11.5 | 15.5 | 45.1 | 582 ms, 22 MB |
 | 2026-10-04 | v0.0.2 (8 × 8 cap) | 8.2 | 11.4 | 15.2 | — | (same code) |
 | 2026-10-05 | v0.0.3 release build (CI: GCC 11, glibc 2.31, profile-guided; all three passes) | 5.3 | 7.7 | 11.1 | — | — |
+| 2026-10-26 | v0.0.5 before the fourth pass (GCC 13, profile-guided) | 4.6 | 7.7 | 11.8 | — | 209 ms, 4.5 MB |
+| 2026-10-26 | Fourth pass (same build setup, benched right after the line above) | 4.3 | 6.4 | 9.2 | — | (same code) |
 
 By voice count:
 
@@ -207,26 +209,49 @@ both positions. Comb and vowel are in F1.
 | 8 × 8 unison, moving | 473.4 k | 405.9 k (−14%) | 471.1 k | 384.5 k (−18%) |
 | 8 × 8 unison, busy matrix | 436.0 k | 358.6 k (−18%) | 429.1 k | 346.2 k (−19%) |
 
-The device bench of this pass is still to come. qemu counts instructions, not cycles: the `asm`
-gather and the transposes are the kind of change the Force has to confirm.
+On the Force (2026-10-26, `make bench-device` setup), the build from just before this pass and this
+pass's were benched one after the other, pinned to core 1 with MPC running. Both builds are
+profile-guided, built with GCC 13. The table gives p99 in % of the block:
+
+| Case | Before | After |
+|---|---|---|
+| 1 voice | 1.7 | 1.6 |
+| 4 voices | 2.6 | 2.4 |
+| 8 voices | 4.6 | 4.3 (−7%) |
+| 8 × 2 unison | 5.7 | 4.9 (−14%) |
+| 8 × 4 unison | 7.7 | 6.4 (−17%) |
+| 8 × 8 unison | 11.8 | 9.2 (−22%) |
+| 8 × 1, busy matrix | 5.7 | 5.4 (−5%) |
+| 8 × 8, busy matrix | 11.2 | 9.3 (−17%) |
+| 8 × 8, positions swept, Classic | 12.7 | 9.9 (−22%) |
+| 8 × 8, positions swept, 256-frame table | 13.7 | 10.8 (−21%) |
+
+The unison cases gain as much as qemu's counts said, or more, so the `asm` gather and the
+transposes hold up on the device. At 8 × 1 the gain is about half of qemu's: −7% against −12%.
 
 The output was compared with the engine before this pass on ARM over 139 scenes. The scenes cover
 every filter type, the engines, unison 1–8, the routings, steals, glides, odd block sizes and busy
 matrices. All are within 7.8e-6 relative RMS. The drive's reciprocal accounts for that figure;
 without it they are within 2.2e-6.
 
-## Open question: memory traffic
+## Memory traffic
 
-At 8 × 8 the oscillators are still about 70% of the block when the position moves. A 256-frame
-table is 4.5 MB now; the Force's L2 cache is about 1 MB. A position that holds still reads an 8 KB
-float copy whatever the table's size; a moving one reads the table itself. Whether that waits on
-memory is what the stage bench answers on the device: `make bench-device WAVETABLES=<folder>` runs a profiling build (`polyforce_stages.so`) that
-reports each pass's time per block, then plays the same voices with the positions swept on the
-built-in Classic table and on a 256-frame table from that folder.
+A 256-frame table is 4.5 MB, and the Force's L2 cache is about 1 MB. A position that holds still
+reads an 8 KB float copy whatever the table's size; a moving one reads the table itself.
+`make bench-device WAVETABLES=<folder>` measures whether that waits on memory. It runs a profiling
+build (`polyforce_stages.so`) that reports each pass's time per block. Then it plays the same
+voices with the positions swept, first on the built-in Classic table and then on a 256-frame table
+from that folder.
 
-- If the sources pass still grows clearly with the large table, prefetching the frames a moving
-  position is heading for is the next thing to try.
-- If not, memory is not what limits the oscillators.
+Measured on 2026-10-26 after the fourth pass, with the positions swept at 8 × 8:
+
+- In the profiling build, the sources pass took 167 µs per block on Classic and 181 µs on the
+  256-frame table, 8% more.
+- In the shipped build, p99 went from 9.9% to 10.8% of the block. The build from before the pass
+  showed the same gap: 12.7% to 13.7%.
+
+So memory costs about one point of the block. It is not what limits the oscillators. Prefetching
+the frames a moving position is heading for could win back that point at most.
 
 The profiling build is a plain (not profile-guided) build, so its times read a little higher than
 the shipped `.so`'s.
