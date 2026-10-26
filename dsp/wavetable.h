@@ -7,6 +7,7 @@
 // Level k is stored at its own length, 1 << kMipBits[k] samples (+1 guard sample): linear
 // interpolation needs ~8 samples per cycle of the top harmonic, so the high levels (few
 // harmonics) are short. 9,227 floats per frame instead of 11 x 2,049 = 22,539.
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -68,9 +69,11 @@ const Wavetable& classicTable(int wave);
 // 'clm ' chunk "<!>2048 ...", else 2048), mono or first channel, float32 or 16/24/32-bit
 // PCM, at most kMaxFrames frames. The whole table is normalised to peak 1 with ONE gain, so
 // level changes the author put across the frames (one-shot tables fade out) survive.
-// Load time, not real time: false + a reason in *err for anything it can't use.
+// Load time, not real time: false + a reason in *err for anything it can't use. `cancel` is
+// polled between frame pairs: once true, the import stops and fails ("cancelled").
 constexpr int kMaxFrames = 256;
-bool loadWavetable(const std::string& path, Wavetable& out, std::string* err = nullptr);
+bool loadWavetable(const std::string& path, Wavetable& out, std::string* err = nullptr,
+                   const std::atomic<bool>* cancel = nullptr);
 
 // Highest harmonic h allowed at phase increment `inc` (cycles/sample): we let partials go
 // above Nyquist as long as their alias folds back above ~18 kHz (h * inc <= 0.59 at 44.1 kHz),

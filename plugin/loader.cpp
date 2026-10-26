@@ -71,7 +71,7 @@ void TableCache::clear() {
     bytes_ = 0;
 }
 
-std::shared_ptr<const Wavetable> loadTable(const std::string& key, std::string* err) {
+std::shared_ptr<const Wavetable> loadTable(const std::string& key, std::string* err, const std::atomic<bool>* cancel) {
     static const std::string kBuiltin = "builtin:";
     const bool builtin = key.compare(0, kBuiltin.size(), kBuiltin) == 0;
     int index = -1;
@@ -95,15 +95,15 @@ std::shared_ptr<const Wavetable> loadTable(const std::string& key, std::string* 
         return nullptr;
     }
     auto t = std::make_shared<Wavetable>();
-    if (!loadWavetable(path, *t, err)) return nullptr;
+    if (!loadWavetable(path, *t, err, cancel)) return nullptr;
     return TableCache::get().put(key, std::move(t));
 }
 
 Loader::SlotType tableSlotType() {
     Loader::SlotType t;
     t.fallbackKey = "builtin:Classic";
-    t.load = [](const std::string& key, std::string* err, int* info) -> std::shared_ptr<const void> {
-        auto table = loadTable(key, err);
+    t.load = [](const std::string& key, std::string* err, int* info, const std::atomic<bool>* cancel) -> std::shared_ptr<const void> {
+        auto table = loadTable(key, err, cancel);
         if (table && info) *info = table->frames;
         return table;
     };
@@ -120,7 +120,7 @@ Loader::Loader(std::vector<SlotType> types) : slots_(types.size()) {
         int info = 0;
         std::string err;
         // The fallbacks are built-ins (no I/O): ready before the first block.
-        auto obj = s.type.fallbackKey.empty() ? nullptr : s.type.load(s.type.fallbackKey, &err, &info);
+        auto obj = s.type.fallbackKey.empty() ? nullptr : s.type.load(s.type.fallbackKey, &err, &info, nullptr);
         s.owned = obj;
         s.info = info;
         s.loadedKey = s.type.fallbackKey;
@@ -132,6 +132,9 @@ Loader::Loader(std::vector<SlotType> types) : slots_(types.size()) {
 Loader::~Loader() { stop(); }
 
 void Loader::stop() {
+    // An import in progress gives up at its next frame pair: a 256-frame table takes hundreds
+    // of ms on the Force, and effClose (MPC's UI thread) waits for this join.
+    cancel_.store(true);
     {
         std::lock_guard<std::mutex> lk(mtx_);
         quit_ = true;
@@ -143,6 +146,11 @@ void Loader::stop() {
 void Loader::setListener(Listener l) {
     std::lock_guard<std::mutex> lk(mtx_);
     listener_ = std::move(l);
+}
+
+void Loader::setTick(Tick t) {
+    std::lock_guard<std::mutex> lk(mtx_);
+    tick_ = std::move(t);
 }
 
 void Loader::want(int slot, const std::string& key, bool now) {
@@ -236,7 +244,7 @@ void Loader::run() {
                 int info = 0;
                 std::shared_ptr<const void> obj;
                 try {   // an exception here would end MPC (std::terminate): a throw is a failed load
-                    obj = load(key, &err, &info);
+                    obj = load(key, &err, &info, &cancel_);
                 } catch (...) {
                     obj = nullptr;
                     err = "could not load";
@@ -245,12 +253,13 @@ void Loader::run() {
                 if (!ok && !fallback.empty()) {
                     std::string ignored;
                     try {
-                        obj = load(fallback, &ignored, &info);
+                        obj = load(fallback, &ignored, &info, &cancel_);
                     } catch (...) {
                         obj = nullptr;
                     }
                 }
                 lk.lock();
+                if (quit_) break;              // stopped meanwhile, the load perhaps cut short: publish nothing
                 if (s.want != key) continue;   // picked something else meanwhile: next round loads that
                 publish(s, std::move(obj), ok ? key : fallback);
                 s.missing = !ok;
@@ -266,8 +275,14 @@ void Loader::run() {
                 }
                 lk.lock();
             }
+            if (quit_) break;
+            const Tick tick = tick_;
             lk.unlock();
             dead.clear();
+            try {
+                if (tick) tick();
+            } catch (...) {
+            }
             lk.lock();
         } catch (...) {
             if (!lk.owns_lock()) lk.lock();

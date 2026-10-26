@@ -209,8 +209,9 @@ Layout (1280 × 800 layout coordinates, plugin area y = 86..714):
 ## 7. Favorites, Recent, Random, Copy, Swap
 
 - **Favorites:** a process-wide set of keys, saved to `<plugin dir>/favorites.txt` (one key per
-  line) on every toggle; read at library build. Shared by every project. Test override:
-  `PF_DATA_DIR`.
+  line); read at library build. Shared by every project. Test override: `PF_DATA_DIR`. (Both
+  lists are now saved by the loader threads a second after a change, not by the change itself:
+  [Architecture](ARCHITECTURE.md#loading-files).)
 - **Recent:** the last 12 loaded keys, newest first, in `recent.txt` next to it.
 - **Random:** a random table from the browser's current category (pseudo-categories included),
   never the one already loaded, into the target oscillator.

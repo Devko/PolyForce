@@ -142,8 +142,23 @@ struct Plugin {
             if (slot < 2 && ok && key.compare(0, 8, "builtin:") != 0) tableLibrary().touchRecent(key);   // slot 2: tuning
             surface.refresh();
         });
+        loader.setTick([] { saveLists(false); });
     }
-    ~Plugin() { loader.stop(); }   // its listener uses the surface, destroyed before it
+    ~Plugin() {
+        loader.stop();   // its listener uses the surface, destroyed before it
+        try {
+            saveLists(true);   // what changed in the last second
+        } catch (...) {
+        }
+    }
+
+    // Favorites and Recent change in memory (a preset scroll touches Recent on every step) and
+    // reach the disk from here: the loader's worker, or the instance's close.
+    static void saveLists(bool now) {
+        tableLibrary().flush(now);
+        presetLibrary().flush(now);
+        tuningLibrary().flush(now);
+    }
 };
 
 Plugin* self(AEffect* e) { return static_cast<Plugin*>(e->object); }

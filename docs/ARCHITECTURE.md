@@ -102,7 +102,7 @@ Every control value glides across the chunk it applies to instead of stepping. H
 |---|---|
 | **Audio** (one of MPC's audio workers; which one changes between calls, instances run concurrently) | `processReplacing`: MIDI, the engine, the CPU meter, every call back into MPC |
 | **UI** (MPC's UI side) | Parameters, display text, saved state (chunks), the browser, preset loads |
-| **Loader** (one per instance) | Reading wavetables and tunings, freeing replaced tables |
+| **Loader** (one per instance) | Reading wavetables and tunings, freeing replaced tables, saving the favorites and Recent lists |
 
 - Nothing on the audio thread allocates, locks or throws.
 - Host callbacks happen only from `processReplacing`; never from `setParameter` or the dispatcher.
@@ -117,12 +117,22 @@ listing only), builds categories, and keeps favorites and recent lists. Items ar
 **key** (`plugin:Analog/Saw.wav`, `ssd:…`, `builtin:Classic`), never by index, so adding files
 doesn't change saved sounds.
 
+Favorites and Recent change in memory at once (the browser and the steppers show them right
+away) and reach the data folder later: each loader thread saves a list once it has held still for
+a second, and an instance's close saves what is left. A preset scroll touches Recent on every step;
+it used to write the file, with an `fsync`, on MPC's UI thread each time. Saves are one at a time,
+and an older list never overwrites a newer one.
+
 Each instance has a **loader thread** with a slot per oscillator and one for the tuning. It waits
 until a selection has been stable for 150 ms (scrolling through 50 tables loads one), loads through
 a **shared LRU cache** (96 MB; a table used on both oscillators or in two instances is loaded
 once), and publishes it with an atomic pointer swap. Replaced tables are freed only after the audio
 thread has finished every block that could still use them (an epoch counter). A missing file falls
 back to *Classic* but keeps its key, so it returns when the file does.
+
+`effClose` joins the loader thread on MPC's UI thread. An import in progress then stops at its
+next frame pair instead of finishing (a 256-frame table takes hundreds of ms on the Force), and
+the cut-short load publishes nothing.
 
 The full design: [Milestone 1 design](M1_DESIGN.md), §1–3.
 

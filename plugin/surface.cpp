@@ -338,6 +338,8 @@ std::string Surface::browseKey(int target) const {
 
 void Surface::browserAction(int i) {
     std::string load;   // a preset to load: done after the lock (loading refreshes the surface)
+    std::string fav;    // a favorite to toggle in favLib: after the lock too (display() waits on it)
+    FileLibrary* favLib = nullptr;
     {
         std::lock_guard<std::mutex> lk(mtx_);
         const int target = browseTarget();
@@ -367,7 +369,10 @@ void Surface::browserAction(int i) {
         if (i == P_TBL_PREV) itemPage_ = clampi(itemPage_ - 1, 0, itemPages - 1);
         if (i == P_TBL_NEXT) itemPage_ = clampi(itemPage_ + 1, 0, itemPages - 1);
 
-        if (i == P_FAV && !cur.empty()) lib.setFavorite(cur, !lib.isFavorite(cur));
+        if (i == P_FAV && !cur.empty()) {
+            favLib = &lib;
+            fav = cur;
+        }
         if (i == P_RND && brCat_ < ncat) {   // a random item of this category, never the current one
             std::vector<std::string> pool;
             for (const std::string& k : cats[static_cast<size_t>(brCat_)].keys)
@@ -389,6 +394,7 @@ void Surface::browserAction(int i) {
             loader_.want(1, a, true);
         }
     }
+    if (favLib) favLib->setFavorite(fav, !favLib->isFavorite(fav));   // saved later, off this thread
     if (!load.empty()) loadPreset(load);
 }
 
@@ -406,7 +412,7 @@ void Surface::loadPreset(const std::string& key) {
         refresh();
         return;
     }
-    presetLibrary().touchRecent(key);
+    presetLibrary().touchRecent(key);   // in memory: a scroll steps here per detent, the file is written later
     refresh();
 }
 

@@ -15,8 +15,13 @@
 //   flat order categories in order, names A -> Z inside each: what a knob scroll walks.
 //
 // A scan is a directory listing only (no file is opened): a few ms for ~400 files.
+//
+// Favorites and Recent change in memory at once and reach the data folder later, from flush():
+// a preset scroll touches Recent on every step, and a write (with its fsync) on MPC's UI thread
+// per step stalled the scroll.
 #include "paths.h"
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -63,6 +68,7 @@ public:
         std::function<std::vector<Root>()> roots;
         std::string favFile, recentFile;                // under dataDir(); "" = not kept
         size_t recentMax = 12;
+        int saveDelayMs = 1000;                         // flush(): a list saves once it held still this long
     };
     explicit FileLibrary(Config cfg);
 
@@ -70,13 +76,22 @@ public:
     void rescan();                              // e.g. after a preset was saved
 
     bool isFavorite(const std::string& key) const;
-    void setFavorite(const std::string& key, bool on);   // persisted at once
+    void setFavorite(const std::string& key, bool on);   // saved by flush()
     std::vector<std::string> favorites() const;          // in flat order (listed keys only)
-    void touchRecent(const std::string& key);            // persisted at once
+    void touchRecent(const std::string& key);            // saved by flush()
     std::vector<std::string> recent() const;             // newest first (listed keys only)
+    // Writes the lists that changed: those unchanged for saveDelayMs, or all of them (`now`).
+    // Touches the disk: the loaders' workers call it every round, an instance's close with `now`.
+    void flush(bool now);
 
 private:
+    // A list's changes not yet handed to saveList (under mtx_).
+    struct Unsaved {
+        uint64_t gen = 0, queued = 0;                       // its last change; the last one handed to a save
+        std::chrono::steady_clock::time_point at{};         // when it last changed
+    };
     void loadLists() const;   // with mtx_ held: favorites/recent files, read on first use
+    void changed(Unsaved& u);   // with mtx_ held
     void saveList(const std::string& file, const std::vector<std::string>& keys, uint64_t gen) const;
 
     Config cfg_;
@@ -84,6 +99,7 @@ private:
     mutable std::shared_ptr<const Listing> listing_;
     mutable bool listsLoaded_ = false;
     uint64_t gen_ = 0;                          // list changes, under mtx_
+    Unsaved favUnsaved_, recentUnsaved_;
     mutable std::mutex saveMtx_;                // one save at a time...
     mutable uint64_t savedFav_ = 0, savedRecent_ = 0;   // ...never an older list over a newer one
     mutable std::set<std::string> fav_;

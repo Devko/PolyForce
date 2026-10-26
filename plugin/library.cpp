@@ -196,8 +196,13 @@ void FileLibrary::loadLists() const {
     }
 }
 
+void FileLibrary::changed(Unsaved& u) {
+    u.gen = ++gen_;
+    u.at = std::chrono::steady_clock::now();
+}
+
 // Saves run outside mtx_ (they touch the disk), one at a time, and an older list never
-// overwrites a newer one (two instances' loader threads touch Recent at once on a project load).
+// overwrites a newer one (two instances' loader threads flush at once).
 void FileLibrary::saveList(const std::string& file, const std::vector<std::string>& keys, uint64_t gen) const {
     const std::string dir = dataDir();
     if (dir.empty() || file.empty()) return;
@@ -217,18 +222,12 @@ bool FileLibrary::isFavorite(const std::string& key) const {
 }
 
 void FileLibrary::setFavorite(const std::string& key, bool on) {
-    std::vector<std::string> keys;
-    uint64_t gen = 0;
-    {
-        std::lock_guard<std::mutex> lk(mtx_);
-        loadLists();
-        if (on == (fav_.count(key) > 0)) return;
-        if (on) fav_.insert(key);
-        else fav_.erase(key);
-        keys.assign(fav_.begin(), fav_.end());
-        gen = ++gen_;
-    }
-    saveList(cfg_.favFile, keys, gen);
+    std::lock_guard<std::mutex> lk(mtx_);
+    loadLists();
+    if (on == (fav_.count(key) > 0)) return;
+    if (on) fav_.insert(key);
+    else fav_.erase(key);
+    changed(favUnsaved_);
 }
 
 std::vector<std::string> FileLibrary::favorites() const {
@@ -246,19 +245,13 @@ std::vector<std::string> FileLibrary::favorites() const {
 }
 
 void FileLibrary::touchRecent(const std::string& key) {
-    std::vector<std::string> keys;
-    uint64_t gen = 0;
-    {
-        std::lock_guard<std::mutex> lk(mtx_);
-        loadLists();
-        if (!recent_.empty() && recent_.front() == key) return;
-        recent_.erase(std::remove(recent_.begin(), recent_.end(), key), recent_.end());
-        recent_.insert(recent_.begin(), key);
-        if (recent_.size() > cfg_.recentMax) recent_.resize(cfg_.recentMax);
-        keys = recent_;
-        gen = ++gen_;
-    }
-    saveList(cfg_.recentFile, keys, gen);
+    std::lock_guard<std::mutex> lk(mtx_);
+    loadLists();
+    if (!recent_.empty() && recent_.front() == key) return;
+    recent_.erase(std::remove(recent_.begin(), recent_.end(), key), recent_.end());
+    recent_.insert(recent_.begin(), key);
+    if (recent_.size() > cfg_.recentMax) recent_.resize(cfg_.recentMax);
+    changed(recentUnsaved_);
 }
 
 std::vector<std::string> FileLibrary::recent() const {
@@ -273,6 +266,31 @@ std::vector<std::string> FileLibrary::recent() const {
     for (const std::string& k : keys)
         if (L->find(k) >= 0) out.push_back(k);
     return out;
+}
+
+// A scroll through presets touches Recent on every step: the file is written once the list
+// has held still for saveDelayMs, not per step, and never by the thread that changed it.
+void FileLibrary::flush(bool now) {
+    std::vector<std::string> fav, rec;
+    uint64_t favGen = 0, recGen = 0;
+    {
+        std::lock_guard<std::mutex> lk(mtx_);
+        const auto t = std::chrono::steady_clock::now();
+        auto due = [&](const Unsaved& u) {
+            return u.gen != u.queued && (now || t - u.at >= std::chrono::milliseconds(cfg_.saveDelayMs));
+        };
+        // Copied before the list counts as handed over: a copy that throws leaves it to the next round.
+        if (due(favUnsaved_)) {
+            fav.assign(fav_.begin(), fav_.end());
+            favGen = favUnsaved_.queued = favUnsaved_.gen;
+        }
+        if (due(recentUnsaved_)) {
+            rec = recent_;
+            recGen = recentUnsaved_.queued = recentUnsaved_.gen;
+        }
+    }
+    if (favGen) saveList(cfg_.favFile, fav, favGen);
+    if (recGen) saveList(cfg_.recentFile, rec, recGen);
 }
 
 FileLibrary& tableLibrary() {

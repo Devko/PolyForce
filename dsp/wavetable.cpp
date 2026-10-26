@@ -925,7 +925,7 @@ std::string stem(const std::string& path) {
 
 } // namespace
 
-bool loadWavetable(const std::string& path, Wavetable& out, std::string* err) {
+bool loadWavetable(const std::string& path, Wavetable& out, std::string* err, const std::atomic<bool>* cancel) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
     if (!f) return fail(err, "cannot open");
     // A long sample named *.wav must not be read whole: the largest real table (256 frames of
@@ -985,6 +985,7 @@ bool loadWavetable(const std::string& path, Wavetable& out, std::string* err) {
     std::vector<cd> x(static_cast<size_t>(frameSize));
     Spectrum sa, sb;
     for (size_t fr = 0; fr < frames; fr += 2) {
+        if (cancel && cancel->load(std::memory_order_relaxed)) return fail(err, "cancelled");
         const bool pair = fr + 1 < frames;
         for (size_t i = 0; i < x.size(); ++i) {
             const float re = readSample(data + (fr * x.size() + i) * align, tag, bits);

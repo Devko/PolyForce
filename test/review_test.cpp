@@ -11,6 +11,7 @@
 #include "../plugin/presets.h"
 #include "../plugin/surface.h"
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -677,6 +678,7 @@ void fileFixes() {
         CHECK(h.until([&] { return h.display(pf::P_TUNING).compare(0, 8, "TUNING  ") == 0 &&
                                    h.display(pf::P_TUNING) != "TUNING  Built-in / 12-TET"; }));
         std::string recent;
+        pf::tableLibrary().flush(true);   // the file as the next save would write it
         pf::readFile(fixtureDir() + "/data/recent.txt", recent);
         CHECK(recent.find(".scl") == std::string::npos && recent.find(".tun") == std::string::npos);
     }
@@ -705,7 +707,7 @@ void fileFixes() {
         std::atomic<int> freed{0};
         pf::Loader::SlotType t;
         t.fallbackKey = "a";
-        t.load = [&freed](const std::string&, std::string*, int* info) -> std::shared_ptr<const void> {
+        t.load = [&freed](const std::string&, std::string*, int* info, const std::atomic<bool>*) -> std::shared_ptr<const void> {
             if (info) *info = 1;
             return std::shared_ptr<const int>(new int(1), [&freed](const int* p) {
                 delete p;
@@ -1024,6 +1026,127 @@ void pluginFixes2() {
     }
 }
 
+// --- UI-thread stalls -------------------------------------------------------------------------
+
+double msSince(std::chrono::steady_clock::time_point t0) {
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+}
+
+void uiStallFixes() {
+    pf::FileLibrary::Config cfg;
+    cfg.builtinCategory = "Built-in";
+    for (int i = 0; i < 16; ++i) cfg.builtinNames.push_back("k" + std::to_string(i));   // listed keys "builtin:kN"
+    cfg.roots = [] { return std::vector<pf::Root>(); };
+    cfg.favFile = "stall_fav.txt";
+    cfg.recentFile = "stall_recent.txt";
+    cfg.saveDelayMs = 500;
+    auto key = [](int i) { return "builtin:k" + std::to_string(i); };
+
+    // Favorites and Recent change in memory at once and are written once a list has held still:
+    // a preset scroll wrote (and fsynced) preset_recent.txt on MPC's UI thread for every step.
+    {
+        const std::string favPath = fixtureDir() + "/data/stall_fav.txt", recPath = fixtureDir() + "/data/stall_recent.txt";
+        pf::FileLibrary a(cfg);
+        a.setFavorite(key(1), true);
+        for (int i = 0; i < 5; ++i) a.touchRecent(key(i));
+        CHECK(a.isFavorite(key(1)) && a.recent().front() == key(4));
+        a.flush(false);   // a worker's round right after the scroll: nothing held still yet
+        CHECK(!fs::exists(favPath) && !fs::exists(recPath));
+        std::this_thread::sleep_for(std::chrono::milliseconds(600));
+        a.flush(false);
+        pf::FileLibrary b(cfg);
+        CHECK(b.isFavorite(key(1)) && b.recent().size() == 5 && b.recent().front() == key(4));
+        a.touchRecent(key(9));
+        a.flush(true);    // an instance's close: at once
+        pf::FileLibrary c(cfg);
+        CHECK(c.recent().front() == key(9));
+    }
+    // Two instances' workers saving at once: the file ends with the newest list, never an older one.
+    {
+        pf::FileLibrary::Config rc = cfg;
+        rc.favFile.clear();
+        rc.recentFile = "stall_race.txt";
+        pf::FileLibrary lib(rc);
+        std::vector<std::thread> threads;
+        for (int t = 0; t < 4; ++t)
+            threads.emplace_back([&lib, &key, t] {
+                for (int i = 0; i < 25; ++i) {
+                    lib.touchRecent(key((t * 7 + i) % 16));
+                    lib.flush(true);
+                }
+            });
+        for (std::thread& t : threads) t.join();
+        pf::FileLibrary fresh(rc);
+        CHECK(fresh.recent() == lib.recent());
+    }
+    // Through the plugin: preset steps reach Recent at once, its file a second after the last
+    // step (the loader's worker), and an instance closed sooner saves what is left.
+    {
+        const std::string path = fixtureDir() + "/data/preset_recent.txt";
+        auto newest = [&path] {
+            std::string s;
+            return pf::readFile(path, s) ? s.substr(0, s.find('\n')) : std::string();
+        };
+        std::string before, after;
+        pf::readFile(path, before);
+        std::string last;
+        {
+            Host h;
+            for (int k = 0; k < 6; ++k) h.press(pf::P_PRESET_NEXT);
+            last = pf::presetLibrary().recent().front();
+            CHECK(h.display(pf::P_PRESET) == "PRESET  " + pf::presetLibrary().listing()->label(last));
+            pf::readFile(path, after);
+            CHECK(after == before);   // not written by the steps themselves
+            CHECK(h.until([&] { return newest() == last; }));
+        }
+        {
+            Host h;
+            h.press(pf::P_PRESET_NEXT);   // item 0, then 1: not the newest saved above
+            h.press(pf::P_PRESET_NEXT);
+            last = pf::presetLibrary().recent().front();
+            CHECK(newest() != last);
+        }
+        CHECK(newest() == last);   // effClose saved it
+    }
+    // effClose during a table import: the loader's stop() cuts it short at the next frame pair (a
+    // 256-frame table took hundreds of ms on the Force, with MPC's UI thread waiting in the join)
+    // and publishes nothing: no swap, no listener call, nothing cached.
+    {
+        const std::string file = fixtureDir() + "/plugin/Stall/Big.wav", tkey = "plugin:Stall/Big.wav";
+        fs::create_directories(fixtureDir() + "/plugin/Stall");   // m1_test's 256 frames, under a key nothing has cached
+        fs::copy_file(fixtureDir() + "/plugin/Digital/Bells.wav", file, fs::copy_options::overwrite_existing);
+        pf::Wavetable t;
+        std::string err;
+        const std::atomic<bool> cancelled{true};
+        CHECK(!pf::loadWavetable(file, t, &err, &cancelled) && err == "cancelled" && t.frames == 0);
+        const auto t0 = std::chrono::steady_clock::now();
+        CHECK(pf::loadWavetable(file, t, &err) && t.frames == pf::kMaxFrames);
+        const double fullMs = msSince(t0);
+
+        std::atomic<bool> started{false};
+        std::atomic<int> told{0};
+        pf::Loader::SlotType type = pf::tableSlotType();
+        const pf::Loader::LoadFn inner = type.load;
+        type.load = [&started, inner](const std::string& k, std::string* e, int* info, const std::atomic<bool>* c) {
+            if (k != "builtin:Classic") started = true;
+            return inner(k, e, info, c);
+        };
+        pf::Loader L({type});
+        L.setListener([&told](int, const std::string&, bool) { ++told; });
+        L.want(0, tkey, true);
+        for (int i = 0; i < 2000 && !started.load(); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        CHECK(started.load());
+        const auto s0 = std::chrono::steady_clock::now();
+        L.stop();
+        const double stopMs = msSince(s0);
+        std::printf("  stop() during a 256-frame import: %.1f ms (the whole import: %.0f ms)\n", stopMs, fullMs);
+        CHECK(stopMs < fullMs / 2);
+        CHECK(L.loads() == 0 && told.load() == 0 && L.view(0).loadedKey == "builtin:Classic");
+        CHECK(!pf::TableCache::get().find(tkey));
+        fs::remove_all(fixtureDir() + "/plugin/Stall");
+    }
+}
+
 } // namespace
 
 void reviewTests() {
@@ -1033,6 +1156,7 @@ void reviewTests() {
     fileFixes();
     noteGenFixes2();
     pluginFixes2();
+    uiStallFixes();
 }
 
 } // namespace pft

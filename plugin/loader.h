@@ -16,6 +16,8 @@
 //              block never sees its table freed. No locks, frees or allocation on the audio thread.
 //              A failed load publishes the slot's fallback (built-in Classic, 12-TET) but keeps
 //              the wanted key, so a saved project keeps its reference.
+//              stop() (effClose) cuts an import in progress short at its next frame pair: a load
+//              it cancelled publishes nothing.
 #include "../dsp/wavetable.h"
 
 #include <atomic>
@@ -57,13 +59,16 @@ private:
 };
 
 // A table by key: "builtin:Classic" (static, never freed), another built-in (cache, else
-// computed) or a file key (cache, else import).
-std::shared_ptr<const Wavetable> loadTable(const std::string& key, std::string* err = nullptr);
+// computed) or a file key (cache, else import; `cancel`: see loadWavetable).
+std::shared_ptr<const Wavetable> loadTable(const std::string& key, std::string* err = nullptr,
+                                           const std::atomic<bool>* cancel = nullptr);
 
 class Loader {
 public:
     // Loads `key` (worker thread). `info` gets something to show (frames, notes); null = failed.
-    using LoadFn = std::function<std::shared_ptr<const void>(const std::string& key, std::string* err, int* info)>;
+    // `cancel` turns true when the loader stops: a long load may give up then (its result is dropped).
+    using LoadFn = std::function<std::shared_ptr<const void>(const std::string& key, std::string* err, int* info,
+                                                             const std::atomic<bool>* cancel)>;
     struct SlotType {
         LoadFn load;
         std::string fallbackKey;
@@ -79,14 +84,17 @@ public:
     };
     // slot, key: called on the worker after every publish (not under any lock).
     using Listener = std::function<void(int slot, const std::string& key, bool ok)>;
+    // Called on the worker every round (~20 ms), not under any lock: chores that touch the disk.
+    using Tick = std::function<void()>;
 
     explicit Loader(std::vector<SlotType> types);
     ~Loader();
-    void stop();   // joins the worker; the listener is never called after this returns
+    void stop();   // cancels a load in progress, joins the worker; no listener or tick call after this
     Loader(const Loader&) = delete;
     Loader& operator=(const Loader&) = delete;
 
     void setListener(Listener l);   // before the first want()
+    void setTick(Tick t);
     void want(int slot, const std::string& key, bool now);   // now: skip the debounce
     std::string wanted(int slot) const;
     View view(int slot) const;
@@ -123,11 +131,13 @@ private:
     mutable std::mutex mtx_;
     std::condition_variable cv_;
     bool quit_ = false, kick_ = false;
+    std::atomic<bool> cancel_{false};   // set by stop(): read by a load without the lock
     std::vector<Grave> graveyard_;
     std::atomic<uint32_t> epoch_{0};
     std::atomic<bool> inBlock_{false};
     std::atomic<int> loads_{0};
     Listener listener_;
+    Tick tick_;
     std::thread thread_;
 };
 

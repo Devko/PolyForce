@@ -94,7 +94,7 @@ std::string nextUserPreset(std::string* key) {
 Loader::SlotType tuningSlotType() {
     Loader::SlotType t;
     t.fallbackKey = std::string(kBuiltin) + equalTemperament().name;
-    t.load = [](const std::string& key, std::string* err, int* info) -> std::shared_ptr<const void> {
+    t.load = [](const std::string& key, std::string* err, int* info, const std::atomic<bool>*) -> std::shared_ptr<const void> {
         if (info) *info = 0;
         if (key.compare(0, 8, kBuiltin) == 0) {
             if (key.substr(8) == equalTemperament().name)

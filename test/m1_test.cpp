@@ -199,7 +199,8 @@ void libraryTests() {
     CHECK(pf::resolveKey("plugin:../escape.wav", pf::tableRoots()).empty());
     CHECK(pf::resolveKey("nowhere:x.wav", pf::tableRoots()).empty());
 
-    // Favorites and recent persist in the data folder and come back in a new library.
+    // Favorites and recent persist in the data folder and come back in a new library. They are
+    // written by flush() (the loaders' workers, an instance's close), never by the change itself.
     pf::FileLibrary::Config cfg;
     cfg.exts = {".wav"};
     cfg.builtinCategory = "Built-in";
@@ -213,11 +214,13 @@ void libraryTests() {
         a.setFavorite("plugin:loose.wav", false);
         for (int i = 0; i < 14; ++i) a.touchRecent("plugin:Digital/Bells.wav");   // repeats count once
         a.touchRecent("plugin:loose.wav");
+        a.flush(true);
     }
     pf::FileLibrary b(cfg);
     CHECK(b.isFavorite("plugin:Analog/ESW Analog - Saw.wav") && !b.isFavorite("plugin:loose.wav"));
     CHECK((b.recent() == std::vector<std::string>{"plugin:loose.wav", "plugin:Digital/Bells.wav"}));
     for (int i = 0; i < 20; ++i) b.touchRecent("k" + std::to_string(i));
+    b.flush(true);
     pf::FileLibrary c(cfg);
     CHECK(c.recent().empty());   // 12 newest kept, none of them listed tables
 }
@@ -448,11 +451,14 @@ void browserTests() {
     CHECK(h.get(pf::P_TBL_1) == 0.0f);
     CHECK(h.display(pf::P_O1_TABLE) == "Analog / Pulse");
 
-    // Favorite: lit for the current table, listed under FAVORITES, saved in the data folder.
+    // Favorite: lit for the current table, listed under FAVORITES, saved in the data folder by
+    // the loader's worker a second later (not by the tap: MPC's UI thread never writes the file).
     h.setN(pf::P_FAV, 1.0f);
     CHECK(h.get(pf::P_FAV) == 1.0f);
     std::string favs;
-    CHECK(pf::readFile(fixtureDir() + "/data/favorites.txt", favs) && favs.find("ssd:Analog/ESW Analog - Pulse.wav") != std::string::npos);
+    const std::string pulse = "ssd:Analog/ESW Analog - Pulse.wav";
+    CHECK(!pf::readFile(fixtureDir() + "/data/favorites.txt", favs) || favs.find(pulse) == std::string::npos);
+    CHECK(h.until([&] { return pf::readFile(fixtureDir() + "/data/favorites.txt", favs) && favs.find(pulse) != std::string::npos; }));
     h.setN(pf::P_CAT_1, 1.0f);
     h.run(2);
     CHECK(h.display(pf::P_TBL_1) == "Pulse" && h.get(pf::P_TBL_1) == 1.0f);
