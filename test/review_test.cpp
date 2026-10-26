@@ -891,6 +891,27 @@ void pluginFixes2() {
         h.run(10);
         CHECK(h.run(4) < 1e-4f);
     }
+    // Transport Stop: MPC suspends and resumes the plugin within 100 ms. Ringing notes release
+    // (they used to stop dead: a click, every tail cut); nothing is left held. CC 120 still
+    // silences at once.
+    {
+        Host h;
+        h.bare();
+        h.set(pf::P_E1_R, 1.0f);
+        h.on(60);
+        h.run(20);
+        const float before = h.run(4);
+        h.e->dispatcher(h.e, vst::effStopProcess, 0, 0, nullptr, 0.0f);
+        h.e->dispatcher(h.e, vst::effMainsChanged, 0, 0, nullptr, 0.0f);
+        h.e->dispatcher(h.e, vst::effMainsChanged, 0, 1, nullptr, 0.0f);
+        CHECK(h.run(4) > 0.5f * before);
+        h.run(2 * kBlocksPerSec);   // its key never went up: released all the same
+        CHECK(h.run(4) < 1e-4f);
+        h.on(62);
+        h.run(20);
+        h.midi(0xB0, 120, 0);
+        CHECK(h.run(4) < 1e-6f);
+    }
     // A float WAV with values near FLT_MAX: refused or loaded finite, never a NaN table.
     {
         const std::string path = fixtureDir() + "/fltmax.wav";

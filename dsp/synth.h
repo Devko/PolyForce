@@ -150,8 +150,8 @@ public:
     void noteOff(int note);
     void pitchBend(float amount);            // -1..1 (the bend ranges are in the Patch)
     void sustain(bool down);
-    void allNotesOff();                      // release every voice (CC 123)
-    void reset();                            // silence now: CC 120, suspend, transport stop
+    void allNotesOff();                      // release every voice (CC 123, suspend, transport stop)
+    void reset();                            // silence now (CC 120)
     void controller(int cc, int value);      // 1 mod wheel, 2 breath, 11 expression (0..127)
     void aftertouch(float amount);           // channel pressure, 0..1
     void polyAftertouch(int note, float amount);

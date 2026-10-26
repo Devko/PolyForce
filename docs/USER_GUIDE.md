@@ -265,6 +265,7 @@ only ringing out (release tails). Held and sustained notes are never touched. De
 | Pitch bend | Pitch, within the bend range; also a matrix source |
 | All Sound Off (CC 120) | Silences every voice at once |
 | All Notes Off (CC 123) | Releases every note |
+| MPC's Stop (and the plugin being suspended) | Releases every note: tails ring out over their release |
 
 MPC's tempo drives synced LFOs, the arpeggiator and the sequencers; while MPC's transport plays
 they lock to its song position.
