@@ -404,6 +404,7 @@ void processReplacing(AEffect* e, float** /*in*/, float** out, int32_t n) {
     } catch (...) {   // nothing may throw into MPC: an escaping exception ends the whole process
         std::memset(out[0], 0, sizeof(float) * static_cast<size_t>(n));
         std::memset(out[1], 0, sizeof(float) * static_cast<size_t>(n));
+        p->nMidi = 0;   // handled or not: never replayed by the next block
     }
     const double t1 = threadCpuUs();
     p->loader.blockDone();   // the tables read at block start are no longer in use

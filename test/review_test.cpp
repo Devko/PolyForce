@@ -307,6 +307,36 @@ void engineFixes() {
         }
         CHECK(std::fabs(rms(out[1], 64) / std::max(rms(out[0], 64), 1e-9f) - 1.0f) < 0.25f);
     }
+    // The same note again while its old voice rings out above a lowered polyphony: a voice within
+    // the limit plays it, and the next setPatch() doesn't release it under the held key.
+    {
+        pf::Patch p = plain();
+        p.env[0].r = 2.0f;
+        Eng e(p);
+        for (int n = 0; n < 6; ++n) e.s.noteOn(60 + n, 100);
+        e.run(2);
+        p.voices = 4;
+        e.s.setPatch(p);   // voices 4 and 5 (notes 64, 65) ring out
+        e.run(2);
+        e.s.noteOn(64, 100);
+        e.run(2);
+        e.s.setPatch(p);   // any knob moved
+        e.run(2);
+        CHECK(e.gated().count(64) == 1);
+    }
+    // All sound off (CC 120) with the pedal down: the pedal still holds the next note.
+    {
+        Eng e(plain());
+        e.s.sustain(true);
+        e.s.noteOn(60, 100);
+        e.run(2);
+        e.s.reset();
+        e.s.noteOn(62, 100);
+        e.run(2);
+        e.s.noteOff(62);
+        e.run(4);
+        CHECK(e.sounds(62) && e.s.voiceInfo(0).level > 0.5f);
+    }
     // .tun: [Tuning] counts from the fixed 8.18 Hz, [Exact Tuning] from BaseFreq.
     {
         pf::Tuning t;

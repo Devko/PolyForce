@@ -699,12 +699,17 @@ void Synth::noteOn(int note, int velocity) {
 
 void Synth::noteOnPoly(int note, int velocity, int limit) {
     Voice* v = nullptr;
-    if (!patch_.sameNoteNew)   // the same note again: retrigger its voice, don't stack a second one
-        for (auto& x : voices_)
+    // The same note again: retrigger its voice, don't stack a second one. Only within the limit: a
+    // voice above it (polyphony lowered while it played) rings out, and setPatch() would release a
+    // note revived there while its key is still down.
+    if (!patch_.sameNoteNew)
+        for (int i = 0; i < limit; ++i) {
+            Voice& x = voices_[i];
             if (x.active && (x.pendingNote >= 0 ? x.pendingNote : x.note) == note) {
                 v = &x;
                 break;
             }
+        }
     if (v && v->fade > 0) {   // fading out for this very note: it starts after the fade, as planned
         v->pendingNote = note;
         v->pendingVel = velocity;
@@ -972,8 +977,7 @@ void Synth::reset() {
         v.glideLeft = 0;
         v.env[0] = v.env[1] = Env{};
     }
-    nHeld_ = 0;
-    pedal_ = false;
+    nHeld_ = 0;   // the pedal stays as it is: it is still down (NoteGen keeps it too), a new note sustains
 }
 
 void Synth::controller(int cc, int value) {
