@@ -90,7 +90,7 @@ struct Plugin {
     audioMasterCallback master = nullptr;
     Loader              loader{{tableSlotType(), tableSlotType(), tuningSlotType()}};
     Surface             surface{loader};
-    std::atomic<bool>   panic{false};
+    std::atomic<bool>   stopped{false};   // suspended or transport stop: release every voice next block
     pf::Synth           synth{kSampleRate};
     pf::NoteGen         gen{kSampleRate};
     std::string         chunk;       // effGetChunk buffer: must outlive the call
@@ -306,9 +306,11 @@ void runBlock(Plugin* p, float* L, float* R, int n) {
     p->patch.tuning = pitches;
     if (changed) p->synth.setPatch(p->patch);
     updateWaveView(p);
-    if (p->panic.exchange(false)) {
+    // MPC suspends and resumes the plugin within ~100 ms on every transport Stop: the ringing
+    // notes release (as CC 123) instead of stopping dead, so tails survive and nothing clicks.
+    if (p->stopped.exchange(false)) {
         p->gen.panic(p->synth);
-        p->synth.reset();
+        p->synth.allNotesOff();
     }
     // MPC's tempo and bar position: synced LFOs and the sequencers follow them.
     double bpm = 120.0, beats = 0.0;
@@ -404,6 +406,7 @@ void processReplacing(AEffect* e, float** /*in*/, float** out, int32_t n) {
     } catch (...) {   // nothing may throw into MPC: an escaping exception ends the whole process
         std::memset(out[0], 0, sizeof(float) * static_cast<size_t>(n));
         std::memset(out[1], 0, sizeof(float) * static_cast<size_t>(n));
+        p->nMidi = 0;   // handled or not: never replayed by the next block
     }
     const double t1 = threadCpuUs();
     p->loader.blockDone();   // the tables read at block start are no longer in use
@@ -484,9 +487,9 @@ intptr_t dispatch(Plugin* p, int32_t op, int32_t idx, intptr_t val, void* ptr) {
         case vst::effSetSampleRate:   // MPC OS is fixed at 44.1 kHz; the engine is built for it
         case vst::effSetBlockSize: return 1;
         case vst::effMainsChanged:
-            if (val == 0) p->panic.store(true);   // suspended: silence when processing resumes
+            if (val == 0) p->stopped.store(true);   // suspended: release every voice when processing resumes
             return 1;
-        case vst::effStopProcess: p->panic.store(true); return 0;
+        case vst::effStopProcess: p->stopped.store(true); return 0;
         case vst::effProcessEvents: onMidi(p, static_cast<const VstEvents*>(ptr)); return 1;
         case vst::effCanDo: {
             const char* s = static_cast<const char*>(ptr);

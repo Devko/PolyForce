@@ -307,6 +307,36 @@ void engineFixes() {
         }
         CHECK(std::fabs(rms(out[1], 64) / std::max(rms(out[0], 64), 1e-9f) - 1.0f) < 0.25f);
     }
+    // The same note again while its old voice rings out above a lowered polyphony: a voice within
+    // the limit plays it, and the next setPatch() doesn't release it under the held key.
+    {
+        pf::Patch p = plain();
+        p.env[0].r = 2.0f;
+        Eng e(p);
+        for (int n = 0; n < 6; ++n) e.s.noteOn(60 + n, 100);
+        e.run(2);
+        p.voices = 4;
+        e.s.setPatch(p);   // voices 4 and 5 (notes 64, 65) ring out
+        e.run(2);
+        e.s.noteOn(64, 100);
+        e.run(2);
+        e.s.setPatch(p);   // any knob moved
+        e.run(2);
+        CHECK(e.gated().count(64) == 1);
+    }
+    // All sound off (CC 120) with the pedal down: the pedal still holds the next note.
+    {
+        Eng e(plain());
+        e.s.sustain(true);
+        e.s.noteOn(60, 100);
+        e.run(2);
+        e.s.reset();
+        e.s.noteOn(62, 100);
+        e.run(2);
+        e.s.noteOff(62);
+        e.run(4);
+        CHECK(e.sounds(62) && e.s.voiceInfo(0).level > 0.5f);
+    }
     // .tun: [Tuning] counts from the fixed 8.18 Hz, [Exact Tuning] from BaseFreq.
     {
         pf::Tuning t;
@@ -860,6 +890,27 @@ void pluginFixes2() {
         h.off(60);
         h.run(10);
         CHECK(h.run(4) < 1e-4f);
+    }
+    // Transport Stop: MPC suspends and resumes the plugin within 100 ms. Ringing notes release
+    // (they used to stop dead: a click, every tail cut); nothing is left held. CC 120 still
+    // silences at once.
+    {
+        Host h;
+        h.bare();
+        h.set(pf::P_E1_R, 1.0f);
+        h.on(60);
+        h.run(20);
+        const float before = h.run(4);
+        h.e->dispatcher(h.e, vst::effStopProcess, 0, 0, nullptr, 0.0f);
+        h.e->dispatcher(h.e, vst::effMainsChanged, 0, 0, nullptr, 0.0f);
+        h.e->dispatcher(h.e, vst::effMainsChanged, 0, 1, nullptr, 0.0f);
+        CHECK(h.run(4) > 0.5f * before);
+        h.run(2 * kBlocksPerSec);   // its key never went up: released all the same
+        CHECK(h.run(4) < 1e-4f);
+        h.on(62);
+        h.run(20);
+        h.midi(0xB0, 120, 0);
+        CHECK(h.run(4) < 1e-6f);
     }
     // A float WAV with values near FLT_MAX: refused or loaded finite, never a NaN table.
     {

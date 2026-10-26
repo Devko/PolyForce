@@ -136,9 +136,10 @@ struct EnvCoef {
     float attN = 1, decN = 1, relN = 1;         // what is left after a whole chunk: (1 - step)^kChunk
 };
 
-// Trapezoidal (zero-delay feedback) state-variable filter, A. Simper / Cytomic.
+// Trapezoidal (zero-delay feedback) state-variable filter, A. Simper / Cytomic. b1 = 2 a1 - 1,
+// b2 = 2 a2: the band state's update in one multiply-add pair (dsp/synth.cpp stepS).
 struct Svf { float ic1 = 0.0f, ic2 = 0.0f; };
-struct SvfCoef { float g = 0, k = 2, a1 = 0, a2 = 0, a3 = 0; };
+struct SvfCoef { float g = 0, k = 2, a1 = 0, a2 = 0, a3 = 0, b1 = -1, b2 = 0; };
 
 class Synth {
 public:
@@ -149,8 +150,8 @@ public:
     void noteOff(int note);
     void pitchBend(float amount);            // -1..1 (the bend ranges are in the Patch)
     void sustain(bool down);
-    void allNotesOff();                      // release every voice (CC 123)
-    void reset();                            // silence now: CC 120, suspend, transport stop
+    void allNotesOff();                      // release every voice (CC 123, suspend, transport stop)
+    void reset();                            // silence now (CC 120)
     void controller(int cc, int value);      // 1 mod wheel, 2 breath, 11 expression (0..127)
     void aftertouch(float amount);           // channel pressure, 0..1
     void polyAftertouch(int note, float amount);
@@ -314,7 +315,8 @@ private:
     };
     void controlVoice(Voice& v, int lane, int n);
     void renderSources(int lane, int n);
-    void finishLanes(float* outL, float* outR, int n, bool direct);
+    void gatherBuses(int n, bool f2, bool direct);
+    void finishLanes(float* outL, float* outR, int n, bool direct, int f2bus);
     void filterLanes(int f, float* busL, float* busR, int n);
     void renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, float* R, int n);   // adds into L, R
     void renderSub(Voice& v, int o, float pitch, float level, float* L, float* R, int n);
@@ -353,8 +355,11 @@ private:
     std::vector<float> combMem_;     // every voice's comb delay lines, allocated once
 
     // Per-chunk scratch: bus_[b][ch][i * kMaxVoices + lane], b = into F1, into F2, past both.
-    // Lanes side by side per sample: a filter loads four voices' samples as one vector.
+    // Lanes side by side per sample: a filter loads four voices' samples as one vector. The
+    // sources render each lane's buses contiguously first (laneBus_, the renderers' vector
+    // stores), then gatherBuses() transposes them in, four lanes by four samples at a time.
     alignas(16) float bus_[3][2][kChunk * kMaxVoices];
+    alignas(16) float laneBus_[kMaxVoices][3][2][kChunk];
     Lane lanes_[kMaxVoices];
     int  nLanes_ = 0;
 

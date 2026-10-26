@@ -189,6 +189,9 @@ bool Loader::busy() const {
 }
 
 void Loader::publish(Slot& s, std::shared_ptr<const void> obj, const std::string& loadedKey) {
+    // Room first: a push_back that threw (out of memory) after the move would free the table the
+    // audio thread is still playing. This throws before anything moved (run() skips the round).
+    graveyard_.reserve(graveyard_.size() + 1);
     graveyard_.push_back({std::move(s.owned), 0});
     s.owned = std::move(obj);
     s.loadedKey = loadedKey;

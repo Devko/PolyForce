@@ -39,12 +39,13 @@ inline f4 max4(f4 a, f4 b) {
 #endif
 }
 
-// 1 / x: NEON's estimate refined twice (about 24 bits, like a divide), else a divide.
-inline f4 recip4(f4 x) {
+// 1 / x: NEON's estimate refined twice (about 24 bits, like a divide), else a divide. Coarse: refined
+// once (about 16 bits, a relative error under 2e-5).
+template <bool Coarse = false> inline f4 recip4(f4 x) {
 #ifdef PF_NEON
     float32x4_t e = vrecpeq_f32((float32x4_t)x);
     e = vmulq_f32(e, vrecpsq_f32((float32x4_t)x, e));
-    e = vmulq_f32(e, vrecpsq_f32((float32x4_t)x, e));
+    if (!Coarse) e = vmulq_f32(e, vrecpsq_f32((float32x4_t)x, e));
     return (f4)e;
 #else
     return splat(1.0f) / x;
@@ -74,11 +75,24 @@ inline f4 hsum4x4(f4 a, f4 b, f4 c, f4 d) {
 #endif
 }
 
-// The engine's tanh-like saturator (dsp/synth.cpp softclip), four at a time.
-inline f4 softclip4(f4 x) {
+// Four rows of four become four columns: a = {a0 a1 a2 a3} ... d -> a = {a0 b0 c0 d0} ... d = {a3 b3 c3 d3}.
+inline void transpose4(f4& a, f4& b, f4& c, f4& d) {
+    typedef int i4 __attribute__((vector_size(16)));
+    const f4 ab0 = __builtin_shuffle(a, b, i4{0, 4, 1, 5}), ab1 = __builtin_shuffle(a, b, i4{2, 6, 3, 7});
+    const f4 cd0 = __builtin_shuffle(c, d, i4{0, 4, 1, 5}), cd1 = __builtin_shuffle(c, d, i4{2, 6, 3, 7});
+    a = __builtin_shuffle(ab0, cd0, i4{0, 1, 4, 5});
+    b = __builtin_shuffle(ab0, cd0, i4{2, 3, 6, 7});
+    c = __builtin_shuffle(ab1, cd1, i4{0, 1, 4, 5});
+    d = __builtin_shuffle(ab1, cd1, i4{2, 3, 6, 7});
+}
+
+// The engine's tanh-like saturator (dsp/synth.cpp softclip), four at a time. Coarse: with recip4's
+// coarse reciprocal, for the drive stage (memoryless); a filter's feedback path keeps the full one
+// (there the error would add up as damping).
+template <bool Coarse = false> inline f4 softclip4(f4 x) {
     x = min4(max4(x, splat(-3.0f)), splat(3.0f));
     const f4 x2 = x * x;
-    return x * (splat(27.0f) + x2) * recip4(splat(27.0f) + splat(9.0f) * x2);
+    return x * (splat(27.0f) + x2) * recip4<Coarse>(splat(27.0f) + splat(9.0f) * x2);
 }
 
 } // namespace pf

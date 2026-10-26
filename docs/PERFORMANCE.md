@@ -5,6 +5,7 @@
 - [First pass: NEON](#first-pass-neon)
 - [Second pass: control rate, matrix, PGO](#second-pass-control-rate-matrix-pgo)
 - [Third pass: output stage, 16-bit tables, frame cache](#third-pass-output-stage-16-bit-tables-frame-cache)
+- [Fourth pass: filter step, bus transpose, unison stacks](#fourth-pass-filter-step-bus-transpose-unison-stacks)
 - [Open question: memory traffic](#open-question-memory-traffic)
 - [CPU guard](#cpu-guard)
 - [Wavetable import](#wavetable-import)
@@ -157,6 +158,63 @@ is within about 1e-5 relative RMS of the float tables, 1.2e-4 in the quietest (L
 the output stage matches the old one within 4.7e-7 (summation order). `test/m3_test.cpp` plays
 still, gliding and over-full cases with the frame cache on and off (`Synth::setFrameCache`).
 
+## Fourth pass: filter step, bus transpose, unison stacks
+
+A profile by function and source line under `qemu-arm` (a TCG plugin counting each translated
+block's executions) showed where the instructions went. At 8 voices × 8 unison the float wavetable
+reader was 57% of the block; at 8 voices × 1, the filters with their set-up were 40%.
+
+- **The SVF step rearranged.** GCC turned `2 v1 - ic1` into a multiply-add on `-ic1`, which costs
+  a negation and a register move per state per sample on NEON, and spills in the 24 dB types. The
+  step now computes the new ic1 as `b1 ic1 + b2 v3` (b1 = 2 a1 − 1, b2 = 2 a2). The new ic2 is
+  `v2 + t`, with t = a2 ic1 + a3 v3. It is the same filter, and the band output is only computed
+  for the types that use it. LP24's loop went from 30 to about 19 instructions per four voices'
+  sample.
+- **Sources into the buses by transposing.** Each lane renders into its own contiguous buses.
+  Then four lanes by four samples at a time are transposed into the filters' layout
+  (`gatherBuses`). This replaces a scalar store per sample and the clearing of the buses. A serial
+  patch with nothing else routed to filter 2 now filters F1's bus in place instead of copying it.
+- **One call per unison stack.** The wavetable reader takes a whole stack. Its set-up used to cost
+  about 70 instructions per unison voice and chunk.
+  - It is compiled per level length, so the shifts are immediates, which frees a register in the
+    16-bit morph's loop.
+  - The interpolation fraction is the phase's fraction bits shifted to the top and converted as a
+    fixed-point number: 2 instructions instead of 3.
+  - The float pairs load straight into the halves of two q registers, in a five-instruction `asm`
+    block. Around a `vcombine`, GCC moved registers five times per four samples.
+- **Two unison voices per pass** on the frame cache's float frames. Each voice's samples are
+  multiplied by its own gains and summed, then by the stack's gliding level, so there is one load
+  and one store of the output per pair. The 16-bit readers have no registers to spare for this.
+- **Drive** is computed as `dry · x + sat · softclip(x · pre)`, with the reciprocal refined once
+  (about 16 bits). The drive stage is memoryless, so this is enough there. The Dirty engine's
+  saturator inside the filter loop keeps the full reciprocal, because there the error would add up
+  as damping.
+
+ARM instructions per block, before and after: the plain `-O3` build, then the profile-guided one
+that ships. The patch is the third pass's, with the positions still. "Moving" means an LFO sweeps
+both positions. Comb and vowel are in F1.
+
+| Scene | Before | After | PGO before | PGO after |
+|---|---|---|---|---|
+| 1 voice | 46.3 k | 38.1 k (−18%) | 42.6 k | 35.7 k (−16%) |
+| 4 voices | 83.2 k | 71.1 k (−15%) | 76.8 k | 67.1 k (−13%) |
+| 8 voices | 161.1 k | 140.2 k (−13%) | 148.9 k | 131.4 k (−12%) |
+| 8 voices, moving | 190.5 k | 171.1 k (−10%) | 178.0 k | 158.0 k (−11%) |
+| 8 voices, comb | 251.7 k | 237.2 k (−6%) | 236.4 k | 225.6 k (−5%) |
+| 8 voices, vowel | 291.4 k | 276.9 k (−5%) | 292.1 k | 281.4 k (−4%) |
+| 8 × 4 unison, Dirty | 251.7 k | 206.5 k (−18%) | 246.2 k | 199.1 k (−19%) |
+| 8 × 8 unison | 346.3 k | 260.0 k (−25%) | 330.3 k | 250.1 k (−24%) |
+| 8 × 8 unison, moving | 473.4 k | 405.9 k (−14%) | 471.1 k | 384.5 k (−18%) |
+| 8 × 8 unison, busy matrix | 436.0 k | 358.6 k (−18%) | 429.1 k | 346.2 k (−19%) |
+
+The device bench of this pass is still to come. qemu counts instructions, not cycles: the `asm`
+gather and the transposes are the kind of change the Force has to confirm.
+
+The output was compared with the engine before this pass on ARM over 139 scenes. The scenes cover
+every filter type, the engines, unison 1–8, the routings, steals, glides, odd block sizes and busy
+matrices. All are within 7.8e-6 relative RMS. The drive's reciprocal accounts for that figure;
+without it they are within 2.2e-6.
+
 ## Open question: memory traffic
 
 At 8 × 8 the oscillators are still about 70% of the block when the position moves. A 256-frame
@@ -209,3 +267,9 @@ Loading always happens off the audio thread.
   without the device.
 - **More than 8 voices or 8 unison:** 16 × 16 measured 45% of a block before the NEON pass; 8 × 8
   stays the ceiling until the device bench of the current build says otherwise.
+- **Comb and vowel four voices at a time:** they still run one voice at a time, so a vowel filter
+  costs twice what LP24 does at 8 voices. Only 6 of the 205 factory presets use one, so this was
+  left out of the fourth pass.
+- **Table indices from the phase vector** (two `vmov` from NEON to core registers instead of the
+  core's own shifts) would take fewer instructions and free core registers in the morph's loop.
+  Transfers in that direction stall some ARM cores, so this waits for a device bench.
