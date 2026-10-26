@@ -199,6 +199,8 @@ inline SvfCoef makeSvf(float g, float k) {
     c.a1 = 1.0f / (1.0f + g * (g + k));
     c.a2 = g * c.a1;
     c.a3 = g * c.a2;
+    c.b1 = 2.0f * c.a1 - 1.0f;
+    c.b2 = 2.0f * c.a2;
     return c;
 }
 
@@ -211,67 +213,76 @@ inline void svf(Svf& s, const SvfCoef& c, float v0, float& v1, float& v2) {
     s.ic2 = 2.0f * v2 - s.ic2;
 }
 
-// One voice alone (a quad with one live lane costs more than this): the same filters, scalar.
-template <bool Dirty> inline void stepS(Svf& s, const SvfCoef& c, float v0, float& v1, float& v2) {
+// The step of svf() rearranged (the same filter, fewer operations): with t = a2 ic1 + a3 v3,
+// the low output is ic2 + t and the new ic2 (2 v2 - ic2) is v2 + t; the new ic1 (2 v1 - ic1) is
+// b1 ic1 + b2 v3. `2 v1 - ic1` itself became a multiply-add on -ic1, a negation per state per
+// sample on NEON. The band output only for the types that use it (Band).
+template <bool Dirty, bool Band> inline void stepS(Svf& s, const SvfCoef& c, float v0, float& v1, float& v2) {
     const float v3 = v0 - s.ic2;
-    v1 = c.a1 * s.ic1 + c.a2 * v3;
-    v2 = s.ic2 + c.a2 * s.ic1 + c.a3 * v3;
-    s.ic1 = Dirty ? softclip(2.0f * v1 - s.ic1) : 2.0f * v1 - s.ic1;
-    s.ic2 = 2.0f * v2 - s.ic2;
+    const float t = c.a2 * s.ic1 + c.a3 * v3;
+    if (Band) v1 = c.a1 * s.ic1 + c.a2 * v3;
+    const float n1 = c.b1 * s.ic1 + c.b2 * v3;
+    v2 = s.ic2 + t;
+    s.ic1 = Dirty ? softclip(n1) : n1;
+    s.ic2 = v2 + t;
 }
 
+// One voice alone (a quad with one live lane costs more than this): the same filters, scalar.
 template <bool Dirty>
 void svfScalar(int type, Svf& s1, Svf& s2, const SvfCoef& c, const SvfCoef& fl, float* x, int n) {
-    float b, l, b2, l2;
+    float b = 0.0f, l, b2 = 0.0f, l2;
     switch (type) {
-        case F_LP12: for (int i = 0; i < n; ++i) { stepS<Dirty>(s1, c, x[i], b, l); x[i] = l; } break;
-        case F_LP24: for (int i = 0; i < n; ++i) { stepS<Dirty>(s1, c, x[i], b, l); stepS<false>(s2, fl, l, b2, l2); x[i] = l2; } break;
-        case F_HP12: for (int i = 0; i < n; ++i) { stepS<Dirty>(s1, c, x[i], b, l); x[i] = x[i] - c.k * b - l; } break;
+        case F_LP12: for (int i = 0; i < n; ++i) { stepS<Dirty, false>(s1, c, x[i], b, l); x[i] = l; } break;
+        case F_LP24: for (int i = 0; i < n; ++i) { stepS<Dirty, false>(s1, c, x[i], b, l); stepS<false, false>(s2, fl, l, b2, l2); x[i] = l2; } break;
+        case F_HP12: for (int i = 0; i < n; ++i) { stepS<Dirty, true>(s1, c, x[i], b, l); x[i] = x[i] - c.k * b - l; } break;
         case F_HP24:
             for (int i = 0; i < n; ++i) {
-                stepS<Dirty>(s1, c, x[i], b, l);
+                stepS<Dirty, true>(s1, c, x[i], b, l);
                 const float h = x[i] - c.k * b - l;
-                stepS<false>(s2, fl, h, b2, l2);
+                stepS<false, true>(s2, fl, h, b2, l2);
                 x[i] = h - fl.k * b2 - l2;
             }
             break;
-        case F_BP: for (int i = 0; i < n; ++i) { stepS<Dirty>(s1, c, x[i], b, l); x[i] = c.k * b; } break;
-        case F_NOTCH: for (int i = 0; i < n; ++i) { stepS<Dirty>(s1, c, x[i], b, l); x[i] -= c.k * b; } break;
-        default: for (int i = 0; i < n; ++i) { stepS<Dirty>(s1, c, x[i], b, l); x[i] = 2.0f * l - x[i] + c.k * b; } break;
+        case F_BP: for (int i = 0; i < n; ++i) { stepS<Dirty, true>(s1, c, x[i], b, l); x[i] = c.k * b; } break;
+        case F_NOTCH: for (int i = 0; i < n; ++i) { stepS<Dirty, true>(s1, c, x[i], b, l); x[i] -= c.k * b; } break;
+        default: for (int i = 0; i < n; ++i) { stepS<Dirty, true>(s1, c, x[i], b, l); x[i] = 2.0f * l - x[i] + c.k * b; } break;
     }
 }
 
 // The state-variable filters four voices at a time (one voice per lane, dsp/simd.h): the same
-// step as svf(), on vectors. Dirty saturates the band (resonant) state inside the loop, so
+// step as stepS(), on vectors. Dirty saturates the band (resonant) state inside the loop, so
 // loud resonance compresses and growls instead of ringing clean.
-struct SvfV { f4 k, a1, a2, a3; };
-struct DriveV { f4 pre, post, wet; };
+struct SvfV { f4 k, a1, a2, a3, b1, b2; };
+struct DriveV { f4 pre, dry, sat; };   // dry = 1 - wet, sat = wet * post
 
-template <bool Dirty> inline void stepV(f4& ic1, f4& ic2, const SvfV& c, f4 v0, f4& v1, f4& v2) {
+template <bool Dirty, bool Band> inline void stepV(f4& ic1, f4& ic2, const SvfV& c, f4 v0, f4& v1, f4& v2) {
     const f4 v3 = v0 - ic2;
-    v1 = c.a1 * ic1 + c.a2 * v3;
-    v2 = ic2 + c.a2 * ic1 + c.a3 * v3;
-    ic1 = Dirty ? softclip4(splat(2.0f) * v1 - ic1) : splat(2.0f) * v1 - ic1;
-    ic2 = splat(2.0f) * v2 - ic2;
+    const f4 t = c.a2 * ic1 + c.a3 * v3;
+    if (Band) v1 = c.a1 * ic1 + c.a2 * v3;
+    const f4 n1 = c.b1 * ic1 + c.b2 * v3;
+    v2 = ic2 + t;
+    ic1 = Dirty ? softclip4(n1) : n1;
+    ic2 = v2 + t;
 }
 
 // One sample of a filter type; st = stage 1 (ic1, ic2), stage 2 (ic1, ic2). The 24 dB types
 // add a second stage without extra resonance (fl).
 template <int Type, bool Dirty> inline f4 svfV(f4 x, const SvfV& c, const SvfV& fl, f4* st) {
-    f4 b, l;
-    stepV<Dirty>(st[0], st[1], c, x, b, l);
+    constexpr bool kBand = Type != F_LP12 && Type != F_LP24;
+    f4 b = splat(0.0f), l;
+    stepV<Dirty, kBand>(st[0], st[1], c, x, b, l);
     switch (Type) {
         case F_LP12: return l;
         case F_LP24: {
             f4 b2, l2;
-            stepV<false>(st[2], st[3], fl, l, b2, l2);
+            stepV<false, false>(st[2], st[3], fl, l, b2, l2);
             return l2;
         }
         case F_HP12: return x - c.k * b - l;
         case F_HP24: {
             const f4 h = x - c.k * b - l;
             f4 b2, l2;
-            stepV<false>(st[2], st[3], fl, h, b2, l2);
+            stepV<false, true>(st[2], st[3], fl, h, b2, l2);
             return h - fl.k * b2 - l2;
         }
         case F_BP: return c.k * b;           // scaled by k: unity gain at the centre whatever the resonance
@@ -294,12 +305,14 @@ void svfQuad(float* bus, int n, const SvfV& cIn, const SvfV& flIn, f4 (&stIn)[4]
     for (int j = 0; j < 4; ++j) stIn[j] = st[j];
 }
 
-// The drive stage before a filter, four lanes: memoryless, so it runs as its own pass.
+// The drive stage before a filter, four lanes: memoryless, so it runs as its own pass. Fades in with
+// the drive amount (wet), a full-scale input stays ~unity: x + wet * (softclip(x * pre) * post - x),
+// as dry * x + sat * softclip(x * pre) (DriveV).
 inline void driveQuad(float* bus, int n, const DriveV& d) {
-    for (int i = 0; i < n; ++i) {   // fades in with the drive amount (wet); a full-scale input stays ~unity
+    for (int i = 0; i < n; ++i) {
         float* p = bus + i * kMaxVoices;
         const f4 x = load4(p);
-        store4(p, x + d.wet * (softclip4(x * d.pre) * d.post - x));
+        store4(p, d.dry * x + d.sat * softclip4<true>(x * d.pre));
     }
 }
 
@@ -405,39 +418,49 @@ template <int Q> SumFn sumOf(int extra, bool tab) {
     return extra == 0 ? sumOf<Q, 0>(tab) : extra == 1 ? sumOf<Q, 1>(tab) : sumOf<Q, 2>(tab);
 }
 
-// One unison voice's samples from a wavetable level (Synth::renderOsc, renderSub), added into L and
-// R: PK_FLOAT reads a float frame (the frame cache), PK_INT a 16-bit frame (its scale rides on the
+// Unison voices' samples from a wavetable level (Synth::renderOsc, renderSub), added into L and R:
+// PK_FLOAT reads a float frame (the frame cache), PK_INT a 16-bit frame (its scale rides on the
 // gains), PK_MORPH two 16-bit frames morphed. The phase is a 32-bit fixed-point fraction of a
 // cycle: its top bits index the level (its own length), the rest are the interpolation fraction,
 // and wrap-around is free integer overflow (no floor(), no branch). The gains glide: sample i gets
-// g0 + dg * (i + 1), the last one the target. Returns the phase after the last sample.
+// g0 + dg * (i + 1), the last one the target.
 enum PlayKind { PK_FLOAT, PK_INT, PK_MORPH };
 
-// 1 / 2^(32 - bits) per level: the phase's fraction bits as 0..1, without a divide per call.
-struct MipFrac {
-    float v[kMipLevels];
-};
-constexpr MipFrac mipFrac() {
-    MipFrac f{};
-    for (int k = 0; k < kMipLevels; ++k) f.v[k] = 1.0f / static_cast<float>(1u << (32 - kMipBits[k]));
-    return f;
+// The levels' lengths, 2^8 .. 2^11 samples: play() is compiled per length (Bits), so its shifts are
+// immediates, which frees a register in its loop.
+constexpr int kMinMipBits = 8;
+constexpr bool mipBitsInRange() {
+    for (int b : kMipBits)
+        if (b < kMinMipBits || b > kTableBits) return false;
+    return true;
 }
-constexpr MipFrac kMipFrac = mipFrac();
+static_assert(mipBitsInRange(), "play() is compiled for levels of 2^8 .. 2^11 samples");
 
 struct Play {
     const float* f = nullptr;                    // PK_FLOAT
     const int16_t *a = nullptr, *b = nullptr;    // PK_INT: a; PK_MORPH: a morphed toward b
     float sa = 1.0f, sb = 1.0f;                  // PK_MORPH: their scales
     float m0 = 0.0f, dm = 0.0f;                  // PK_MORPH: the morph at sample i is m0 + dm * (i + 1)
-    int   shift = 32 - kTableBits;               // 32 - the level's bits
-    float frac = kMipFrac.v[0];                  // 1 / 2^shift
-    void level(int mip) {
-        shift = 32 - kMipBits[mip];
-        frac = kMipFrac.v[mip];
-    }
+    int   bits = kTableBits;                     // the level's length: 2^bits samples
+    void level(int mip) { bits = kMipBits[mip]; }
 };
 
 #ifdef PF_NEON
+// Four (p[i], p[i + 1]) pairs of floats, from a0..a3: x = the first samples, y = the next ones. Each
+// pair loads straight into a half of a q register, then one transpose. In assembly because GCC
+// loads a vcombine of two vld1_f32 into the wrong registers and moves them (five moves per call).
+inline void gatherF(const float* a0, const float* a1, const float* a2, const float* a3, float32x4_t& x, float32x4_t& y) {
+    typedef const float Pair[2];
+    asm("vld1.32 {%e0}, [%2]\n\t"
+        "vld1.32 {%f0}, [%4]\n\t"
+        "vld1.32 {%e1}, [%3]\n\t"
+        "vld1.32 {%f1}, [%5]\n\t"
+        "vtrn.32 %q0, %q1"
+        : "=&w"(x), "=&w"(y)
+        : "r"(a0), "r"(a1), "r"(a2), "r"(a3), "m"(*reinterpret_cast<Pair*>(a0)), "m"(*reinterpret_cast<Pair*>(a1)),
+          "m"(*reinterpret_cast<Pair*>(a2)), "m"(*reinterpret_cast<Pair*>(a3)));
+}
+
 // Four (p[i], p[i + 1]) pairs of 16-bit samples, one 32-bit load each: the first samples and the
 // steps to the next, as floats.
 inline void gather16(const int16_t* p, uint32_t i0, uint32_t i1, uint32_t i2, uint32_t i3, float32x4_t& x, float32x4_t& d) {
@@ -453,77 +476,145 @@ inline void gather16(const int16_t* p, uint32_t i0, uint32_t i1, uint32_t i2, ui
 }
 #endif
 
-template <int Kind>
-uint32_t play(const Play& p, uint32_t ph, uint32_t dph, float gl0, float dgl, float gr0, float dgr, float* L, float* R, int n) {
-    const int shift = p.shift;
-    const uint32_t mask = (1u << shift) - 1;
-    const float kFrac = p.frac;
+// The voices of a unison stack (a sub: one voice), one after the other in a single call (its set-up
+// is shared). Voice u: phase ph[u], advanced in place, step dph[u], gains gl[u] and gr[u] times the
+// stack's level, which glides: sample i gets lv0 + dlv * (i + 1) on the left, rv0 + drv * (i + 1)
+// on the right. PK_MORPH weighs frame A by sa * (1 - morph) and frame B by sb * morph.
+template <int Kind, int Bits>
+void play(const Play& p, uint32_t* ph, const uint32_t* dph, const float* gl, const float* gr, int voices,
+          float lv0, float dlv, float rv0, float drv, float* L, float* R, int n) {
+    constexpr int shift = 32 - Bits;
+    constexpr uint32_t mask = (1u << shift) - 1;
+    constexpr float kFrac = 1.0f / static_cast<float>(1u << shift);
     const float* F = p.f;
     const int16_t *A = p.a, *B = p.b;
-    int i = 0;
-#ifdef PF_NEON
-    // Four samples at a time. The four table positions are computed in core registers; each
-    // (x[idx], x[idx+1]) pair is one load, and an unzip splits the pairs into "this sample" and
-    // "next sample" vectors. The fractions come from a phase vector.
-    uint32x4_t phv = {ph, ph + dph, ph + 2 * dph, ph + 3 * dph};
-    const uint32x4_t step4 = vdupq_n_u32(4 * dph), maskv = vdupq_n_u32(mask);
-    const float32x4_t fracScale = vdupq_n_f32(kFrac), one4 = {1.0f, 2.0f, 3.0f, 4.0f};
-    float32x4_t mv = vmlaq_n_f32(vdupq_n_f32(p.m0), one4, p.dm);
-    float32x4_t glv = vmlaq_n_f32(vdupq_n_f32(gl0), one4, dgl), grv = vmlaq_n_f32(vdupq_n_f32(gr0), one4, dgr);
-    const float32x4_t dm4 = vdupq_n_f32(4.0f * p.dm), dgl4 = vdupq_n_f32(4.0f * dgl), dgr4 = vdupq_n_f32(4.0f * dgr);
-    for (; i + 4 <= n; i += 4) {
-        const uint32_t i0 = ph >> shift, i1 = (ph + dph) >> shift, i2 = (ph + 2 * dph) >> shift, i3 = (ph + 3 * dph) >> shift;
-        const float32x4_t fr = vmulq_f32(vcvtq_f32_u32(vandq_u32(phv, maskv)), fracScale);
-        float32x4_t x;
-        if (Kind == PK_FLOAT) {
-            const float32x4x2_t pa = vuzpq_f32(vcombine_f32(vld1_f32(F + i0), vld1_f32(F + i1)),
-                                               vcombine_f32(vld1_f32(F + i2), vld1_f32(F + i3)));
-            x = vmlaq_f32(pa.val[0], fr, vsubq_f32(pa.val[1], pa.val[0]));
-        } else {
-            float32x4_t a, da;
-            gather16(A, i0, i1, i2, i3, a, da);
-            x = vmlaq_f32(a, fr, da);
-            if (Kind == PK_MORPH) {
-                float32x4_t b, db;
-                gather16(B, i0, i1, i2, i3, b, db);
-                const float32x4_t xa = vmulq_n_f32(x, p.sa), xb = vmulq_n_f32(vmlaq_f32(b, fr, db), p.sb);
-                x = vmlaq_f32(xa, mv, vsubq_f32(xb, xa));
-                mv = vaddq_f32(mv, dm4);
+    // Locals: the output stores could otherwise alias `p`, and every field would be reloaded.
+    const float sa = p.sa, sb = p.sb, m0 = p.m0, dm = p.dm;
+    // Samples i0..n-1 of a voice one at a time (a chunk's last n % 4 on NEON); returns its phase after.
+    auto tail = [&](uint32_t phase, uint32_t step, float gl0, float dgl, float gr0, float dgr, int i0) {
+        for (int i = i0; i < n; ++i) {
+            const float k = static_cast<float>(i + 1);
+            const uint32_t idx = phase >> shift;
+            const float fr = static_cast<float>(phase & mask) * kFrac;
+            float x;
+            if (Kind == PK_FLOAT) {
+                x = F[idx] + fr * (F[idx + 1] - F[idx]);
+            } else {
+                const float a = static_cast<float>(A[idx]);
+                x = a + fr * (static_cast<float>(A[idx + 1]) - a);
+                if (Kind == PK_MORPH) {
+                    const float b = static_cast<float>(B[idx]), m = m0 + dm * k;
+                    x = x * (sa - sa * m) + (b + fr * (static_cast<float>(B[idx + 1]) - b)) * (sb * m);
+                }
             }
+            L[i] += x * (gl0 + dgl * k);
+            R[i] += x * (gr0 + dgr * k);
+            phase += step;
         }
-        vst1q_f32(L + i, vmlaq_f32(vld1q_f32(L + i), x, glv));
-        vst1q_f32(R + i, vmlaq_f32(vld1q_f32(R + i), x, grv));
-        phv = vaddq_u32(phv, step4);
-        ph += 4 * dph;
-        glv = vaddq_f32(glv, dgl4);
-        grv = vaddq_f32(grv, dgr4);
+        return phase;
+    };
+    int u = 0;
+#ifdef PF_NEON
+    // Float frames (the frame cache), two voices at a time: each one's samples times its own gains,
+    // summed, then times the stack's gliding level into L and R (one load and store of the output
+    // per pair). The 16-bit readers have no registers to spare for a second voice.
+    if (Kind == PK_FLOAT && voices >= 2) {
+        const float32x4_t one4 = {1.0f, 2.0f, 3.0f, 4.0f};
+        const float32x4_t lvStart = vmlaq_n_f32(vdupq_n_f32(lv0), one4, dlv), rvStart = vmlaq_n_f32(vdupq_n_f32(rv0), one4, drv);
+        const float32x4_t dl4 = vdupq_n_f32(4.0f * dlv), dr4 = vdupq_n_f32(4.0f * drv);
+        for (; u + 2 <= voices; u += 2) {
+            uint32_t p0 = ph[u], p1 = ph[u + 1];
+            const uint32_t s0 = dph[u], s1 = dph[u + 1];
+            uint32x4_t phv0 = {p0, p0 + s0, p0 + 2 * s0, p0 + 3 * s0}, phv1 = {p1, p1 + s1, p1 + 2 * s1, p1 + 3 * s1};
+            const uint32x4_t st0 = vdupq_n_u32(4 * s0), st1 = vdupq_n_u32(4 * s1);
+            const float32x2_t gL = {gl[u], gl[u + 1]}, gR = {gr[u], gr[u + 1]};
+            float32x4_t lv = lvStart, rv = rvStart;
+            float *l = L, *r = R;
+            for (float* const end = L + (n & ~3); l != end; l += 4, r += 4) {
+                float32x4_t a0, b0, a1, b1;
+                gatherF(F + (p0 >> shift), F + ((p0 + s0) >> shift), F + ((p0 + 2 * s0) >> shift), F + ((p0 + 3 * s0) >> shift), a0, b0);
+                gatherF(F + (p1 >> shift), F + ((p1 + s1) >> shift), F + ((p1 + 2 * s1) >> shift), F + ((p1 + 3 * s1) >> shift), a1, b1);
+                const float32x4_t x0 = vmlaq_f32(a0, vcvtq_n_f32_u32(vshlq_n_u32(phv0, Bits), 32), vsubq_f32(b0, a0));
+                const float32x4_t x1 = vmlaq_f32(a1, vcvtq_n_f32_u32(vshlq_n_u32(phv1, Bits), 32), vsubq_f32(b1, a1));
+                const float32x4_t sl = vmlaq_lane_f32(vmulq_lane_f32(x0, gL, 0), x1, gL, 1);
+                const float32x4_t sr = vmlaq_lane_f32(vmulq_lane_f32(x0, gR, 0), x1, gR, 1);
+                vst1q_f32(l, vmlaq_f32(vld1q_f32(l), sl, lv));
+                vst1q_f32(r, vmlaq_f32(vld1q_f32(r), sr, rv));
+                phv0 = vaddq_u32(phv0, st0);
+                phv1 = vaddq_u32(phv1, st1);
+                p0 += 4 * s0;
+                p1 += 4 * s1;
+                lv = vaddq_f32(lv, dl4);
+                rv = vaddq_f32(rv, dr4);
+            }
+            const int i0 = n & ~3;
+            ph[u] = tail(p0, s0, gl[u] * lv0, gl[u] * dlv, gr[u] * rv0, gr[u] * drv, i0);
+            ph[u + 1] = tail(p1, s1, gl[u + 1] * lv0, gl[u + 1] * dlv, gr[u + 1] * rv0, gr[u + 1] * drv, i0);
+        }
     }
 #endif
-    for (; i < n; ++i) {
-        const float k = static_cast<float>(i + 1);
-        const uint32_t idx = ph >> shift;
-        const float fr = static_cast<float>(ph & mask) * kFrac;
-        float x;
-        if (Kind == PK_FLOAT) {
-            x = F[idx] + fr * (F[idx + 1] - F[idx]);
-        } else {
-            const float a = static_cast<float>(A[idx]);
-            x = a + fr * (static_cast<float>(A[idx + 1]) - a);
-            if (Kind == PK_MORPH) {
-                const float b = static_cast<float>(B[idx]);
-                const float xa = x * p.sa, xb = (b + fr * (static_cast<float>(B[idx + 1]) - b)) * p.sb;
-                x = xa + (p.m0 + p.dm * k) * (xb - xa);
+    for (; u < voices; ++u) {
+        uint32_t phase = ph[u];
+        const uint32_t step = dph[u];
+        const float gl0 = gl[u] * lv0, dgl = gl[u] * dlv, gr0 = gr[u] * rv0, dgr = gr[u] * drv;
+        int i = 0;
+#ifdef PF_NEON
+        // Four samples at a time. The four table positions are computed in core registers; each
+        // (x[idx], x[idx+1]) pair is one load, and a transpose (16-bit: an unzip) splits the pairs
+        // into "this sample" and "next sample" vectors. The fractions come from a phase vector: its
+        // fraction bits shifted to the top, converted as a fixed-point number with 32 fraction bits.
+        uint32x4_t phv = {phase, phase + step, phase + 2 * step, phase + 3 * step};
+        const uint32x4_t step4 = vdupq_n_u32(4 * step);
+        const float32x4_t one4 = {1.0f, 2.0f, 3.0f, 4.0f};
+        float32x4_t wb = vmulq_n_f32(vmlaq_n_f32(vdupq_n_f32(m0), one4, dm), sb);   // frame B's weight
+        float32x4_t wa = vmlsq_n_f32(vdupq_n_f32(sa), vmlaq_n_f32(vdupq_n_f32(m0), one4, dm), sa);
+        float32x4_t glv = vmlaq_n_f32(vdupq_n_f32(gl0), one4, dgl), grv = vmlaq_n_f32(vdupq_n_f32(gr0), one4, dgr);
+        const float32x4_t dwa4 = vdupq_n_f32(-4.0f * dm * sa), dwb4 = vdupq_n_f32(4.0f * dm * sb);
+        const float32x4_t dgl4 = vdupq_n_f32(4.0f * dgl), dgr4 = vdupq_n_f32(4.0f * dgr);
+        // The output pointers count the loop (no index register: the morph's loop is short of them).
+        float *l = L, *r = R;
+        for (float* const end = L + (n & ~3); l != end; l += 4, r += 4) {
+            const uint32_t i0 = phase >> shift, i1 = (phase + step) >> shift, i2 = (phase + 2 * step) >> shift,
+                           i3 = (phase + 3 * step) >> shift;
+            const float32x4_t fr = vcvtq_n_f32_u32(vshlq_n_u32(phv, Bits), 32);
+            float32x4_t x;
+            if (Kind == PK_FLOAT) {
+                float32x4_t a, b;
+                gatherF(F + i0, F + i1, F + i2, F + i3, a, b);
+                x = vmlaq_f32(a, fr, vsubq_f32(b, a));
+            } else {
+                float32x4_t a, da;
+                gather16(A, i0, i1, i2, i3, a, da);
+                x = vmlaq_f32(a, fr, da);
+                if (Kind == PK_MORPH) {
+                    float32x4_t b, db;
+                    gather16(B, i0, i1, i2, i3, b, db);
+                    x = vmlaq_f32(vmulq_f32(x, wa), vmlaq_f32(b, fr, db), wb);
+                    wa = vaddq_f32(wa, dwa4);
+                    wb = vaddq_f32(wb, dwb4);
+                }
             }
+            vst1q_f32(l, vmlaq_f32(vld1q_f32(l), x, glv));
+            vst1q_f32(r, vmlaq_f32(vld1q_f32(r), x, grv));
+            phv = vaddq_u32(phv, step4);
+            phase += 4 * step;
+            glv = vaddq_f32(glv, dgl4);
+            grv = vaddq_f32(grv, dgr4);
         }
-        L[i] += x * (gl0 + dgl * k);
-        R[i] += x * (gr0 + dgr * k);
-        ph += dph;
+        i = n & ~3;
+#endif
+        ph[u] = tail(phase, step, gl0, dgl, gr0, dgr, i);
     }
-    return ph;
 }
 
-using PlayFn = uint32_t (*)(const Play&, uint32_t, uint32_t, float, float, float, float, float*, float*, int);
-constexpr PlayFn kPlay[3] = {play<PK_FLOAT>, play<PK_INT>, play<PK_MORPH>};
+using PlayFn = void (*)(const Play&, uint32_t*, const uint32_t*, const float*, const float*, int, float, float, float, float,
+                        float*, float*, int);
+template <int Kind> constexpr PlayFn kPlayOf[4] = {play<Kind, 8>, play<Kind, 9>, play<Kind, 10>, play<Kind, 11>};
+// The reader for a kind of source at the level src.level() chose.
+inline PlayFn playFor(int kind, const Play& src) {
+    const int b = src.bits - kMinMipBits;
+    return kind == PK_FLOAT ? kPlayOf<PK_FLOAT>[b] : kind == PK_INT ? kPlayOf<PK_INT>[b] : kPlayOf<PK_MORPH>[b];
+}
 
 } // namespace
 
@@ -1270,9 +1361,9 @@ void Synth::render(float* outL, float* outR, int n) {
             src_[MS_CONSTANT] = 1.0f;
         }
         if (nLanes_ > 0) {
-            // The filters and the output read whole quads of lanes: clear them where a lane may not
-            // write. F2's input only needs clearing when a source can go there (or F2 runs beside
-            // F1 on whatever is in it), the direct bus when a source is routed there.
+            // Which buses the filters and the output read: F1's always; F2's when a source can go
+            // there or F2 runs beside F1 (serial with nothing else for F2: F2 filters F1's bus in
+            // place); the direct bus when a source is routed there.
             const int wide = nLanes_ > 4 ? 8 : 4;   // floats per sample row in use
             bool toF2 = patch_.noise.route == RT_F2 || patch_.noise.route == RT_BOTH;
             bool direct = patch_.noise.route == RT_DIRECT;
@@ -1280,34 +1371,26 @@ void Synth::render(float* outL, float* outR, int n) {
                 toF2 = toF2 || o.route == RT_F2 || o.route == RT_BOTH;
                 direct = direct || o.route == RT_DIRECT;
             }
-            for (int b = 0; b < 3; ++b) {
-                if (b == 1 && !toF2 && !patch_.parallel) continue;   // serial below copies F1's output in
-                if (b == 2 && !direct) continue;                     // the output reads every lane's direct bus
-                for (auto* ch : bus_[b])
-                    for (int i = 0; i < len * kMaxVoices; i += kMaxVoices) {
-                        store4(ch + i, splat(0.0f));
-                        if (wide == 8) store4(ch + i + 4, splat(0.0f));
-                    }
-            }
+            const int f2bus = toF2 || patch_.parallel ? 1 : 0;
             int lane = 0;
             for (auto& v : voices_)
                 if (v.active) controlVoice(v, lane++, len);
             clock.lap(STG_CONTROL);
             for (int k = 0; k < nLanes_; ++k) renderSources(k, len);
+            gatherBuses(len, f2bus == 1, direct);
             clock.lap(STG_SOURCES);
             filterLanes(0, bus_[0][0], bus_[0][1], len);
             clock.lap(STG_FILTER1);
-            if (!patch_.parallel)   // serial: filter 1 feeds filter 2
+            if (!patch_.parallel && toF2)   // serial: filter 1 feeds filter 2, beside the sources sent there
                 for (int ch = 0; ch < 2; ++ch) {
                     float* to = bus_[1][ch];
                     const float* from = bus_[0][ch];
                     for (int i = 0; i < len * kMaxVoices; i += kMaxVoices)
-                        for (int q = 0; q < wide; q += 4)
-                            store4(to + i + q, toF2 ? load4(to + i + q) + load4(from + i + q) : load4(from + i + q));
+                        for (int q = 0; q < wide; q += 4) store4(to + i + q, load4(to + i + q) + load4(from + i + q));
                 }
-            filterLanes(1, bus_[1][0], bus_[1][1], len);
+            filterLanes(1, bus_[f2bus][0], bus_[f2bus][1], len);
             clock.lap(STG_FILTER2);
-            finishLanes(L, R, len, direct);
+            finishLanes(L, R, len, direct, f2bus);
             clock.lap(STG_OUTPUT);
         }
 
@@ -1362,16 +1445,15 @@ void Synth::controlVoice(Voice& v, int lane, int n) {
     ln.pitch = pitch;
 }
 
-// Pass 1b for one voice: its oscillators, subs and noise into the three buses (column `lane`):
-// into filter 1, into filter 2, and past both. Summed here (contiguous), then stored once into
-// this lane's column of each bus it uses.
+// Pass 1b for one voice: its oscillators, subs and noise into its three buses (laneBus_[lane]):
+// into filter 1, into filter 2, and past both. gatherBuses() moves them into the filters' layout.
 void Synth::renderSources(int lane, int n) {
     Lane& ln = lanes_[lane];
     Voice& v = *ln.v;
     const Mods& m = ln.m;
     const float pitch = ln.pitch;
-    float loc[3][2][kChunk];
-    auto bus = [&](int b) {   // a local bus, cleared on first use
+    float (*loc)[2][kChunk] = laneBus_[lane];
+    auto bus = [&](int b) {   // cleared whole on first use (gatherBuses reads whole groups of 4 samples)
         if (!(ln.buses & (1 << b))) {
             zeroChunk(loc[b][0]);
             zeroChunk(loc[b][1]);
@@ -1421,12 +1503,34 @@ void Synth::renderSources(int lane, int n) {
         });
     else
         v.ramp.noiseGain = 0.0f;
-    for (int b = 0; b < 3; ++b)
-        if (ln.buses & (1 << b))
+}
+
+// Pass 1c: every lane's buses into bus_, the lanes side by side per sample, four lanes by four
+// samples at a time (a transpose); a lane that sent nothing to a bus, or past the last voice in a
+// quad, adds zeros. The buses the filters and the output read: F1's, F2's (f2), the direct one.
+// Whole groups of 4 samples (a chunk cut short reads its lanes' cleared tails).
+void Synth::gatherBuses(int n, bool f2, bool direct) {
+    alignas(16) static const float kSilence[kChunk] = {};
+    const int rows = (n + 3) & ~3;
+    for (int b = 0; b < 3; ++b) {
+        if ((b == 1 && !f2) || (b == 2 && !direct)) continue;
+        for (int q = 0; q < nLanes_; q += 4)
             for (int ch = 0; ch < 2; ++ch) {
-                float* col = bus_[b][ch] + lane;
-                for (int i = 0; i < n; ++i) col[i * kMaxVoices] = loc[b][ch][i];
+                const float* from[4];
+                for (int j = 0; j < 4; ++j)
+                    from[j] = q + j < nLanes_ && (lanes_[q + j].buses & (1 << b)) ? laneBus_[q + j][b][ch] : kSilence;
+                float* to = bus_[b][ch] + q;
+                for (int i = 0; i < rows; i += 4) {
+                    f4 r0 = load4(from[0] + i), r1 = load4(from[1] + i), r2 = load4(from[2] + i), r3 = load4(from[3] + i);
+                    transpose4(r0, r1, r2, r3);
+                    float* row = to + i * kMaxVoices;
+                    store4(row, r0);
+                    store4(row + kMaxVoices, r1);
+                    store4(row + 2 * kMaxVoices, r2);
+                    store4(row + 3 * kMaxVoices, r3);
+                }
             }
+    }
 }
 
 // Pass 4: every lane's filtered signal (F2's bus; F1's beside it when parallel; the direct bus) times
@@ -1436,7 +1540,7 @@ void Synth::renderSources(int lane, int n) {
 // lane changes stage (the attack reaching 1, the release ending: envRun sample by sample) or fades
 // for a steal writes every envelope to a table first. Then each voice's own bookkeeping: a steal's
 // fade ending starts the waiting note, an ended release frees the voice.
-void Synth::finishLanes(float* outL, float* outR, int n, bool direct) {
+void Synth::finishLanes(float* outL, float* outR, int n, bool direct, int f2bus) {
     const int wide = nLanes_ > 4 ? 8 : 4;   // lanes in use, in whole quads (the rest: amp 0)
     alignas(16) float amp[kChunk * kMaxVoices];
     alignas(16) float c1[kMaxVoices] = {}, c2[kMaxVoices] = {}, q[kMaxVoices];
@@ -1497,7 +1601,7 @@ void Synth::finishLanes(float* outL, float* outR, int n, bool direct) {
         sum.g0[ch] = g0[ch];
         sum.dg[ch] = dg[ch];
         int x = 0;
-        sum.x[x++][ch] = bus_[1][ch];
+        sum.x[x++][ch] = bus_[f2bus][ch];   // F2's output (serial, nothing else into F2: on F1's bus)
         if (patch_.parallel) sum.x[x++][ch] = bus_[0][ch];
         if (direct) sum.x[x++][ch] = bus_[2][ch];
         for (; x < 3; ++x) sum.x[x][ch] = nullptr;
@@ -1665,12 +1769,14 @@ void Synth::renderOsc(Voice& v, int o, float pitch, const Mods& m, float* L, flo
             gs = t.scale[static_cast<size_t>(fa)];
         }
     }
+    uint32_t dph[kMaxUnison];
+    float gl[kMaxUnison], gr[kMaxUnison];
     for (int u = 0; u < s.n; ++u) {
-        const uint32_t dph = static_cast<uint32_t>(inc * ratio[u] * 4294967296.0f);
-        const float gl0 = s.gl[u] * lvl0, gr0 = s.gr[u] * lvr0;
-        const float dgl = (s.gl[u] * lvl - gl0) * invN, dgr = (s.gr[u] * lvr - gr0) * invN;
-        v.phase[o][u] = kPlay[kind](src, v.phase[o][u], dph, gl0 * gs, dgl * gs, gr0 * gs, dgr * gs, L, R, n);
+        dph[u] = static_cast<uint32_t>(inc * ratio[u] * 4294967296.0f);
+        gl[u] = s.gl[u] * gs;
+        gr[u] = s.gr[u] * gs;
     }
+    playFor(kind, src)(src, v.phase[o], dph, gl, gr, s.n, lvl0, (lvl - lvl0) * invN, lvr0, (lvr - lvr0) * invN, L, R, n);
 }
 
 // The sub oscillator: one classic-shape voice under the oscillator, panned with it.
@@ -1681,19 +1787,17 @@ void Synth::renderSub(Voice& v, int o, float pitch, float level, float* L, float
     const int mip = mipFor(inc);
     const float level0 = v.ramp.valid ? v.ramp.subGain[o] : level;
     v.ramp.subGain[o] = level;
-    const float invN = 1.0f / static_cast<float>(n);
-    const float gl0 = osc_[o].subGl * level0, gr0 = osc_[o].subGr * level0;
-    const float dgl = (osc_[o].subGl * level - gl0) * invN, dgr = (osc_[o].subGr * level - gr0) * invN;
+    const float dlv = (level - level0) / static_cast<float>(n);
     const uint32_t dph = static_cast<uint32_t>(inc * 4294967296.0f);
     Play src;
     src.level(mip);
     src.f = cachedFrame(t, 0, 0, 0.0f, mip, v.cacheSlot[2 + o]);
     if (src.f) {
-        v.subPhase[o] = play<PK_FLOAT>(src, v.subPhase[o], dph, gl0, dgl, gr0, dgr, L, R, n);
+        playFor(PK_FLOAT, src)(src, &v.subPhase[o], &dph, &osc_[o].subGl, &osc_[o].subGr, 1, level0, dlv, level0, dlv, L, R, n);
     } else {
         src.a = t.get(0, mip);
-        const float gs = t.scale[0];
-        v.subPhase[o] = play<PK_INT>(src, v.subPhase[o], dph, gl0 * gs, dgl * gs, gr0 * gs, dgr * gs, L, R, n);
+        const float gs = t.scale[0], gl = osc_[o].subGl * gs, gr = osc_[o].subGr * gs;
+        playFor(PK_INT, src)(src, &v.subPhase[o], &dph, &gl, &gr, 1, level0, dlv, level0, dlv, L, R, n);
     }
 }
 
@@ -2001,16 +2105,20 @@ void Synth::filterLanes(int f, float* busL, float* busR, int n) {
             cv.a1 = recip4(one + g * (g + k));
             cv.a2 = g * cv.a1;
             cv.a3 = g * cv.a2;
+            cv.b1 = cv.a1 + cv.a1 - one;
+            cv.b2 = cv.a2 + cv.a2;
             fv.k = flat;
             fv.a1 = recip4(one + g * (g + flat));
             fv.a2 = g * fv.a1;
             fv.a3 = g * fv.a2;
+            fv.b1 = fv.a1 + fv.a1 - one;
+            fv.b2 = fv.a2 + fv.a2;
             DriveV dv;
             if (drive) {
                 pre += dpre;
                 post += dpost;
                 wet += dwet;
-                dv = DriveV{pre, post, wet};
+                dv = DriveV{pre, one - wet, wet * post};
             }
             const int len = std::min(kSubChunk, n - sc * kSubChunk), row = sc * kSubChunk * kMaxVoices;
             for (int ch = 0; ch < 2; ++ch) {
