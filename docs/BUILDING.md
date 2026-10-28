@@ -15,7 +15,7 @@
 
 ## Requirements
 
-PolyForce builds on Linux or WSL; it is developed on Ubuntu 24.04.
+PolyWerk builds on Linux or WSL; it is developed on Ubuntu 24.04.
 
 | Tool | Needed for |
 |---|---|
@@ -38,9 +38,9 @@ sudo apt install g++ g++-arm-linux-gnueabihf make python3 python3-pil qemu-user
 
 ```sh
 make test                      # the full suite under ASan/UBSan
-make arm-plugin                # build/arm/polyforce.so
+make arm-plugin                # build/arm/polywerk.so
 make skin preview              # the skin, and every page as surface/build/page_*.png
-make plugin-package            # dist/PolyForce-<version>-mpc-armv7.zip
+make plugin-package            # dist/PolyWerk-<version>-mpc-armv7.zip
 ```
 
 `surface/surface.py` is the single source of the parameter list and the touchscreen pages. Every
@@ -62,10 +62,10 @@ store values by index); `GEN_VST_RELOCK=1` accepts a deliberate break.
 | `test-tables` | Load, check and play every WAV under `$(WAVETABLES)`, with load time and memory |
 | `bench` | x86 bench: only proves the bench and the profiling build work |
 | `loudness` | Every factory preset's loudness (BS.1770) and peak, played through the plugin; flags peaks over −1 dBFS (`LOUDNESS_ARGS`: `-g <dB>` a level shift, `-c <category>`) |
-| `arm-plugin` | `build/arm/polyforce.so`; profile-guided when `qemu-arm` is installed |
-| `arm-bench-stages` | `build/arm/polyforce_stages.so`, the profiling build (never shipped) |
+| `arm-plugin` | `build/arm/polywerk.so`; profile-guided when `qemu-arm` is installed |
+| `arm-bench-stages` | `build/arm/polywerk_stages.so`, the profiling build (never shipped) |
 | `bench-device` | Run the CPU bench on a device (see [below](#benchmarking-on-the-device)) |
-| `plugin-package` | `dist/PolyForce-<version>-mpc-armv7.zip` with the installer |
+| `plugin-package` | `dist/PolyWerk-<version>-mpc-armv7.zip` with the installer |
 | `plugin-install` | Package, copy to the device and install (stops and restarts MPC) |
 | `clean` | Remove `build/` and `surface/build/` |
 
@@ -90,7 +90,7 @@ ignores it):
 ```make
 FORCE      = root@192.168.0.10
 SSH_KEY    = $(HOME)/.ssh/force
-PY         = $(HOME)/.venvs/polyforce/bin/python
+PY         = $(HOME)/.venvs/polywerk/bin/python
 WAVETABLES = $(HOME)/wavetables
 ```
 
@@ -152,7 +152,7 @@ Results and what they mean: [Performance](PERFORMANCE.md).
 make plugin-package
 ```
 
-Builds `dist/PolyForce-<version>-mpc-armv7.zip`: the plugin and its skin as one folder, the
+Builds `dist/PolyWerk-<version>-mpc-armv7.zip`: the plugin and its skin as one folder, the
 installer and uninstaller, a generated `INSTALL.md` and checksums. Shipped scripts run under
 BusyBox on the device, so the build refuses CRLF line endings in them.
 
@@ -192,11 +192,11 @@ To see what MPC sends when a control is touched, turned or tapped, create the fl
 runs (no restart):
 
 ```sh
-ssh root@<ip> touch /tmp/polyforce.trace
+ssh root@<ip> touch /tmp/polywerk.trace
 ```
 
-Within a second every PolyForce instance appends one line per `setParameter` to
-`/tmp/polyforce.log`: the time, the instance, the parameter, the value MPC sent, the value it had
+Within a second every PolyWerk instance appends one line per `setParameter` to
+`/tmp/polywerk.log`: the time, the instance, the parameter, the value MPC sent, the value it had
 read back before and the plugin's value and text after. Remove the flag file to stop. The log stops
 growing at 2 MB; `/tmp` is cleared when the device restarts.
 

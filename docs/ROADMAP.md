@@ -23,7 +23,7 @@ Status: ✅ done · 🔜 next · ⬜ planned · 💤 deferred
 - ✅ **Q-Links on track edit → automation** (2026-10-23, for 0.0.5): sd88me/mpc-vst-plugins found
   (2026-10-21, [#486](https://github.com/sd88me/mpc-vst-plugins/pull/486)–[#489](https://github.com/sd88me/mpc-vst-plugins/pull/489))
   that every `audioMasterUpdateDisplay` makes MPC rebuild its parameter screen, and that a Q-Link
-  turned on track edit → automation loses its value to it. PolyForce doesn't link their wrapper and
+  turned on track edit → automation loses its value to it. PolyWerk doesn't link their wrapper and
   never asked on a sound parameter's write; it now asks at most once per 50 ms (was every 4 blocks,
   ~12 ms), the status line's CPU figures through the same gate (they called MPC directly), and
   `surface/params.lock` stops the build when a parameter changes its index. Tested: 32 Q-Link
@@ -253,5 +253,5 @@ check (`test/review_test.cpp`, `m2`, `m5`). The larger ones:
 - 2026-10-04 — **Table roots: plugin folder and SSD** (`/media/AkaiForce/Wavetables`; an absent
   drive just means no tables from it).
 - 2026-10-04 — **Steal modes: Oldest, Quietest (released first), Keep low, Keep high.**
-- 2026-10-05 — **Own repository** for PolyForce, with its full history.
+- 2026-10-05 — **Own repository** for PolyWerk, with its full history.
 - Sample wavetables used for testing are third-party content: never committed, never packaged.

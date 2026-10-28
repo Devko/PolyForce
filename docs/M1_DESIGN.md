@@ -6,12 +6,12 @@
 
 Decisions behind it are in the [roadmap](ROADMAP.md#decisions): all browsing options (§6–7),
 tables from the plugin folder **and** the SSD, all four steal modes. The touchscreen
-mechanics (stepping, pushes to MPC, the tile bounce rule) come from RackForce, an earlier Force
+mechanics (stepping, pushes to MPC, the tile bounce rule) come from RackWerk, an earlier Force
 plugin, where they are proven on the device.
 
 What changed after this design:
 
-- **§1** The plugin folder comes from PolyForce's own `plugin/paths.cpp` (`/proc/self/maps`), not
+- **§1** The plugin folder comes from PolyWerk's own `plugin/paths.cpp` (`/proc/self/maps`), not
   the toolkit's wrapper header.
 - **§3** The loader has three slots (osc 1, osc 2, tuning); it also frees replaced tables while no
   block runs, and catches anything a load throws. MISSING shows in the status line for 5 s, then
@@ -21,7 +21,7 @@ What changed after this design:
 - **§6.2** `br_osc` became `br_target` with a third option, PRESETS: the same page browses presets
   (Milestone 7). Presets and tunings use the same library and loader code (`FileLibrary`,
   `Loader::SlotType`) with their own roots and favorites/recent files.
-- **§8** The state is now `polyforce 4` (real values, per-oscillator routes, tuning and preset
+- **§8** The state is now `polywerk 4` (real values, per-oscillator routes, tuning and preset
   keys); see `plugin/state.h`.
 
 Still to do on the device: step 7 (all 379 tables reachable, CPU, project reload) and the
@@ -77,7 +77,7 @@ New `plugin/library.{h,cpp}`. Built once per process on first use; the audio thr
 ## 3. Per-instance loader and the audio-thread handoff
 
 New `plugin/loader.{h,cpp}`, one per plugin instance, its own worker thread (started in
-`VSTPluginMain`, joined in `effClose`, like RackForce's worker). Two slots, one per oscillator.
+`VSTPluginMain`, joined in `effClose`, like RackWerk's worker). Two slots, one per oscillator.
 
 ```
 slot (per oscillator)
@@ -162,10 +162,10 @@ Later (Milestone 2): a ~3 ms fade before a stolen voice restarts.
   not automatable) and momentaries `o1_table_prev` / `o1_table_next`. Same for osc 2.
 - Text: `Analog / Jupiter 8 Saw` (`LOADING …` while it loads).
 - **Stepping = one table per event**, whatever MPC's delta (Q-Link detent 1/128, wheel click
-  0.01, touch drag ≈ 0.04, fast spins send 1–3 detents): RackForce's `stepItem()` rule.
+  0.01, touch drag ≈ 0.04, fast spins send 1–3 detents): RackWerk's `stepItem()` rule.
   `|n − ours| ≤ kQuant` (0.0015, MPC rounds to 1/1000) = our own value echoed back, ignore;
   otherwise move ±1 in the direction of travel, clamped to the flat list. Constants from
-  RackForce: `kQuant 0.0015`, `kGestureMs 300`, `kFirstMoveMax 0.16`.
+  RackWerk: `kQuant 0.0015`, `kGestureMs 300`, `kFirstMoveMax 0.16`.
 - Position knob display becomes `FRAME 37 / 256` (`dynamic_display`; frame count from the slot).
 
 ### 6.2 Browser page `TABLES` (option B)
@@ -184,13 +184,13 @@ Layout (1280 × 800 layout coordinates, plugin area y = 86..714):
   We set the loaded table's tile to 1 and the others to 0, and push changes ourselves.
 - Tap = load into the target oscillator (debounce still applies, 150 ms).
 - **Bounce rule:** MPC sends a second toggle ~0.7 s after a tap; ignore a revert within 1 s
-  (RackForce `toggleBounce`).
+  (RackWerk `toggleBounce`).
 - The browser follows the target oscillator: when its table changes (stepper, random, a project
   load), select that table's category and page.
 - Q-Links on this page: `o1_table, o2_table, o1_pos, o2_pos, f1_cut, f2_cut, …` so a knob scrolls
   and auditions while the page is open.
 
-### 6.3 Push mechanics (port of RackForce's `Surface::notify`)
+### 6.3 Push mechanics (port of RackWerk's `Surface::notify`)
 - Arrays `want_[NPARAMS]` (what MPC should show) / `shown_[NPARAMS]` (what it last saw),
   `release_[]` for momentaries (spring back to 0), `textGen_` bumped whenever any dynamic text
   changes.
@@ -219,7 +219,7 @@ Layout (1280 × 800 layout coordinates, plugin area y = 86..714):
 
 ## 8. State
 
-- Chunk (`polyforce 2`) gains `o1_table=<key>` and `o2_table=<key>`: string values, the only
+- Chunk (`polywerk 2`) gains `o1_table=<key>` and `o2_table=<key>`: string values, the only
   non-numeric lines; written from `wantKey`. Missing lines (older states) → `builtin:Classic`.
 - `steal=<index>` like any enum.
 - The `o1_table` param value (an index) is derived from the key after every library change,

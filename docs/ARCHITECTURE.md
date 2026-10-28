@@ -12,7 +12,7 @@
 
 ## Overview
 
-PolyForce is a single shared object, `polyforce.so`, that MPC loads through its VST2 host, plus a
+PolyWerk is a single shared object, `polywerk.so`, that MPC loads through its VST2 host, plus a
 touchscreen skin generated at build time.
 
 ```mermaid
@@ -20,7 +20,7 @@ flowchart LR
   S[surface/surface.py] -->|params, layout, C++ headers| P[plugin/ VST2 glue]
   S -->|params.json, layout.conf| G[skin generator] --> K[skin: TUI.json + PNGs]
   D[dsp/ engine] --> P
-  P --> SO[polyforce.so]
+  P --> SO[polywerk.so]
 ```
 
 - **`surface/surface.py`** is the single source of the parameter list and the touchscreen pages.
@@ -157,7 +157,7 @@ The full design: [Milestone 1 design](M1_DESIGN.md), §1–3.
   tap arrives as a 1 with no release in between: each 1 is a press, and the plugin springs the
   button back to 0 from the next block.
 - MPC sends a second toggle about 0.7 s after a tap on a tile; a revert within 1 s is ignored.
-- These mechanics were ported from RackForce, an earlier Force plugin. Details:
+- These mechanics were ported from RackWerk, an earlier Force plugin. Details:
   [Milestone 1 design](M1_DESIGN.md), §6. To see what MPC sends on a device, see
   [diagnostics](BUILDING.md#diagnostics-on-the-device).
 
@@ -166,7 +166,7 @@ The full design: [Milestone 1 design](M1_DESIGN.md), §1–3.
 - **Parameters** are free to change until v0.1, then **append-only**: MPC projects store values by
   index. `surface/params.lock` (sd88me's format) keeps a change deliberate already: a parameter
   that moves stops `surface.py`; `GEN_VST_RELOCK=1` accepts the break.
-- **Saved state** (projects and `.pfp` preset files) is the text format `polyforce 4`: `key=value`
+- **Saved state** (projects and `.pfp` preset files) is the text format `polywerk 4`: `key=value`
   lines of *real* values (Hz, seconds, dB…) plus the table, tuning and preset keys. Ranges can
   change without remapping saved projects. Versions 1–3 are still read.
 - **Limits:** `kMaxVoices` / `kMaxUnison` in `dsp/synth.h` must equal `MAX_VOICES` / `MAX_UNISON`

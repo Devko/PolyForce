@@ -1,6 +1,6 @@
 #pragma once
 // Where a block's time goes, for the profiling build only (-DPF_STAGE_TIMING: `make
-// arm-bench-stages`, read by tools/bench.cpp through PolyForceStageTimes). Synth::render laps
+// arm-bench-stages`, read by tools/bench.cpp through PolyWerkStageTimes). Synth::render laps
 // a clock between its passes, a few clock reads per chunk; in the normal build StageClock is
 // empty and lap() compiles to nothing.
 #include <cstdint>

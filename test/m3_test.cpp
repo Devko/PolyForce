@@ -239,9 +239,9 @@ void surfaceTexts() {
     h.setN(pf::P_O1_WAVE, 0.0f);   // a tap on "Table"
     CHECK(h.get(pf::P_O1_WAVE__OPEN) == 0.0f && h.display(pf::P_O1_WAVE) == "Table");
     // Version 3 states: Parallel meant osc 2 -> F2.
-    CHECK(h.load("polyforce 3\nrouting=1\n") == 1);
+    CHECK(h.load("polywerk 3\nrouting=1\n") == 1);
     CHECK(h.display(pf::P_O2_ROUTE) == "F2" && h.display(pf::P_O1_ROUTE) == "F1");
-    CHECK(h.load("polyforce 4\nrouting=1\no2_route=0\n") == 1);
+    CHECK(h.load("polywerk 4\nrouting=1\no2_route=0\n") == 1);
     CHECK(h.display(pf::P_O2_ROUTE) == "F1");
     // Everything at once stays finite.
     h.set(pf::P_O1_UNI, 8);

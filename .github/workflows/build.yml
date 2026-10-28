@@ -52,10 +52,10 @@ jobs:
       - name: Catalog check
         run: >-
           python3 third_party/mpc-vst-plugins/tools/catalog_check.py dist/*-mpc-armv7.zip
-          --catalog --expect-id polyforce --expect-repo Devko/PolyForce
+          --catalog --expect-id polywerk --expect-repo Devko/PolyWerk
       - uses: actions/upload-artifact@v4
         with:
-          name: PolyForce-mpc-armv7
+          name: PolyWerk-mpc-armv7
           path: dist/*-mpc-armv7.zip
           if-no-files-found: error
       - name: Release

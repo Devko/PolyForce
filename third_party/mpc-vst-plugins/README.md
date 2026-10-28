@@ -18,9 +18,9 @@ What we use it for (we do NOT link their `vst2_wrap.c` / `engine.h` wrapper — 
 Do not edit files here beyond the marked patches; patch around them so an upgrade stays a plain
 re-copy.
 
-## Local patches (PolyForce)
+## Local patches (PolyWerk)
 
-`tools/shadow_skin.py` carries five small, marked (`PolyForce local patch`) changes:
+`tools/shadow_skin.py` carries five small, marked (`PolyWerk local patch`) changes:
 1. `theme_title=` / `title_size=`: frame title colour and size (were fixed ACCENT_HI / 26 px).
 2. Popup list options are drawn with the real title font (`SHADOW_TITLE_FONT`) like enum
    segments, instead of the 9x9 bitmap font.
@@ -28,6 +28,6 @@ re-copy.
 4. `slider_v`/`slider_h` accept `cw=` (component width), so a tight row of sliders doesn't
    overlap hit areas and value labels.
 5. A `meter` without `strip=` builds with the C renderer: its strip is drawn as a vertical
-   slider's (`sh_meter_<w>x<h>.png`) for a post-step to redraw (PolyForce's wave view:
+   slider's (`sh_meter_<w>x<h>.png`) for a post-step to redraw (PolyWerk's wave view:
    `surface/skin_polish.py`). With the browser renderer a meter still needs `strip=`.
 Re-apply them after re-copying upstream.

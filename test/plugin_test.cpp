@@ -282,19 +282,19 @@ void testChunk() {
     const std::string text(static_cast<const char*>(data));   // real values, not knob positions
     CHECK(text.find("o2_uni=7\n") != std::string::npos);
     CHECK(text.find("f1_cut=333\n") != std::string::npos);
-    const char junk[] = "not a polyforce state";
+    const char junk[] = "not a polywerk state";
     CHECK(b.e->dispatcher(b.e, vst::effSetChunk, 0, sizeof junk, const_cast<char*>(junk), 0.0f) == 0);
 
     auto load = [&b](const std::string& s) {
         return b.e->dispatcher(b.e, vst::effSetChunk, 0, static_cast<intptr_t>(s.size()), const_cast<char*>(s.data()), 0.0f);
     };
     // a project saved when unison went to 16 comes back at the new ceiling, not remapped
-    CHECK(load("polyforce 2\no1_uni=16\nf2_cut=-5\nvolume=nan\n") == 1);
+    CHECK(load("polywerk 2\no1_uni=16\nf2_cut=-5\nvolume=nan\n") == 1);
     CHECK(b.display(pf::P_O1_UNI) == std::to_string(pf::kMaxUnison));
     CHECK(b.display(pf::P_F2_CUT) == "20 Hz");
     CHECK(b.display(pf::P_VOLUME) == "-6.0 dB");   // garbage ignored, the value kept
     // version 1 (0..1 values) still loads
-    CHECK(load("polyforce 1\no2_uni=0\nf1_res=1\n") == 1);
+    CHECK(load("polywerk 1\no2_uni=0\nf1_res=1\n") == 1);
     CHECK(b.display(pf::P_O2_UNI) == "1");
     CHECK(b.display(pf::P_F1_RES) == "100%");
 }

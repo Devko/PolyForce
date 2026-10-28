@@ -1,19 +1,21 @@
-# PolyForce
+# PolyWerk
 
 **A polyphonic wavetable synthesizer that runs natively inside MPC on the Akai Force.**
 
-PolyForce is a VST2 instrument for MPC OS's built-in plugin host, with its own touchscreen pages
+*Formerly PolyForce.* <!-- werk-rename: keep -->
+
+PolyWerk is a VST2 instrument for MPC OS's built-in plugin host, with its own touchscreen pages
 and Q-Link sets. Its feature set tips its hat to a certain *buzzing* desktop wavetable synth 🐝,
 squeezed into the CPU budget of a standalone groovebox. The name, DSP, wavetables and presets are
-all PolyForce's own.
+all PolyWerk's own.
 
-![PolyForce's WAVES page on an Akai Force: both oscillators' current frames as bars, with their table, position and level](docs/img/waves.png)
+![PolyWerk's WAVES page on an Akai Force: both oscillators' current frames as bars, with their table, position and level](docs/img/waves.png)
 
 > [!NOTE]
 > **Preview.** Milestones 1–7 are complete and pass the full test suite on x86 and under ARM
 > emulation. It runs on an Akai Force (MPC OS 3.x): the pages, browser and buttons have been
 > checked on the device, a full on-device test round is still to come. The plugin ID (`PlFc`) and
-> the file name (`polyforce.so`) stay; the parameter list may still change before v0.1.
+> the file name (`polywerk.so`) stay; the parameter list may still change before v0.1.
 
 ## Highlights
 
@@ -54,19 +56,19 @@ Effects are deliberately left out: use MPC's insert effects on the track.
 
 ## Installation
 
-Use a release package (`PolyForce-<version>-mpc-armv7.zip`, built by CI: every run of the
+Use a release package (`PolyWerk-<version>-mpc-armv7.zip`, built by CI: every run of the
 [build workflow](.github/workflows/build.yml) keeps one), or build one with `make plugin-package`
 (see [Building](docs/BUILDING.md)). Unzip it and follow the `INSTALL.md`
 inside. In short:
 
 ```sh
-scp -r PolyForce-<version> root@<device-ip>:/tmp/
-ssh root@<device-ip> sh /tmp/PolyForce-<version>/install.sh
+scp -r PolyWerk-<version> root@<device-ip>:/tmp/
+ssh root@<device-ip> sh /tmp/PolyWerk-<version>/install.sh
 ```
 
 The installer **stops MPC** (save your project first), copies the plugin into `/sdcard/Synths`,
 backs up and edits `MPC.settings`, and starts MPC again. Running it again upgrades in place and
-keeps your own wavetables, presets, tunings and favorites. Then add **PolyForce** to a track from
+keeps your own wavetables, presets, tunings and favorites. Then add **PolyWerk** to a track from
 MPC's instrument plugins.
 
 ## Building from source
@@ -75,8 +77,8 @@ On Linux or WSL (developed on Ubuntu 24.04):
 
 ```sh
 make test            # the full test suite under ASan/UBSan
-make arm-plugin      # build/arm/polyforce.so for the device
-make plugin-package  # dist/PolyForce-<version>-mpc-armv7.zip
+make arm-plugin      # build/arm/polywerk.so for the device
+make plugin-package  # dist/PolyWerk-<version>-mpc-armv7.zip
 ```
 
 Toolchain, every make target and the on-device bench are described in
@@ -106,7 +108,7 @@ Details in the [roadmap](docs/ROADMAP.md).
 
 ## License
 
-PolyForce is released under the [MIT License](LICENSE). Third-party components keep their own
+PolyWerk is released under the [MIT License](LICENSE). Third-party components keep their own
 licenses (below).
 
 ## Credits
@@ -117,6 +119,6 @@ licenses (below).
 - Interface font: [Titillium Web](https://fonts.google.com/specimen/Titillium+Web), SIL Open
   Font License 1.1 (`surface/fonts/OFL.txt`).
 
-PolyForce is an independent project, not affiliated with or endorsed by Akai Professional /
+PolyWerk is an independent project, not affiliated with or endorsed by Akai Professional /
 inMusic or Steinberg. Akai, Force and MPC are trademarks of inMusic Brands; VST is a trademark of
 Steinberg Media Technologies GmbH.

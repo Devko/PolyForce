@@ -1,10 +1,10 @@
 #pragma once
 // Presets and tunings as files, next to the wavetable library (plugin/library.h).
 //
-//   Presets   *.pfp under <plugin dir>/Presets and /media/AkaiForce/PolyForce Presets
+//   Presets   *.pfp under <plugin dir>/Presets and /media/AkaiForce/PolyWerk Presets
 //             (PF_PRESET_ROOTS), plus the factory set built in (presets/Factory/<category>/,
 //             embedded at build time: one category per folder, keys "builtin:<name>"). A
-//             preset file is the plugin's own state text ("polyforce 4" + key=value lines),
+//             preset file is the plugin's own state text ("polywerk 4" + key=value lines),
 //             so a preset and a project restore the same way. Saving writes
 //             <first root>/User/User NNN.pfp: there is no text entry on the device, so names
 //             are numbered.

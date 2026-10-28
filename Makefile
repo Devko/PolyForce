@@ -1,4 +1,4 @@
-# PolyForce: wavetable synth as a VST2 instrument for MPC OS (Force / MPC standalone).
+# PolyWerk: wavetable synth as a VST2 instrument for MPC OS (Force / MPC standalone).
 # Builds on Linux or WSL. Native: g++ (tests, x86 bench). Device: arm-linux-gnueabihf-g++ 11 or newer
 # (libstdc++ is linked dynamically; MPC OS has it). Releases come from CI, built against glibc 2.31 so
 # they load on MPC OS 2.x and 3.x; a newer distribution's cross toolchain needs a newer glibc (3.x only).
@@ -33,7 +33,7 @@ SSH      := ssh -n $(SSH_OPTS)
 MV       := third_party/mpc-vst-plugins
 SURF     := surface
 SURF_OUT := $(SURF)/build
-SKIN_DIR := $(SURF_OUT)/skin/Devko - VST - PolyForce
+SKIN_DIR := $(SURF_OUT)/skin/Devko - VST - PolyWerk
 GEN      := $(SURF_OUT)/param_ids.h $(SURF_OUT)/factory_presets.h
 SKIN     := $(SURF_OUT)/skin.stamp
 
@@ -47,15 +47,15 @@ INC      := -I$(SURF_OUT) -Iplugin
 # stores on purpose; GCC would turn those loops back into (much slower) memset calls.
 ARM_OPT  := -O3 -march=armv7-a -mtune=cortex-a17 -mfpu=neon-vfpv4 -mfloat-abi=hard \
             -funsafe-math-optimizations -fno-math-errno -fno-tree-loop-distribute-patterns
-ARM_SO   := $(BUILD)/arm/polyforce.so
-ARM_SO_STAGES := $(BUILD)/arm/polyforce_stages.so
+ARM_SO   := $(BUILD)/arm/polywerk.so
+ARM_SO_STAGES := $(BUILD)/arm/polywerk_stages.so
 ARM_BENCH := $(BUILD)/arm/pfbench
 
 .PHONY: all surface skin test test-arm test-arm-pgo test-tables bench loudness arm-plugin arm-bench arm-bench-stages bench-device preview plugin-package plugin-install clean FORCE
 # A recipe that fails leaves no half-written target behind for the next make to trust.
 .DELETE_ON_ERROR:
 # The stage-timing build too: a -DPF_STAGE_TIMING break shows here, not at bench time.
-all: test arm-plugin $(BUILD)/polyforce_stages.so
+all: test arm-plugin $(BUILD)/polywerk_stages.so
 
 # --- generated --------------------------------------------------------------------------------
 # surface.py: params.json, layout.conf, vst.json and build/param_ids.h (the C++ side). Needs only
@@ -116,14 +116,14 @@ $(BUILD)/tables_sweep: test/tables_sweep.cpp $(wildcard dsp/*.cpp) $(HDR) | $(BU
 
 # x86 numbers say nothing about the Force; this only checks the bench and the .so paths work
 # (the plain plugin, then the stage-timing build).
-bench: $(BUILD)/polyforce.so $(BUILD)/polyforce_stages.so $(BUILD)/pfbench
-	$(BUILD)/pfbench $(BUILD)/polyforce.so -s 1 -c -1
-	$(BUILD)/pfbench $(BUILD)/polyforce_stages.so -v 8 -u 1,8 -s 1 -c -1
+bench: $(BUILD)/polywerk.so $(BUILD)/polywerk_stages.so $(BUILD)/pfbench
+	$(BUILD)/pfbench $(BUILD)/polywerk.so -s 1 -c -1
+	$(BUILD)/pfbench $(BUILD)/polywerk_stages.so -v 8 -u 1,8 -s 1 -c -1
 
 X86_SO_CMD = $(CXX) -std=c++17 -O3 -fno-tree-loop-distribute-patterns -fPIC -fvisibility=hidden -Wall -Wextra -pthread $(INC) -shared -Wl,--no-undefined
-$(BUILD)/polyforce.so: $(SRC) $(HDR) $(GEN) | $(BUILD)
+$(BUILD)/polywerk.so: $(SRC) $(HDR) $(GEN) | $(BUILD)
 	$(X86_SO_CMD) $(SRC) -o $@
-$(BUILD)/polyforce_stages.so: $(SRC) $(HDR) $(GEN) | $(BUILD)
+$(BUILD)/polywerk_stages.so: $(SRC) $(HDR) $(GEN) | $(BUILD)
 	$(X86_SO_CMD) -DPF_STAGE_TIMING $(SRC) -o $@
 
 $(BUILD)/pfbench: tools/bench.cpp dsp/wavetable.cpp $(HDR) $(GEN) | $(BUILD)
@@ -132,8 +132,8 @@ $(BUILD)/pfbench: tools/bench.cpp dsp/wavetable.cpp $(HDR) $(GEN) | $(BUILD)
 # The factory presets' levels: each played through the plugin, loudness (BS.1770) and peak. The
 # sound is the same on x86 (the tests hold the ARM build to it), so this runs natively.
 # LOUDNESS_ARGS: -g <dB> shows them as if every preset were that much louder; -c <category>.
-loudness: $(BUILD)/polyforce.so $(BUILD)/pfloud
-	$(BUILD)/pfloud $(BUILD)/polyforce.so $(LOUDNESS_ARGS)
+loudness: $(BUILD)/polywerk.so $(BUILD)/pfloud
+	$(BUILD)/pfloud $(BUILD)/polywerk.so $(LOUDNESS_ARGS)
 
 $(BUILD)/pfloud: tools/loudness.cpp $(HDR) $(GEN) | $(BUILD)
 	$(CXX) -std=c++17 -O2 -Wall -Wextra $(INC) $< -ldl -o $@
@@ -142,7 +142,7 @@ $(BUILD)/pfloud: tools/loudness.cpp $(HDR) $(GEN) | $(BUILD)
 # The .so MPC loads: only VSTPluginMain exported; --no-undefined because an unresolved symbol
 # otherwise only shows up as MPC crashing on load.
 ARM_SO_FLAGS = -std=c++17 $(ARM_OPT) -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -Wall -Wextra -Wno-psabi -pthread $(INC)
-ARM_SO_LINK  = -shared -Wl,--no-undefined -Wl,-soname,polyforce.so
+ARM_SO_LINK  = -shared -Wl,--no-undefined -Wl,-soname,polywerk.so
 ARM_SO_CMD   = $(ARM_CXX) $(ARM_SO_FLAGS) $(ARM_SO_LINK)
 
 # Profile-guided: on by default when ARM programs can run here (qemu-arm installed, as test-arm
@@ -203,7 +203,7 @@ else
 endif
 
 # The profiling build: the same plugin with timers between the render passes (dsp/stages.h)
-# and one more export, PolyForceStageTimes, which pfbench reads. Never shipped.
+# and one more export, PolyWerkStageTimes, which pfbench reads. Never shipped.
 arm-bench-stages: $(ARM_SO_STAGES) $(ARM_BENCH)
 $(ARM_SO_STAGES): $(SRC) $(HDR) $(GEN)
 	mkdir -p $(BUILD)/arm
@@ -233,10 +233,10 @@ bench-device: $(ARM_SO) $(ARM_SO_STAGES) $(ARM_BENCH)
 	@if [ -n "$(TABLE)" ]; then scp -q $(SSH_OPTS) "$(TABLE)" $(FORCE):/tmp/pf_table.wav; \
 	 else echo "no table of 2 MB or more under WAVETABLES=$(WAVETABLES): the large-table run is skipped"; fi
 	$(SSH) $(FORCE) 'r=0; T=; [ -f /tmp/pf_table.wav ] && T="-t /tmp/pf_table.wav"; \
-		/tmp/pfbench /tmp/polyforce.so $(BENCH_ARGS) -c 1 || r=1; \
-		/tmp/pfbench /tmp/polyforce.so $(BENCH_MATRIX_ARGS) -c 1 || r=1; \
-		/tmp/pfbench /tmp/polyforce_stages.so $(BENCH_STAGE_ARGS) -c 1 $$T || r=1; \
-		rm -f /tmp/pfbench /tmp/polyforce.so /tmp/polyforce_stages.so /tmp/pf_table.wav; exit $$r'
+		/tmp/pfbench /tmp/polywerk.so $(BENCH_ARGS) -c 1 || r=1; \
+		/tmp/pfbench /tmp/polywerk.so $(BENCH_MATRIX_ARGS) -c 1 || r=1; \
+		/tmp/pfbench /tmp/polywerk_stages.so $(BENCH_STAGE_ARGS) -c 1 $$T || r=1; \
+		rm -f /tmp/pfbench /tmp/polywerk.so /tmp/polywerk_stages.so /tmp/pf_table.wav; exit $$r'
 
 # Release zip: plugin + skin + sd88me's installer (stops MPC, backs up and edits
 # MPC.settings, restarts MPC).
@@ -245,8 +245,8 @@ plugin-package: $(ARM_SO) $(SKIN)
 	@# Everything shipped runs under BusyBox on the device: a CR in a script breaks it there.
 	@! grep -l "$$(printf '\r')" $(MV)/tools/release/* || { echo "error: CRLF in a shipped script"; exit 1; }
 	$(PY) $(MV)/tools/release.py --so $(ARM_SO) --skin "$(SKIN_DIR)" --entry $(SURF_OUT)/pluginlist-entry.xml \
-		--version $(PLUGIN_VERSION) --repo Devko/PolyForce --license MIT \
-		--about "PolyForce wavetable synth (preview): 8 voices, 2 wavetable oscillators with 8x unison and subs, 30 built-in wavetables, 2 filters with comb and vowel, 2 LFOs, a 12-slot mod matrix, arpeggiator and sequencers, 205 presets, microtuning." \
+		--version $(PLUGIN_VERSION) --repo Devko/PolyWerk --license MIT \
+		--about "PolyWerk wavetable synth (preview): 8 voices, 2 wavetable oscillators with 8x unison and subs, 30 built-in wavetables, 2 filters with comb and vowel, 2 LFOs, a 12-slot mod matrix, arpeggiator and sequencers, 205 presets, microtuning." \
 		--requires "root SSH (MockbaMod)" \
 		--user-data Wavetables --user-data Presets --user-data Tunings \
 		--user-data favorites.txt --user-data recent.txt --user-data preset_favorites.txt --user-data preset_recent.txt \
@@ -257,9 +257,9 @@ plugin-package: $(ARM_SO) $(SKIN)
 PKG_TMP := /tmp/pfpkg
 plugin-install: plugin-package
 	rm -rf $(PKG_TMP) && mkdir -p $(PKG_TMP)
-	python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' dist/PolyForce-$(PLUGIN_VERSION)-mpc-armv7.zip $(PKG_TMP)
-	tar -C $(PKG_TMP) -cf - PolyForce-$(PLUGIN_VERSION) | ssh $(SSH_OPTS) $(FORCE) 'rm -rf /tmp/PolyForce-$(PLUGIN_VERSION) && tar -C /tmp -xf -'
-	$(SSH) $(FORCE) 'sh /tmp/PolyForce-$(PLUGIN_VERSION)/install.sh -y'
+	python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' dist/PolyWerk-$(PLUGIN_VERSION)-mpc-armv7.zip $(PKG_TMP)
+	tar -C $(PKG_TMP) -cf - PolyWerk-$(PLUGIN_VERSION) | ssh $(SSH_OPTS) $(FORCE) 'rm -rf /tmp/PolyWerk-$(PLUGIN_VERSION) && tar -C /tmp -xf -'
+	$(SSH) $(FORCE) 'sh /tmp/PolyWerk-$(PLUGIN_VERSION)/install.sh -y'
 
 $(BUILD):
 	mkdir -p $(BUILD)

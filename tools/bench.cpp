@@ -15,7 +15,7 @@
 // count with an LFO sweeping both positions, first on the built-in Classic table (fits the
 // cache), then on that table (several MB): if the oscillators wait on memory, the second
 // takes clearly longer.
-// A profiling build of the plugin (make arm-bench-stages: polyforce_stages.so) also reports
+// A profiling build of the plugin (make arm-bench-stages: polywerk_stages.so) also reports
 // where each case's time goes, per render pass.
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -172,7 +172,7 @@ int main(int argc, char** argv) {
     using Main = AEffect* (*)(audioMasterCallback);
     auto entry = reinterpret_cast<Main>(dlsym(so, "VSTPluginMain"));
     using StageFn = int (*)(double*, const char**, int);
-    const auto stages = reinterpret_cast<StageFn>(dlsym(so, "PolyForceStageTimes"));   // profiling build only
+    const auto stages = reinterpret_cast<StageFn>(dlsym(so, "PolyWerkStageTimes"));   // profiling build only
     if (!entry) {
         std::fprintf(stderr, "no VSTPluginMain\n");
         return 1;

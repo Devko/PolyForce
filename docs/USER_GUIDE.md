@@ -1,4 +1,4 @@
-# PolyForce user guide
+# PolyWerk user guide
 
 - [The screen](#the-screen)
 - [Sound engine](#sound-engine)
@@ -13,7 +13,7 @@
 
 ## The screen
 
-PolyForce has seven tabs in MPC's tab strip. A tab with several pages shows dots under its name:
+PolyWerk has seven tabs in MPC's tab strip. A tab with several pages shows dots under its name:
 tap the tab again for the next page. The strip shows the name of the page that is up. Every page
 starts with the [status line](#status-line).
 
@@ -167,7 +167,7 @@ frames. A table is normalised as a whole, so level changes across its frames are
 
 | Root | Path |
 |---|---|
-| Plugin folder | `/sdcard/Synths/Devko - VST - PolyForce/Wavetables` |
+| Plugin folder | `/sdcard/Synths/Devko - VST - PolyWerk/Wavetables` |
 | SSD | `/media/AkaiForce/Wavetables` (skipped when no drive is mounted) |
 
 - The first folder level is the **category**; files directly in a root go to *Unsorted*. Same-named
@@ -208,7 +208,7 @@ project and the table comes back once the file does.
 - Browse them with the **PRESET** stepper on the VOICE tab, or on BROWSE → PRESETS (categories,
   favorites, recent, random).
 
-Preset roots: `Presets` in the plugin folder and `/media/AkaiForce/PolyForce Presets` on the SSD;
+Preset roots: `Presets` in the plugin folder and `/media/AkaiForce/PolyWerk Presets` on the SSD;
 categories work as for wavetables. A folder of your own named like a factory category lists next to
 it as "Bass (files)" and so on.
 
@@ -224,13 +224,13 @@ saved with the project and with presets.
 
 ## Files on the device
 
-The plugin folder is `/sdcard/Synths/Devko - VST - PolyForce`. Where a kind of file has two roots,
-the first is where PolyForce saves.
+The plugin folder is `/sdcard/Synths/Devko - VST - PolyWerk`. Where a kind of file has two roots,
+the first is where PolyWerk saves.
 
 | What | Where |
 |---|---|
 | Wavetables `*.wav` | `<plugin folder>/Wavetables`, `/media/AkaiForce/Wavetables` |
-| Presets `*.pfp` | `<plugin folder>/Presets` (saved presets go to `User/`), `/media/AkaiForce/PolyForce Presets` |
+| Presets `*.pfp` | `<plugin folder>/Presets` (saved presets go to `User/`), `/media/AkaiForce/PolyWerk Presets` |
 | Tunings `*.tun`, `*.scl` | `<plugin folder>/Tunings`, `/media/AkaiForce/Tunings` |
 | Favorites and recent lists | `<plugin folder>/*.txt` |
 
@@ -248,7 +248,7 @@ The installer keeps all of these when you upgrade or reinstall.
 | `OSC 1 MISSING <table>` | The file wasn't found; *Classic* plays instead (shown for 5 s, then in the stepper) |
 | `TUNING LOADING` / `TUNING MISSING` | The same for tuning files |
 
-**CPU guard:** when an instance runs over budget, PolyForce fades out the quietest voices that are
+**CPU guard:** when an instance runs over budget, PolyWerk fades out the quietest voices that are
 only ringing out (release tails). Held and sustained notes are never touched. Details in
 [Performance](PERFORMANCE.md#cpu-guard).
 

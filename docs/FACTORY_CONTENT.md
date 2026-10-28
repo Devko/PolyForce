@@ -1,7 +1,7 @@
 # Factory content
 
-PolyForce ships with 30 built-in wavetables and 205 factory presets. Everything is computed or
-written for PolyForce: no sample data, nothing that depends on files on the device.
+PolyWerk ships with 30 built-in wavetables and 205 factory presets. Everything is computed or
+written for PolyWerk: no sample data, nothing that depends on files on the device.
 
 - [Built-in wavetables](#built-in-wavetables)
 - [Factory presets](#factory-presets)

@@ -17,7 +17,7 @@ uint64_t g_stageNs[STG_COUNT] = {};
 namespace {
 
 constexpr float kPi = 3.14159265f;
-// -6 dB per voice. It was -12 dB, so a 4-note chord at full level couldn't clip, and on the Force PolyForce
+// -6 dB per voice. It was -12 dB, so a 4-note chord at full level couldn't clip, and on the Force PolyWerk
 // was clearly quieter than MPC's own instruments.
 // Presets that would peak over -1 dBFS turn their own volume down: `make loudness`.
 constexpr float kHeadroom = 0.5f;

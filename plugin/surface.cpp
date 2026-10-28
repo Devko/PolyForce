@@ -115,7 +115,7 @@ void Surface::set(int i, float n) {
     if (k == Kind::Button) {
         // A tap toggles the value MPC last read back, and a button always reads back 0 (it springs
         // back), so every tap arrives as a 1 with no release before the next: each 1 is a press.
-        // (Waiting for a release, as RackForce's rising-edge rule did, left a button dead after its
+        // (Waiting for a release, as RackWerk's rising-edge rule did, left a button dead after its
         // first press on the Force.) A 0, a release or our own spring-back, does nothing.
         if (n > 0.5f) {
             release_[i] = true;

@@ -1,5 +1,5 @@
 #pragma once
-// The PolyForce voice engine: 8 voices, each 2 wavetable oscillators (up to 8-voice
+// The PolyWerk voice engine: 8 voices, each 2 wavetable oscillators (up to 8-voice
 // unison, stereo spread) -> 2 multimode filters (serial or parallel) -> amp envelope.
 // Envelope 2 modulates filter cutoff and wavetable position.
 //

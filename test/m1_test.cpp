@@ -276,18 +276,18 @@ void steppingTests() {
         const std::string dir = fixtureDir() + "/trace";
         fs::create_directories(dir);
         setenv("PF_TRACE_DIR", dir.c_str(), 1);
-        std::ofstream(dir + "/polyforce.trace").put('\n');
+        std::ofstream(dir + "/polywerk.trace").put('\n');
         std::this_thread::sleep_for(std::chrono::milliseconds(1100));
         Host t;
         t.press(pf::P_TBL_NEXT);
         t.setN(pf::P_ROUTING, 1.0f);
         auto logged = [&] {
-            std::ifstream in(dir + "/polyforce.log");
+            std::ifstream in(dir + "/polywerk.log");
             return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
         };
         const std::string on = logged();
         CHECK(on.find(" tbl_next ") != std::string::npos && on.find("\"Parallel\"") != std::string::npos);
-        fs::remove(dir + "/polyforce.trace");
+        fs::remove(dir + "/polywerk.trace");
         std::this_thread::sleep_for(std::chrono::milliseconds(1100));
         t.press(pf::P_TBL_PREV);
         CHECK(logged() == on);
@@ -313,7 +313,7 @@ void loaderTests() {
         CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Built-in / Classic"; }));
 
         // A file table by state: loads off the audio thread, shows its frame count.
-        CHECK(h.load("polyforce 3\no1_table=" + saw + "\n") == 1);
+        CHECK(h.load("polywerk 3\no1_table=" + saw + "\n") == 1);
         CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Analog / Saw"; }));
         CHECK(h.display(pf::P_O1_POS) == "FRAME 6 / 8");
         CHECK(h.chunk().find("o1_table=" + saw + "\n") != std::string::npos);
@@ -323,16 +323,16 @@ void loaderTests() {
         CHECK(h.log.updates > 0);   // the new texts were announced
 
         // Missing and broken files: the fallback plays, the reference is kept.
-        CHECK(h.load("polyforce 3\no1_table=" + saw + "\no2_table=plugin:Analog/Gone.wav\n") == 1);
+        CHECK(h.load("polywerk 3\no1_table=" + saw + "\no2_table=plugin:Analog/Gone.wav\n") == 1);
         CHECK(h.until([&] { return h.display(pf::P_O2_TABLE) == "MISSING Gone"; }));
         CHECK(h.display(pf::P_STATUS) == "OSC 2 MISSING Gone");
         CHECK(h.chunk().find("o2_table=plugin:Analog/Gone.wav\n") != std::string::npos);
         h.on(64);
         CHECK(h.run(10) > 1e-3f);
-        CHECK(h.load("polyforce 3\no2_table=plugin:broken.wav\n") == 1);
+        CHECK(h.load("polywerk 3\no2_table=plugin:broken.wav\n") == 1);
         CHECK(h.until([&] { return h.display(pf::P_O2_TABLE) == "MISSING Unsorted / broken"; }));
         // Older states: version 2 picked a built-in by index.
-        CHECK(h.load("polyforce 2\no1_wave=2\no2_wave=3\n") == 1);
+        CHECK(h.load("polywerk 2\no1_wave=2\no2_wave=3\n") == 1);
         CHECK(h.until([&] {
             return h.display(pf::P_O1_TABLE) == "Built-in / Sync" && h.display(pf::P_O2_TABLE) == "Built-in / Formant";
         }));
@@ -340,7 +340,7 @@ void loaderTests() {
     // A project reload in a fresh instance restores both tables.
     {
         Host a;
-        CHECK(a.load("polyforce 3\no1_table=" + saw + "\no2_table=ssd:Analog/ESW Analog - Pulse.wav\n") == 1);
+        CHECK(a.load("polywerk 3\no1_table=" + saw + "\no2_table=ssd:Analog/ESW Analog - Pulse.wav\n") == 1);
         CHECK(a.until([&] { return a.display(pf::P_O2_TABLE) == "Analog / Pulse"; }));
         const std::string state = a.chunk();
         Host b;
@@ -355,7 +355,7 @@ void loaderTests() {
     {
         Host h;
         const std::string from = pf::builtinName(pf::builtinCount() - 4);
-        CHECK(h.load("polyforce 4\no1_table=builtin:" + from + "\n") == 1);
+        CHECK(h.load("polywerk 4\no1_table=builtin:" + from + "\n") == 1);
         CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Built-in / " + from; }));
         const auto before = pf::tableLibrary().recent();
         // A Q-Link spin: MPC sends its own running value + 1/128 per detent, 10 detents.
@@ -394,7 +394,7 @@ void loaderTests() {
                                     "plugin:Digital/Deep/Nested.wav"};
         const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(1500);
         for (int i = 0; std::chrono::steady_clock::now() < end; ++i) {
-            h.load("polyforce 3\no1_table=" + keys[i % 4] + "\no2_table=" + keys[(i + 1) % 4] + "\n");
+            h.load("polywerk 3\no1_table=" + keys[i % 4] + "\no2_table=" + keys[(i + 1) % 4] + "\n");
             std::this_thread::sleep_for(std::chrono::milliseconds(15));
         }
         stop = true;
@@ -427,7 +427,7 @@ void browserTests() {
 
     // A table loaded from elsewhere: the browser follows it to its category, its tile lit,
     // and MPC hears about the lit tile through audioMasterAutomate.
-    CHECK(h.load("polyforce 3\no1_table=" + saw + "\n") == 1);
+    CHECK(h.load("polywerk 3\no1_table=" + saw + "\n") == 1);
     CHECK(h.get(pf::P_TBL_2) == 1.0f);   // lit at once (before the table has even loaded)
     CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Analog / Saw"; }));
     CHECK(h.get(catTile("ANALOG")) == 1.0f);
@@ -476,7 +476,7 @@ void browserTests() {
     // Copy and swap between the oscillators.
     h.press(pf::P_COPY);
     CHECK(h.until([&] { return h.display(pf::P_O2_TABLE) == h.display(pf::P_O1_TABLE); }));
-    CHECK(h.load("polyforce 3\no1_table=" + saw + "\no2_table=builtin:Sync\n") == 1);
+    CHECK(h.load("polywerk 3\no1_table=" + saw + "\no2_table=builtin:Sync\n") == 1);
     CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Analog / Saw"; }));
     h.press(pf::P_SWAP);
     CHECK(h.until([&] {
@@ -536,7 +536,7 @@ void waveViewTests() {
         h.run(4);
         std::vector<float> before(pf::kWaveCols);
         for (int c = 0; c < pf::kWaveCols; ++c) before[static_cast<size_t>(c)] = col(h, 0, c);
-        CHECK(h.load("polyforce 4\no1_table=builtin:Sync\n") == 1);
+        CHECK(h.load("polywerk 4\no1_table=builtin:Sync\n") == 1);
         CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Built-in / Sync"; }));
         h.run(16);   // the next look at the view
         int moved = 0;

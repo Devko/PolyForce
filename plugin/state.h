@@ -1,7 +1,7 @@
 #pragma once
 // The plugin's state text, shared by projects (effGetChunk / effSetChunk) and preset files.
 //
-// "polyforce 4": key=value lines of REAL values (Hz, seconds, voice counts, option index) for
+// "polywerk 4": key=value lines of REAL values (Hz, seconds, voice counts, option index) for
 // every sound parameter, plus the tables and the tuning by key (and, in a project, the preset
 // it came from). Survives parameters being added or reordered AND ranges changing (a 0..1
 // value would silently move: unison 4 of 1..16 reads back as 2 of 1..8). Version 1 stored 0..1
@@ -16,9 +16,9 @@ namespace pf {
 constexpr int kStateVersion = 4;
 
 std::string saveState(const Surface& s, bool asPreset);
-bool isStateText(const std::string& text);   // "polyforce <version >= 1>" (a UTF-8 BOM allowed)
+bool isStateText(const std::string& text);   // "polywerk <version >= 1>" (a UTF-8 BOM allowed)
 // A preset starts from the defaults (what it doesn't say is the default); a project's state
-// only overrides what it lists. False if it isn't PolyForce state.
+// only overrides what it lists. False if it isn't PolyWerk state.
 bool loadState(Surface& s, const std::string& text, bool asPreset);
 
 } // namespace pf

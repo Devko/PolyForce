@@ -62,7 +62,7 @@ std::string pluginDir() {
 }
 
 std::vector<Root> tableRoots() { return roots("PF_TABLE_ROOTS", "Wavetables", "/media/AkaiForce/Wavetables"); }
-std::vector<Root> presetRoots() { return roots("PF_PRESET_ROOTS", "Presets", "/media/AkaiForce/PolyForce Presets"); }
+std::vector<Root> presetRoots() { return roots("PF_PRESET_ROOTS", "Presets", "/media/AkaiForce/PolyWerk Presets"); }
 std::vector<Root> tuningRoots() { return roots("PF_TUNING_ROOTS", "Tunings", "/media/AkaiForce/Tunings"); }
 
 std::string dataDir() {

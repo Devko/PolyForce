@@ -16,7 +16,7 @@
 ## The budget
 
 MPC renders 128-frame blocks: **2902 µs per block**, per plugin instance. A plugin passes at
-**p99 ≤ 15%** of the block (warns up to 35%). PolyForce's ceiling, **8 voices × 8 unison** with
+**p99 ≤ 15%** of the block (warns up to 35%). PolyWerk's ceiling, **8 voices × 8 unison** with
 both oscillators, has to stay within 15%.
 
 Every optimisation is checked two ways:
@@ -239,7 +239,7 @@ without it they are within 2.2e-6.
 A 256-frame table is 4.5 MB, and the Force's L2 cache is about 1 MB. A position that holds still
 reads an 8 KB float copy whatever the table's size; a moving one reads the table itself.
 `make bench-device WAVETABLES=<folder>` measures whether that waits on memory. It runs a profiling
-build (`polyforce_stages.so`) that reports each pass's time per block. Then it plays the same
+build (`polywerk_stages.so`) that reports each pass's time per block. Then it plays the same
 voices with the positions swept, first on the built-in Classic table and then on a 256-frame table
 from that folder.
 

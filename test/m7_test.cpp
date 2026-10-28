@@ -56,7 +56,7 @@ void tuningFiles() {
     for (size_t i = 1; i < h.L.size(); ++i) rises += (h.L[i - 1] < 0.0f && h.L[i] >= 0.0f) ? 1 : 0;
     CHECK(std::abs(rises - static_cast<int>(271.31 * h.L.size() / 44100.0)) <= 2);
     CHECK(h.chunk().find("tuning=plugin:Xen/19-EDO.scl\n") != std::string::npos);
-    CHECK(h.load("polyforce 4\ntuning=plugin:Xen/Gone.scl\n") == 1);
+    CHECK(h.load("polywerk 4\ntuning=plugin:Xen/Gone.scl\n") == 1);
     CHECK(h.until([&] { return h.display(pf::P_TUNING) == "MISSING Gone"; }));
 }
 
@@ -73,7 +73,7 @@ void presets() {
     // A folder of the user's named like a factory category stays its own category.
     {
         fs::create_directories(fixtureDir() + "/presets/Bass");
-        std::ofstream(fixtureDir() + "/presets/Bass/Mine.pfp") << "polyforce 4\nvolume=-7\n";
+        std::ofstream(fixtureDir() + "/presets/Bass/Mine.pfp") << "polywerk 4\nvolume=-7\n";
         pf::presetLibrary().rescan();
         const auto U = pf::presetLibrary().listing();
         const int mine = U->find("plugin:Bass/Mine.pfp");

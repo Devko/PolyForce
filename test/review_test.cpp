@@ -556,12 +556,12 @@ void surfaceFixes() {
     // doesn't name the tables leaves them alone.
     {
         Host h;
-        CHECK(h.load("polyforce x\nf1_cut=500\n") == 0);
-        CHECK(h.load("polyforce \n") == 0);
-        CHECK(h.load("\xEF\xBB\xBFpolyforce 4\nf1_cut=500\n") == 1 && h.display(pf::P_F1_CUT) == "500 Hz");
-        CHECK(h.load("polyforce 4\no1_table=builtin:PWM\n") == 1);
+        CHECK(h.load("polywerk x\nf1_cut=500\n") == 0);
+        CHECK(h.load("polywerk \n") == 0);
+        CHECK(h.load("\xEF\xBB\xBFpolywerk 4\nf1_cut=500\n") == 1 && h.display(pf::P_F1_CUT) == "500 Hz");
+        CHECK(h.load("polywerk 4\no1_table=builtin:PWM\n") == 1);
         CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Built-in / PWM"; }));
-        CHECK(h.load("polyforce 4\nf1_cut=600\n") == 1);
+        CHECK(h.load("polywerk 4\nf1_cut=600\n") == 1);
         h.run(4);
         CHECK(h.display(pf::P_O1_TABLE) == "Built-in / PWM");
     }
@@ -664,7 +664,7 @@ void fileFixes() {
         fs::resize_file(dir + "/huge.wav", 100u << 20);   // sparse
         pf::tableLibrary().rescan();
         Host h;
-        CHECK(h.load("polyforce 4\no1_table=plugin:Big/huge.wav\n") == 1);
+        CHECK(h.load("polywerk 4\no1_table=plugin:Big/huge.wav\n") == 1);
         CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "MISSING Big / huge"; }));
         h.on(60);
         CHECK(h.run(10) > 1e-3f);   // the fallback plays
@@ -878,7 +878,7 @@ void pluginFixes2() {
     // A chunk far bigger than any state is refused, not copied and parsed.
     {
         Host h;
-        CHECK(h.load("polyforce 4\n" + std::string(2u << 20, '#')) == 0);
+        CHECK(h.load("polywerk 4\n" + std::string(2u << 20, '#')) == 0);
     }
     // A flood of events in one block still has room for the note-off (it used to be dropped
     // with everything past 512 events: a stuck note).

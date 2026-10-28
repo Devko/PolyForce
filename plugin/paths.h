@@ -1,7 +1,7 @@
 #pragma once
-// Where PolyForce finds its files on the device, with test overrides.
+// Where PolyWerk finds its files on the device, with test overrides.
 //
-//   pluginDir()   the folder our own .so was loaded from ("/sdcard/Synths/Devko - VST - PolyForce"),
+//   pluginDir()   the folder our own .so was loaded from ("/sdcard/Synths/Devko - VST - PolyWerk"),
 //                 read from /proc/self/maps (the mapping that holds this code). Not dladdr(): built
 //                 against glibc >= 2.34 that binds GLIBC_2.34. "" when it can't tell (tests).
 //   tableRoots()  wavetable folders, in order: <plugin dir>/Wavetables ("plugin"), then the SSD
@@ -21,7 +21,7 @@ struct Root {
 
 std::string pluginDir();
 std::vector<Root> tableRoots();
-std::vector<Root> presetRoots();   // <plugin dir>/Presets, /media/AkaiForce/PolyForce Presets; PF_PRESET_ROOTS
+std::vector<Root> presetRoots();   // <plugin dir>/Presets, /media/AkaiForce/PolyWerk Presets; PF_PRESET_ROOTS
 std::vector<Root> tuningRoots();   // <plugin dir>/Tunings, /media/AkaiForce/Tunings; PF_TUNING_ROOTS
 std::string dataDir();
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PolyForce touchscreen surface: the ONE place the plugin's parameters and pages are defined.
+"""PolyWerk touchscreen surface: the ONE place the plugin's parameters and pages are defined.
 
 Writes, next to this file:
   params.json        ordered VST parameter list (index = position; append-only once released:
@@ -49,8 +49,8 @@ STEPPER_RANGE = 1023        # a table stepper's VST range: 0..1023 items (stepIt
 BROWSER_CATS = 16           # category tiles on the browser page (2 x 8)
 BROWSER_ITEMS = 24          # item tiles (3 x 8)
 
-VST = {"name": "PolyForce", "vendor": "Devko", "uid": "PlFc", "version": 1000,
-       "so": "polyforce.so", "params": "params.json", "layout": "layout.conf"}
+VST = {"name": "PolyWerk", "vendor": "Devko", "uid": "PlFc", "version": 1000,
+       "so": "polywerk.so", "params": "params.json", "layout": "layout.conf"}
 
 
 # --- parameters ------------------------------------------------------------------------------
@@ -448,7 +448,7 @@ class Layout:
     def toggle(self, cx, cy, key):
         self.add('toggle cx=%d cy=%d label="%s" key=%s' % (cx, cy, PARAMS[key]["name"], key))
 
-    def meter(self, cx, cy, w, h, key):   # display only: shadow_skin's filmstrip meter, no look (PolyForce patch)
+    def meter(self, cx, cy, w, h, key):   # display only: shadow_skin's filmstrip meter, no look (PolyWerk patch)
         self.add('meter cx=%d cy=%d w=%d h=%d key=%s' % (cx, cy, w, h, key))
 
     def tiles(self, x, y, w, cols, rows, th, gap, key):
@@ -1210,8 +1210,8 @@ def factory_presets():
             where = "%s/%s" % (d, f)
             text = open(os.path.join(folder, f), encoding="utf-8").read().replace("\r\n", "\n")
             lines = text.split("\n")
-            if not lines[0].startswith("polyforce "):
-                errors.append("%s: no 'polyforce N' header" % where)
+            if not lines[0].startswith("polywerk "):
+                errors.append("%s: no 'polywerk N' header" % where)
             for n, line in enumerate(lines[1:], 2):
                 if not line.strip():
                     continue

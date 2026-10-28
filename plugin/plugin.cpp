@@ -1,4 +1,4 @@
-// PolyForce as a VST2 instrument for MPC OS (Force / MPC standalone).
+// PolyWerk as a VST2 instrument for MPC OS (Force / MPC standalone).
 //
 // The engine (dsp/synth.h) behind the touchscreen pages generated from surface/surface.py;
 // plugin/surface.* decides what every parameter does, plugin/loader.* loads wavetables in the
@@ -571,7 +571,7 @@ extern "C" __attribute__((visibility("default"))) AEffect* VSTPluginMain(audioMa
 // The profiling build only (make arm-bench-stages): the engine's time per render pass since
 // the last call, in microseconds, with the passes' names; tools/bench.cpp reads it with dlsym.
 // Returns the number of passes written.
-extern "C" __attribute__((visibility("default"))) int PolyForceStageTimes(double* us, const char** names, int max) {
+extern "C" __attribute__((visibility("default"))) int PolyWerkStageTimes(double* us, const char** names, int max) {
     if (!us || !names || max < pf::STG_COUNT) return 0;   // all passes or none (each read starts them over)
     for (int i = 0; i < pf::STG_COUNT; ++i) {
         us[i] = static_cast<double>(pf::g_stageNs[i]) * 1e-3;
