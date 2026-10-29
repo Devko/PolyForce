@@ -11,6 +11,7 @@
 namespace pf {
 namespace {
 constexpr const char* kMagic = "polywerk ";
+constexpr const char* kLegacyMagic = "polyforce ";   // werk-rename: keep (the old name's projects and presets: read, never written)
 
 // Numbers in the C locale whatever the process's is (a "0,5" would misread every preset).
 std::string number(float v) {
@@ -30,12 +31,20 @@ bool parse(const std::string& s, float& out) {
     out = v;
     return true;
 }
+
+// The length of the header word at `at`: ours or the old name's (one letter longer); 0 if neither.
+size_t magicLength(const std::string& text, size_t at) {
+    if (text.compare(at, std::strlen(kMagic), kMagic) == 0) return std::strlen(kMagic);
+    if (text.compare(at, std::strlen(kLegacyMagic), kLegacyMagic) == 0) return std::strlen(kLegacyMagic);
+    return 0;
+}
 }
 
 bool isStateText(const std::string& text) {
     size_t at = text.compare(0, 3, "\xEF\xBB\xBF") == 0 ? 3 : 0;   // a UTF-8 byte-order mark (a text editor's)
-    if (text.compare(at, std::strlen(kMagic), kMagic) != 0) return false;
-    at += std::strlen(kMagic);
+    const size_t magic = magicLength(text, at);
+    if (magic == 0) return false;
+    at += magic;
     int version = 0;
     const auto r = std::from_chars(text.data() + at, text.data() + text.size(), version);
     return r.ec == std::errc() && version >= 1;
@@ -60,7 +69,7 @@ bool loadState(Surface& s, const std::string& textIn, bool asPreset) {
     if (!isStateText(textIn)) return false;
     const std::string text = textIn.compare(0, 3, "\xEF\xBB\xBF") == 0 ? textIn.substr(3) : textIn;
     int version = 1;
-    std::from_chars(text.data() + std::strlen(kMagic), text.data() + text.size(), version);
+    std::from_chars(text.data() + magicLength(text, 0), text.data() + text.size(), version);
     const bool normalised = version < 2;
     Surface::Batch batch(s);   // the audio thread never plays a half-loaded sound
     if (asPreset)

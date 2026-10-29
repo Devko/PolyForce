@@ -2,6 +2,7 @@
 // points the way MPC drives it (128-frame blocks, events with deltaFrames, 0..1 params).
 // Built with ASan/UBSan by `make test`.
 #include "host.h"
+#include "../plugin/paths.h"
 #include "../dsp/wavetable.h"
 #include "../plugin/surface.h"
 
@@ -11,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -350,6 +352,22 @@ void testImportedTable() {
 
 } // namespace
 
+// The SSD preset folder of the old name moves to the new one, once, and never over a folder already there.
+static void testLegacyDir() {
+    std::printf("== the old SSD preset folder\n");
+    namespace fs = std::filesystem;
+    const std::string old = pft::fixtureDir() + "/legacy/old", now = pft::fixtureDir() + "/legacy/new";
+    fs::create_directories(old);
+    std::ofstream(old + "/a.sfp") << "x";
+    CHECK(pf::migrateLegacyDir(old, now) && fs::exists(now + "/a.sfp") && !fs::exists(old));   // it moves
+    fs::create_directories(old);
+    std::ofstream(old + "/b.sfp") << "y";
+    CHECK(!pf::migrateLegacyDir(old, now) && fs::exists(old + "/b.sfp") && fs::exists(now + "/a.sfp") &&
+          !fs::exists(now + "/b.sfp"));   // the new one exists: both stay as they are
+    fs::remove_all(old);
+    CHECK(!pf::migrateLegacyDir(old, now + "2") && !fs::exists(now + "2"));   // no old one: nothing happens
+}
+
 int main() {
     // Every table root, data file and preset lives in a throwaway folder: the tests never touch
     // the build tree or the user's files.
@@ -396,6 +414,7 @@ int main() {
     testSustainPedal();
     std::printf("== stress\n");
     testStress();
+    testLegacyDir();
     std::printf("== chunk\n");
     testChunk();
     std::printf("== loader\n");

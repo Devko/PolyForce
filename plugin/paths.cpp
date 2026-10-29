@@ -62,7 +62,20 @@ std::string pluginDir() {
 }
 
 std::vector<Root> tableRoots() { return roots("PF_TABLE_ROOTS", "Wavetables", "/media/AkaiForce/Wavetables"); }
-std::vector<Root> presetRoots() { return roots("PF_PRESET_ROOTS", "Presets", "/media/AkaiForce/PolyWerk Presets"); }
+bool migrateLegacyDir(const std::string& from, const std::string& to) {
+    struct stat st;
+    if (::stat(from.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) return false;
+    if (::lstat(to.c_str(), &st) == 0 || errno != ENOENT) return false;   // rename() would replace an empty folder
+    return std::rename(from.c_str(), to.c_str()) == 0;
+}
+
+std::vector<Root> presetRoots() {
+    constexpr const char* ssd = "/media/AkaiForce/PolyWerk Presets";
+    static const bool moved = !std::getenv("PF_PRESET_ROOTS") &&   // once a process; tests set their own roots
+                              migrateLegacyDir("/media/AkaiForce/PolyForce Presets", ssd);   // werk-rename: keep
+    (void)moved;
+    return roots("PF_PRESET_ROOTS", "Presets", ssd);
+}
 std::vector<Root> tuningRoots() { return roots("PF_TUNING_ROOTS", "Tunings", "/media/AkaiForce/Tunings"); }
 
 std::string dataDir() {

@@ -21,7 +21,7 @@ struct Root {
 
 std::string pluginDir();
 std::vector<Root> tableRoots();
-std::vector<Root> presetRoots();   // <plugin dir>/Presets, /media/AkaiForce/PolyWerk Presets; PF_PRESET_ROOTS
+std::vector<Root> presetRoots();   // <plugin dir>/Presets, /media/AkaiForce/PolyWerk Presets; PF_PRESET_ROOTS (without it, the first call moves the old name's SSD folder there)
 std::vector<Root> tuningRoots();   // <plugin dir>/Tunings, /media/AkaiForce/Tunings; PF_TUNING_ROOTS
 std::string dataDir();
 
@@ -32,5 +32,8 @@ std::string resolveKey(const std::string& key, const std::vector<Root>& roots);
 bool writeFileAtomic(const std::string& path, const std::string& text);
 // A whole (small) file: presets, tunings, lists. False if it is missing or over maxBytes.
 bool readFile(const std::string& path, std::string& out, size_t maxBytes = 1u << 20);
+// Renames the folder `from` to `to` if `from` is a folder and nothing is at `to` yet (the -Werk
+// rename's SSD presets); true if it moved. Never merges or replaces.
+bool migrateLegacyDir(const std::string& from, const std::string& to);
 
 } // namespace pf

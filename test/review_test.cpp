@@ -559,6 +559,9 @@ void surfaceFixes() {
         CHECK(h.load("polywerk x\nf1_cut=500\n") == 0);
         CHECK(h.load("polywerk \n") == 0);
         CHECK(h.load("\xEF\xBB\xBFpolywerk 4\nf1_cut=500\n") == 1 && h.display(pf::P_F1_CUT) == "500 Hz");
+        // Saved before the rename: the old header still loads; the next save writes the new one.
+        CHECK(h.load("polyforce 4\nf1_cut=700\n") == 1 && h.display(pf::P_F1_CUT) == "700 Hz");   // werk-rename: keep
+        CHECK(h.chunk().compare(0, 9, "polywerk ") == 0);
         CHECK(h.load("polywerk 4\no1_table=builtin:PWM\n") == 1);
         CHECK(h.until([&] { return h.display(pf::P_O1_TABLE) == "Built-in / PWM"; }));
         CHECK(h.load("polywerk 4\nf1_cut=600\n") == 1);
